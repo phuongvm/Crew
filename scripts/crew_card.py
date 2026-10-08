@@ -163,8 +163,19 @@ def profile_exists(name):
     return os.path.isfile(os.path.join(base_home(), "profiles", name, "config.yaml"))
 
 
+ROLE_MAP = {
+    "coordinator": "leader",
+    "worker": "coder",
+    "verifier": "reviewer",
+    "content": "designer",
+}
+
+
 def role_profile(role):
-    """Assignee for a role: <prefix><role> when that profile exists, else the current profile."""
+    """Assignee for a role: mapped specialist profile (leader, coder, reviewer, designer), or <prefix><role> when that profile exists, else the current profile."""
+    mapped = ROLE_MAP.get(role)
+    if mapped and profile_exists(mapped):
+        return mapped
     name = profile_prefix() + role
     return name if profile_exists(name) else current_profile()
 
@@ -214,16 +225,43 @@ def default_budget(role):
     return val if isinstance(val, int) else DEFAULT_BUDGET
 
 
-def kanban_db():
-    for path in (os.environ.get("HERMES_KANBAN_DB") or "", os.environ.get("KANBAN_DB") or "",
-                 os.path.join(base_home(), "kanban.db")):
+def kanban_db(card_id=None):
+    for path in (os.environ.get("HERMES_KANBAN_DB") or "", os.environ.get("KANBAN_DB") or ""):
         if path and os.path.exists(path):
+            return path
+    if card_id:
+        import glob
+        for path in glob.glob(os.path.join(base_home(), "kanban", "boards", "*", "kanban.db")):
+            try:
+                conn = sqlite3.connect("file:%s?mode=ro" % path, uri=True)
+                if conn.execute("select 1 from tasks where id = ?", (card_id,)).fetchone():
+                    conn.close()
+                    return path
+                conn.close()
+            except Exception:
+                pass
+    k_home = os.path.join(base_home(), "kanban")
+    cur_ptr = os.path.join(k_home, "current")
+    if os.path.exists(cur_ptr):
+        try:
+            with open(cur_ptr, "r", encoding="utf-8") as f:
+                slug = f.read().strip()
+            if slug:
+                b_path = os.path.join(k_home, "boards", slug, "kanban.db")
+                if os.path.exists(b_path):
+                    return b_path
+        except Exception:
+            pass
+    for path in (os.path.join(base_home(), "kanban", "boards", "skills-kb", "kanban.db"),
+                 os.path.join(base_home(), "kanban", "boards", "default", "kanban.db"),
+                 os.path.join(base_home(), "kanban.db")):
+        if os.path.exists(path):
             return path
     return None
 
 
 def card_row(card_id):
-    db = kanban_db()
+    db = kanban_db(card_id)
     if not db:
         return None
     try:

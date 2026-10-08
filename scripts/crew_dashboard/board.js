@@ -12,7 +12,8 @@ function store(k, v){ try{ if(v===undefined) return sessionStorage.getItem("crew
   if(v===null) sessionStorage.removeItem("crew."+k); else sessionStorage.setItem("crew."+k, v); }catch(e){ return null; } }
 function shortId(id){ return String(id).replace(/^t_/,"").slice(0,6); }
 function avatar(name, hue){
-  if(name) return '<img class="avatar face" src="'+esc(faceUrl(name))+'" alt="'+esc(name)+'" title="'+esc(name)+'">';
+  var initial = esc((name||"?").slice(0,1).toUpperCase());
+  if(name) return '<img class="avatar face" src="'+esc(faceUrl(name))+'" alt="'+esc(name)+'" title="'+esc(name)+'" onerror="this.style.display=\'none\';if(this.nextElementSibling)this.nextElementSibling.style.display=\'inline-grid\';"><span class="avatar fallback" style="display:none;--hue:'+esc(hue||"var(--crew-text-3)")+'">'+initial+'</span>';
   return '<span class="avatar" style="--hue:'+esc(hue||"var(--crew-text-3)")+'">?</span>'; }
 function hhmm(d){ function p(x){ return (x<10?"0":"")+x; } return p(d.getHours())+":"+p(d.getMinutes()); }
 

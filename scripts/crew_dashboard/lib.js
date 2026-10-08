@@ -35,4 +35,4 @@ function copyText(text, done){
 // A role's face: the dashboard server gives each role one of the shipped DiceBear "Blobs" variants (CC0, seed
 // tq58bv38) the first time it shows it, and keeps it (crew_graph_serve.role_face) - the page only names the role.
 function faceUrl(name){ var n = String(name || "").toLowerCase().replace(/^crew-/, "").replace(/[^a-z0-9_-]/g, "");
-  return "/avatars/role/" + (n || "unknown") + ".svg"; }
+  return "avatars/role/" + (n || "unknown") + ".svg"; }

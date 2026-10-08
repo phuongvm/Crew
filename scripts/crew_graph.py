@@ -75,10 +75,32 @@ def base_home():
 
 
 def kanban_db_path():
-    env = os.environ.get("KANBAN_DB") or ""
-    if env and os.path.exists(env):
-        return env
-    p = os.path.join(base_home(), "kanban.db")
+    for env in ("HERMES_KANBAN_DB", "KANBAN_DB"):
+        v = (os.environ.get(env) or "").strip()
+        if v and os.path.exists(v):
+            return v
+    base = base_home()
+    k_home = os.path.join(base, "kanban")
+    board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
+    if board_env:
+        b_path = os.path.join(k_home, "boards", board_env, "kanban.db")
+        if os.path.exists(b_path):
+            return b_path
+    cur_ptr = os.path.join(k_home, "current")
+    if os.path.exists(cur_ptr):
+        try:
+            with open(cur_ptr, "r", encoding="utf-8") as f:
+                slug = f.read().strip()
+            if slug:
+                b_path = os.path.join(k_home, "boards", slug, "kanban.db")
+                if os.path.exists(b_path):
+                    return b_path
+        except Exception:
+            pass
+    def_path = os.path.join(k_home, "boards", "default", "kanban.db")
+    if os.path.exists(def_path):
+        return def_path
+    p = os.path.join(base, "kanban.db")
     return p if os.path.exists(p) else None
 
 
@@ -576,8 +598,8 @@ def favicon_link():
 
 def logo_link():
     """The header mark as a link home: the same logo mark with no background as the tab icon, embedded
-    like the CSS so the page stays one self-contained document, pointing at the overview (/). The SVG
-    carries the mark for a dark and a light page (dev/make_favicon.py), so the black ring of the
+    like the CSS so the page stays one self-contained document, pointing at the public dashboard URL.
+    The SVG carries the mark for a dark and a light page (dev/make_favicon.py), so the black ring of the
     on-light variant never disappears into a dark host background. A missing file costs the mark,
     never the page."""
     try:
@@ -585,8 +607,9 @@ def logo_link():
             data = base64.b64encode(fh.read()).decode("ascii")
     except OSError:
         return ""
-    return ('<a class="brand" href="/" title="overview" aria-label="crew overview">'
-            '<img src="data:image/svg+xml;base64,%s" alt="" width="26" height="26"></a>' % data)
+    from crew_card import dashboard_url
+    return ('<a class="brand" href="%s" target="_blank" rel="noopener noreferrer" title="overview" aria-label="crew overview">'
+            '<img src="data:image/svg+xml;base64,%s" alt="" width="26" height="26"></a>' % (dashboard_url(), data))
 
 
 def profile_homes():

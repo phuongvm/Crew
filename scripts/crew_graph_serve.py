@@ -22,6 +22,7 @@ per-response script nonce.
 import importlib.util
 import json
 import os
+import platform
 import html as _html
 import random
 import re
@@ -242,7 +243,8 @@ def board_data(include_all=False, older=False):
     counts = {}
     for t in tiles:
         counts[t["status"]] = counts.get(t["status"], 0) + 1
-    return {"generated_at": int(now), "node": os.uname().nodename,
+    node_name = platform.node() if hasattr(platform, "node") else "unknown"
+    return {"generated_at": int(now), "node": node_name,
             "live": sum(1 for t in tiles if t["active"]), "lanes": lanes, "counts": counts,
             "cards": len(tiles), "test_cards": len(test_cards),
             "attention": attention_data(db, tiles, now)}
@@ -417,7 +419,7 @@ def board_page(include_all=False, nonce=None):
             "<div id=notes hidden><div class=nh><span id=notehead>%s</span>"
             "<button id=clearall title='clear every listed row'>clear all</button></div>"
             "<div id=noterows></div></div></span>"
-            "<span class=node>%s - kanban <a class=tailnet href='%s/'>link</a>"
+            "<span class=node>%s - kanban <a class=tailnet target='_blank' rel='noopener noreferrer' href='%s/'>open in new tab ↗</a>"
             "</span></span></header>"
             "<main id=board></main>"
             # The helpers that draw a lane live at the END of the script body, so the first paint has
@@ -427,7 +429,7 @@ def board_page(include_all=False, nonce=None):
             % (CG.favicon_link(), css, CG.logo_link(), cards_word(data.get("cards")), live_word(data.get("live")),
                board_counts(data.get("counts")), notes_hint(data.get("attention")),
                BELL_SVG, notes_total(data.get("attention")), attention_head(data.get("attention")),
-               esc(os.uname().nodename), esc(CG.crew_card.dashboard_url()),
+               esc(platform.node() if hasattr(platform, "node") else "unknown"), esc(CG.crew_card.dashboard_url()),
                (' nonce="%s"' % esc(nonce)) if nonce else "", js_data(data),
                CG.dashboard_asset("lib.js", "board.js")))
 

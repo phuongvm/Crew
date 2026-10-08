@@ -34,7 +34,11 @@ PROOF_MODES = ("safe", "brave")
 APPROVED = "approved"            # a mode only proof_mode() returns: safe, but this exact command has the owner's yes
 BLOCKED_RC = 126                 # what a shell says for "found but refused"; Result.blocked carries the reason
 ENV_KEEP = ("PATH", "HOME", "LANG", "HERMES_HOME", "HERMES_KANBAN_DB", "HERMES_KANBAN_BOARD", "TMPDIR")
-HERMES_SRC = (os.environ.get("HERMES_AGENT_SRC") or "", os.path.expanduser("~/.hermes/hermes-agent"))
+HERMES_SRC = (
+    os.environ.get("HERMES_AGENT_SRC") or "",
+    "O:/workspaces/oss/hermes-agent",
+    os.path.expanduser("~/.hermes/hermes-agent"),
+)
 
 Result = namedtuple("Result", "rc out blocked")
 SCRIPT_CHANGED = "proof script changed since it first ran: "     # the prefix crew_coordinator.proof_blocked_ask keys on
@@ -80,12 +84,16 @@ def _permanently_approved(key, cmd):
 def _tirith_block(cmd):
     """Why tirith stops this command, '' when it does not. An unusable scanner follows security.tirith_fail_open
     exactly as tools/approval.py does: open (default) lets it through, closed blocks."""
-    from tools.approval_context import _tirith_fail_open
+    try:
+        from tools.approval_context import _tirith_fail_open
+        fail_open = _tirith_fail_open()
+    except Exception:
+        fail_open = True
     try:
         from tools.tirith_security import check_command_security
         verdict = check_command_security(cmd)
     except Exception:  # noqa: BLE001
-        return "" if _tirith_fail_open() else "the tirith scanner is unavailable and security.tirith_fail_open is false"
+        return "" if fail_open else "the tirith scanner is unavailable and security.tirith_fail_open is false"
     if verdict.get("action") in ("block", "warn"):
         return "tirith: %s" % (verdict.get("summary") or verdict.get("action"))
     return ""

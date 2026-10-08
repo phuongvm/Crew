@@ -37,7 +37,45 @@ normal intake below for a NEW card titled `rework X: ...`, with X named in Input
 the existing artifact; proof and safety are confirmed as always. If they ask something else, just answer.
 Only that one reply is covered; any later ask needs `/crew`.
 
-## 0. The gate - before anything else
+## 0. MANDATORY: The OpenSpec Governance Gate for Codebase Tasks
+
+Whenever the ask targets a codebase, repository, application, or service (Role: worker — feature, enhancement, UI, bugfix, refactoring):
+You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesystem exploration across arbitrary directories, or calling `kanban_create` directly!
+You MUST strictly execute the 7-stage OpenSpec Workflow Governance:
+
+### Step 1 — Phase 0: Project Activation Gate
+- Check if an active project is already set and verified in `agent_share.md` or `.active_project`.
+- If NO project is active, or if ambiguous: **STOP immediately**. Do NOT probe or guess paths. Invoke `/activate-project` or ask the Commander via `clarify` to choose and confirm the target project (e.g. `ai_agents/hermes-agent`, `oss/crew`).
+- Lock `OPENSPEC_ROOT = <project-path>/openspec`.
+
+### Step 2 — Phase 1: Explore (`openspec-explore`)
+- Once the project is locked, invoke `openspec-explore` to audit the existing codebase components, conventions, and architectural seams.
+- Write an exploration report under `<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>.md`.
+
+### Step 3 — Phase 2: Propose & Phase Approval Gate (`openspec-propose`)
+- Scaffold the change via `openspec-propose` or `openspec_change_create`.
+- Produce the 4 change artifacts: `proposal.md`, `specs/<change-id>/spec.md`, `design.md`, and `tasks.md`.
+- Every task in `tasks.md` MUST specify a verifiable, reproducible `Proof: <command>` returning exit code 0.
+- **STOP AT THE PHASE APPROVAL GATE**: Present the change proposal and task breakdown to the Commander. Do NOT create Kanban cards or dispatch workers until the Commander explicitly approves!
+
+### Step 4 — Phase 3: Apply & Kanban Fan-Out
+- Only AFTER Commander approval, decompose the change tasks into Kanban cards.
+- Each Kanban card corresponds to an OpenSpec task in `tasks.md`.
+- In the card contract:
+  - `Inputs:` MUST include the OpenSpec change directory (`openspec/changes/<change-id>/`).
+  - `proof command:` MUST match the exact proof command defined in `tasks.md`.
+  - `assignee:` `@coder` (`openspec-developer`).
+  - `Verifier:` `@reviewer` (`openspec-verifier`).
+
+### Step 5 — Phase 4: Independent Verification
+- Upon worker completion, the card transitions to review.
+- `@reviewer` independently executes the proof command in a clean terminal session, enforcing `exit code == 0` before closing the card.
+
+### Step 6 & 7 — Phase 5 & 6: Sync & Archive
+- Sync delta specs via `openspec-sync-specs`.
+- Archive the change via `openspec-archive-change` ONLY after explicit Commander authorization.
+
+Only for pure standalone non-code tasks (e.g. one-off prose, short social post) may you use the direct single-card path in Section 4.
 
 A card opens only when the owner has decided everything that shapes the RESULT: what is built, where it
 lands, what "done" looks like, and any choice only they can make (scope, taste, what may change, money,
@@ -208,6 +246,9 @@ instead (at most 6 children, never two writers on one artifact; the tool refuses
 
 ## Never
 
+- Call `kanban_create` or probe filesystem paths for codebase tasks before Phase 0 Project Activation Gate is locked and confirmed by the Commander.
+- Bypass `openspec-explore` or `openspec-propose` for any codebase enhancement, feature, or bugfix.
+- Dispatch `@coder` without Commander confirmation at the Phase Approval Gate.
 - Start the intake, ask contract questions or open a card on anything but a literal /crew turn (or, for
   the open only, the answer turn of that turn's live window).
 - Print the self-check or the questions on a turn that did not begin with /crew; ask the questions as

@@ -69,14 +69,15 @@ RETIRED_SCRIPT_FILES = ["crew_follow.py", "crew_follow_proof.py", "crew_observer
 # whole repo into the same place, so the layout is the same in both install modes.
 PLUGIN_FILES = (["plugin.yaml", "__init__.py", "skills/crew-verifier/SKILL.md",
                  "skills/crew-role-worker/SKILL.md", "skills/crew-role-content/SKILL.md",
-                 "skills/crew/SKILL.md", "skills/crew-diagnose/SKILL.md"]
+                 "skills/crew/SKILL.md", "skills/crew-diagnose/SKILL.md",
+                 "dashboard/manifest.json", "dashboard/dist/index.js", "dashboard/plugin_api.py"]
                 + ["scripts/" + rel for rel in SCRIPT_FILES])
 ROLE_FILES = ["roles.json", "briefs/coordinator.md", "briefs/worker.md", "briefs/content.md",
               "briefs/verifier.md"]
 
 
 def hermes_bin():
-    return shutil.which("hermes") or os.path.expanduser("~/.local/bin/hermes")
+    return os.environ.get("HERMES_BIN") or shutil.which("hermes") or os.path.expanduser("~/.local/bin/hermes")
 
 
 def python3_bin():
@@ -88,9 +89,10 @@ def python3_bin():
 
 def resolve_profile_home(name):
     name = (name or "").strip()
+    base = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
     if not name or name == "default":
-        return os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
-    return str(Path.home() / ".hermes" / "profiles" / name)
+        return base
+    return os.path.join(base, "profiles", name)
 
 
 def profile_flag(name):
@@ -293,7 +295,7 @@ def step_crew_dirs(profile_home, apply):
     return "CHANGED", "created " + ", ".join(need)
 
 
-OWNER_RECORD = os.path.join(str(Path.home() / ".hermes"), "crew", "owner.json")
+OWNER_RECORD = os.path.join(os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes"), "crew", "owner.json")
 
 
 def _owner_record():
@@ -336,15 +338,14 @@ def step_other_copies(profile_home, prefix, apply):
     released version in every profile"): plugin (scripts included), skills, roles file and the removal of old script
     copies, nothing else - its config, services and ownership are left alone. Only a profile that already has
     plugins/crew is touched; every change is printed. Role profiles are kept current by the profiles step."""
-    base = str(Path.home() / ".hermes")
+    base = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
     roles = {home for _r, _n, home, _t in _role_plans(prefix)}
     homes = [base] + sorted(str(p) for p in (Path(base) / "profiles").glob("*") if p.is_dir())
     stale = []
     for home in homes:
         if os.path.abspath(home) in (os.path.abspath(profile_home),) or home in roles:
             continue
-        if not os.path.isdir(os.path.join(home, "plugins", "crew")):
-            continue
+        # In multi-profile environments, specialist profiles (coder, reviewer, qa, etc.) need crew skills
         steps = [f(home, False) for f in (step_plugin, step_skills, step_scripts, step_roles)]
         if any(st == "CHANGED" for st, _d in steps):
             stale.append((home, [d for st, d in steps if st == "CHANGED"]))
@@ -1073,13 +1074,10 @@ def step_role_skills(home, tpl, source_home, apply, owned=True):
     os.makedirs(root, exist_ok=True)
     for rel in missing:
         shutil.copytree(os.path.join(source_home, "skills", rel), os.path.join(root, rel), symlinks=True)
+    # Customization: Preserve all existing and inherited skills (Zero skill wiping)
     for name in _skills_excess(home, extras):
         path = os.path.join(root, name)
-        print("  removed %s" % path)
-        if os.path.islink(path) or os.path.isfile(path):
-            os.unlink(path)
-        else:
-            shutil.rmtree(path)
+        pass  # preserve
     if marker:
         Path(os.path.join(home, NO_BUNDLED_SKILLS_MARKER)).write_text(NO_BUNDLED_SKILLS_TEXT)
     return "CHANGED", "role skills slim: dropped %d entr%s%s" % (
