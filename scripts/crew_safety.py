@@ -34,11 +34,51 @@ PROOF_MODES = ("safe", "brave")
 APPROVED = "approved"            # a mode only proof_mode() returns: safe, but this exact command has the owner's yes
 BLOCKED_RC = 126                 # what a shell says for "found but refused"; Result.blocked carries the reason
 ENV_KEEP = ("PATH", "HOME", "LANG", "HERMES_HOME", "HERMES_KANBAN_DB", "HERMES_KANBAN_BOARD", "TMPDIR")
-HERMES_SRC = (
-    os.environ.get("HERMES_AGENT_SRC") or "",
-    "O:/workspaces/oss/hermes-agent",
-    os.path.expanduser("~/.hermes/hermes-agent"),
-)
+
+
+def _hermes_home():
+    return os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
+
+
+def _base_home():
+    h = os.path.abspath(_hermes_home())
+    if os.path.basename(os.path.dirname(h)) == "profiles":
+        return os.path.dirname(os.path.dirname(h))
+    return h
+
+
+def _find_hermes_sources():
+    sources = []
+    seen = set()
+
+    def _add(path):
+        if not path:
+            return
+        norm = os.path.abspath(os.path.normpath(path))
+        if norm not in seen and os.path.isdir(norm):
+            seen.add(norm)
+            sources.append(norm)
+
+    for env_var in ("HERMES_AGENT_SRC", "HERMES_AGENT_DIR", "HERMES_SRC"):
+        val = os.environ.get(env_var)
+        if val:
+            _add(val)
+
+    cur = os.path.abspath(__file__)
+    while True:
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+        for sub in ("hermes-agent", os.path.join("oss", "hermes-agent")):
+            _add(os.path.join(cur, sub))
+
+    _add(os.path.join(_base_home(), "hermes-agent"))
+    _add(os.path.expanduser("~/.hermes/hermes-agent"))
+    return tuple(sources)
+
+
+HERMES_SRC = _find_hermes_sources()
 
 Result = namedtuple("Result", "rc out blocked")
 SCRIPT_CHANGED = "proof script changed since it first ran: "     # the prefix crew_coordinator.proof_blocked_ask keys on
@@ -51,10 +91,34 @@ def _hermes():
     """Make Hermes's own modules importable (the crew scripts run under any python): its source root goes on
     the path whole, because an editable install exposes the packages but not top-level modules like hermes_yaml.
     Raises ImportError when there is no Hermes."""
-    for src in HERMES_SRC:
+    import glob
+    sources = _find_hermes_sources()
+    for src in sources:
         if src and os.path.isdir(src) and src not in sys.path:
             sys.path.append(src)
-    import tools.approval_detection  # noqa: F401
+    base = _base_home()
+    for sp in glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "Lib", "site-packages")):
+        if sp not in sys.path:
+            sys.path.append(sp)
+    for sp in glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "lib", "python*", "site-packages")):
+        if sp not in sys.path:
+            sys.path.append(sp)
+    for src in sources:
+        for venv_name in ("venv", ".venv"):
+            vdir = os.path.join(src, venv_name)
+            for sp in (
+                os.path.join(vdir, "Lib", "site-packages"),
+                *glob.glob(os.path.join(vdir, "lib", "python*", "site-packages")),
+            ):
+                if os.path.isdir(sp) and sp not in sys.path:
+                    sys.path.append(sp)
+    try:
+        import tools.approval_detection  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            f"Hermes safety checks could not be loaded ({exc}). "
+            "Please run under the Hermes venv interpreter."
+        ) from exc
 
 
 def proof_env(extra=None):
@@ -67,6 +131,29 @@ def proof_env(extra=None):
     except Exception:  # noqa: BLE001 - no Hermes: the smallest env that still runs a shell command
         env = {k: v for k, v in os.environ.items() if k in ENV_KEEP or k.startswith("CREW_")}
     env.update({k: os.environ[k] for k in ENV_KEEP if k in os.environ})
+    import glob
+    base = _base_home()
+    extra_py_paths = []
+    for sp in glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "Lib", "site-packages")):
+        if sp not in extra_py_paths:
+            extra_py_paths.append(sp)
+    for sp in glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "lib", "python*", "site-packages")):
+        if sp not in extra_py_paths:
+            extra_py_paths.append(sp)
+    for src in _find_hermes_sources():
+        if src and os.path.isdir(src) and src not in extra_py_paths:
+            extra_py_paths.append(src)
+        for venv_name in ("venv", ".venv"):
+            vdir = os.path.join(src, venv_name)
+            for sp in (
+                os.path.join(vdir, "Lib", "site-packages"),
+                *glob.glob(os.path.join(vdir, "lib", "python*", "site-packages")),
+            ):
+                if os.path.isdir(sp) and sp not in extra_py_paths:
+                    extra_py_paths.append(sp)
+    if extra_py_paths:
+        existing_pp = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = os.pathsep.join(extra_py_paths + ([existing_pp] if existing_pp else []))
     env.update(extra or {})
     return env
 
@@ -199,6 +286,42 @@ def is_script_block(reason):
     return str(reason or "").startswith(SCRIPT_CHANGED)
 
 
+def _resolve_openspec_cwd(change_name):
+    import glob
+    cur_cwd = os.getcwd()
+    if os.path.isdir(os.path.join(cur_cwd, "openspec", "changes", change_name)):
+        return cur_cwd
+
+    for src in _find_hermes_sources():
+        if os.path.isdir(os.path.join(src, "openspec", "changes", change_name)):
+            return src
+
+    roots = []
+    for k in ("HERMES_WORKSPACE_ROOT", "WORKSPACE"):
+        v = os.environ.get(k)
+        if v and os.path.isdir(v) and v not in roots:
+            roots.append(v)
+
+    cur = os.path.abspath(__file__)
+    while True:
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+        if cur not in roots:
+            roots.append(cur)
+
+    for r in roots:
+        if os.path.isdir(os.path.join(r, "openspec", "changes", change_name)):
+            return r
+        for path in glob.glob(os.path.join(r, "*", "openspec", "changes", change_name)):
+            return os.path.dirname(os.path.dirname(os.path.dirname(path)))
+        for path in glob.glob(os.path.join(r, "oss", "*", "openspec", "changes", change_name)):
+            return os.path.dirname(os.path.dirname(os.path.dirname(path)))
+
+    return None
+
+
 def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
     """The one runner of a proof command. Result(rc, output, blocked): `blocked` is the reason the safety floor
     (or, with `card`, the card's recorded script hashes) refused it (nothing ran, rc is BLOCKED_RC); rc 124 is a
@@ -210,6 +333,38 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
         ok = not why
     if not ok:
         return Result(BLOCKED_RC, why, why)
+    if cwd is None:
+        m = re.search(r"openspec(?:\.cmd)?\s+(?:validate|show|status)\s+([\w-]+)", str(cmd or ""))
+        if m:
+            change_name = m.group(1)
+            resolved = _resolve_openspec_cwd(change_name)
+            if resolved:
+                cwd = resolved
+        else:
+            cur_cwd = os.getcwd()
+            words = []
+            for part in re.split(r"[\s|&;]+", str(cmd or "")):
+                part = part.strip("\"'()[]{}<>,")
+                if ("/" in part or "\\" in part) and not part.startswith("-"):
+                    words.append(part)
+            if words and not any(os.path.exists(os.path.join(cur_cwd, w)) for w in words):
+                roots = []
+                for k in ("HERMES_WORKSPACE_ROOT", "WORKSPACE"):
+                    v = os.environ.get(k)
+                    if v and os.path.isdir(v) and v not in roots:
+                        roots.append(v)
+                cur = os.path.abspath(__file__)
+                while True:
+                    parent = os.path.dirname(cur)
+                    if parent == cur:
+                        break
+                    cur = parent
+                    if cur not in roots:
+                        roots.append(cur)
+                for r in roots:
+                    if any(os.path.exists(os.path.join(r, w)) for w in words):
+                        cwd = r
+                        break
     try:
         done = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=cwd,
                               env=proof_env())

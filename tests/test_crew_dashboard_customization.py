@@ -20,6 +20,7 @@ class CrewDashboardCustomizationTests(unittest.TestCase):
             content = f.read()
         self.assertIn("target='_blank'", content)
         self.assertIn("open in new tab ↗", content)
+        self.assertIn("frame-ancestors 'self' file: app: vscode-file: http://127.0.0.1:* http://localhost:*", content)
 
     def test_plugin_api_proxy_rules(self):
         api_path = os.path.join(CREW_ROOT, "dashboard", "plugin_api.py")
@@ -32,6 +33,12 @@ class CrewDashboardCustomizationTests(unittest.TestCase):
         self.assertIn("@router.api_route(\"/avatars/{path:path}\"", content)
         self.assertIn("_public_crew_url", content)
         self.assertIn('html.replace(\'href="/"\', \'href="board"\')', content)
+        self.assertIn('res.set_cookie', content)
+        self.assertIn('hermes_session', content)
+        self.assertIn('path="/api/plugins/crew/"', content)
+        self.assertIn('samesite="lax"', content)
+        self.assertIn('get_board', content)
+        self.assertIn('token = request.query_params.get("token")', content)
 
     def test_avatar_fallback_and_relative_path(self):
         board_path = os.path.join(CREW_ROOT, "scripts", "crew_dashboard", "board.js")

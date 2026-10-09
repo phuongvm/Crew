@@ -123,6 +123,8 @@ def tile_verdict(db, card_id, body):
     """The verdict chip of a tile, from the one verdict record (crew_card.all_verdicts, section 9 of the spec):
     the newest line since the newest claim - the line the close rule ends on, as the card page's verifier node
     reads it. 'unverified' for a card with a verifier and no such line; None for a card with no verifier."""
+    if not CG.crew_card.is_crew_body(body):
+        return None
     verdicts = CG.crew_card.all_verdicts(card_id)
     if not verdicts and not CG.body_field(body, "Verifier"):
         return None
@@ -576,7 +578,7 @@ def csp(nonce):
     """The page policy: nothing but this origin; scripts only with the response's own nonce."""
     return ("default-src 'self'; script-src 'self'%s; style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
-            "frame-ancestors 'none'" % ((" 'nonce-%s'" % nonce) if nonce else ""))
+            "frame-ancestors 'self' file: app: vscode-file: http://127.0.0.1:* http://localhost:*" % ((" 'nonce-%s'" % nonce) if nonce else ""))
 
 
 class Handler(BaseHTTPRequestHandler):

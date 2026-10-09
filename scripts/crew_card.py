@@ -1801,6 +1801,9 @@ def cmd_verdict(args):
               "ignored" % proof_cmd(row[4])[:80])
     for_event = getattr(args, "for_event", None)
     if not cmd:
+        if not is_crew_body(row[4]):
+            print("card %s is not a crew contract card; verdict recording refused" % args.card)
+            return 1
         print("card %s has no owner-confirmed proof command; FAIL until the owner confirms one" % args.card)
         rec = record_verdict(args.card, "", 1, "no owner-confirmed proof command on the card", 0, by=args.by,
                              for_event=for_event)

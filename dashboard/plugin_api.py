@@ -106,18 +106,103 @@ header {
 </style>
 """
                 # Inject base href so all relative resources resolve under /api/plugins/crew/
+                token_param = request.query_params.get("token") or request.query_params.get("ticket")
+                try:
+                    from hermes_cli.web_server import _SESSION_TOKEN
+                    auth_token = _SESSION_TOKEN
+                except Exception:
+                    auth_token = token_param or ""
+
+                nonce_m = re.search(r'nonce=["\']([^"\']+)["\']', html)
+                nonce_attr = f' nonce="{nonce_m.group(1)}"' if nonce_m else ""
+                auth_script = f"""
+<script id="crew-auth-sync"{nonce_attr}>
+(function() {{
+  var token = {json.dumps(auth_token)};
+  if (!token) return;
+  function appendToken(url) {{
+    if (typeof url !== 'string' || url.indexOf('token=') !== -1) return url;
+    if (url.indexOf('board.json') !== -1 || url.indexOf('card/') !== -1 || url.indexOf('/card/') !== -1 || url.indexOf('ack/') !== -1 || url.indexOf('/ack/') !== -1 || url.indexOf('board') !== -1) {{
+      var parts = url.split('#');
+      var base = parts[0];
+      var hash = parts.length > 1 ? ('#' + parts.slice(1).join('#')) : '';
+      var sep = base.indexOf('?') === -1 ? '?' : '&';
+      return base + sep + 'token=' + encodeURIComponent(token) + hash;
+    }}
+    return url;
+  }}
+  if (window.fetch) {{
+    var origFetch = window.fetch;
+    window.fetch = function(url, init) {{
+      return origFetch.call(this, appendToken(url), init);
+    }};
+  }}
+  if (window.XMLHttpRequest) {{
+    var origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {{
+      return origOpen.call(this, method, appendToken(url), async, user, password);
+    }};
+  }}
+  document.addEventListener('click', function(e) {{
+    var a = e.target && e.target.closest ? e.target.closest('a') : null;
+    if (a && a.href && a.href.indexOf('token=') === -1) {{
+      if (a.href.indexOf('/card/') !== -1 || a.href.indexOf('/board') !== -1 || a.href.indexOf('board') !== -1) {{
+        a.href = appendToken(a.href);
+      }}
+    }}
+  }}, true);
+}})();
+</script>
+"""
                 if "<head>" in html and "<base " not in html:
-                    html = html.replace("<head>", f'<head><base href="/api/plugins/crew/">{theme_style}', 1)
+                    html = html.replace("<head>", f'<head><base href="/api/plugins/crew/">{theme_style}{auth_script}', 1)
                 content = html.encode("utf-8")
-            return Response(content=content, status_code=resp.status, media_type=content_type)
+            res = Response(content=content, status_code=resp.status, media_type=content_type)
+            token = request.query_params.get("token") or request.query_params.get("ticket")
+            if token:
+                try:
+                    from hermes_cli.web_server import _SESSION_TOKEN
+                    cookie_val = _SESSION_TOKEN
+                except Exception:
+                    cookie_val = token
+                is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+                res.set_cookie(
+                    key="hermes_session",
+                    value=cookie_val,
+                    path="/api/plugins/crew/",
+                    samesite="none" if is_https else "lax",
+                    secure=is_https,
+                    httponly=True,
+                )
+            return res
     except urllib.error.HTTPError as exc:
-        return Response(content=exc.read(), status_code=exc.code, media_type=exc.headers.get("Content-Type", "text/plain"))
+        res = Response(content=exc.read(), status_code=exc.code, media_type=exc.headers.get("Content-Type", "text/plain"))
+        token = request.query_params.get("token")
+        if token:
+            res.set_cookie(
+                key="hermes_session",
+                value=token,
+                path="/api/plugins/crew/",
+                samesite="lax",
+                httponly=True,
+            )
+        return res
     except Exception as exc:
-        return Response(
+        res = Response(
             content=f"<html><body><h3>Crew Dashboard Unavailable</h3><p>Could not reach {UPSTREAM} ({exc}). Ensure the crew dashboard service is running.</p></body></html>",
             status_code=502,
             media_type="text/html"
         )
+        token = request.query_params.get("token")
+        if token:
+            res.set_cookie(
+                key="hermes_session",
+                value=token,
+                path="/api/plugins/crew/",
+                samesite="lax",
+                httponly=True,
+            )
+        return res
 
 
 @router.get("/board")

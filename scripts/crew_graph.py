@@ -1566,7 +1566,7 @@ class _Builder(object):
         board_events = load_task_events(self.db, cid)
         claims = [ts for kind, ts, _ in board_events if kind == "claimed"]
         vnid = None
-        if verdicts or ver_runs or body_field(body, "Verifier"):
+        if crew_card.is_crew_body(body) and (verdicts or ver_runs or body_field(body, "Verifier")):
             # the chip is the line the close rule ends on: the newest verdict since the newest claim
             since = crew_card.verdict_lines(cid, max(claims) if claims else None, verdicts)
             last = since[-1] if since else None
