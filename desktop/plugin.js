@@ -228,7 +228,7 @@ var plugin = {
         id: 'nav',
         area: SIDEBAR_NAV_AREA,
         order: 55,
-        data: { codicon: 'organization', label: 'Crew', path: '/crew' }
+        data: { codicon: 'organization', label: 'Crew', path: '/crew', asTile: true }
       }
     ])
   }
