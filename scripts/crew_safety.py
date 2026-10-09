@@ -288,12 +288,20 @@ def is_script_block(reason):
 
 def _resolve_openspec_cwd(change_name):
     import glob
+
+    def _has_change(root):
+        if not root or not os.path.isdir(root):
+            return False
+        if os.path.isdir(os.path.join(root, "openspec", "changes", change_name)):
+            return True
+        return bool(glob.glob(os.path.join(root, "openspec", "changes", "archive", "*%s*" % change_name)))
+
     cur_cwd = os.getcwd()
-    if os.path.isdir(os.path.join(cur_cwd, "openspec", "changes", change_name)):
+    if _has_change(cur_cwd):
         return cur_cwd
 
     for src in _find_hermes_sources():
-        if os.path.isdir(os.path.join(src, "openspec", "changes", change_name)):
+        if _has_change(src):
             return src
 
     roots = []
@@ -312,12 +320,16 @@ def _resolve_openspec_cwd(change_name):
             roots.append(cur)
 
     for r in roots:
-        if os.path.isdir(os.path.join(r, "openspec", "changes", change_name)):
+        if _has_change(r):
             return r
         for path in glob.glob(os.path.join(r, "*", "openspec", "changes", change_name)):
             return os.path.dirname(os.path.dirname(os.path.dirname(path)))
+        for path in glob.glob(os.path.join(r, "*", "openspec", "changes", "archive", "*%s*" % change_name)):
+            return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(path))))
         for path in glob.glob(os.path.join(r, "oss", "*", "openspec", "changes", change_name)):
             return os.path.dirname(os.path.dirname(os.path.dirname(path)))
+        for path in glob.glob(os.path.join(r, "oss", "*", "openspec", "changes", "archive", "*%s*" % change_name)):
+            return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(path))))
 
     return None
 

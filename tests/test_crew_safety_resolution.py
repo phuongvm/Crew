@@ -52,11 +52,13 @@ class CrewSafetyResolutionTests(unittest.TestCase):
 
     def test_openspec_command_resolves_change_directory(self):
         """When run_proof has cwd=None and an openspec command,
-        it resolves the directory containing openspec/changes/<change_name>."""
+        it resolves the directory containing openspec/changes/<change_name> or archive."""
+        import glob
         resolved = crew_safety._resolve_openspec_cwd("integrate-crew-desktop-dashboard")
         self.assertIsNotNone(resolved)
-        expected_spec_dir = os.path.join(resolved, "openspec", "changes", "integrate-crew-desktop-dashboard")
-        self.assertTrue(os.path.isdir(expected_spec_dir))
+        active_spec_dir = os.path.join(resolved, "openspec", "changes", "integrate-crew-desktop-dashboard")
+        arch_matches = glob.glob(os.path.join(resolved, "openspec", "changes", "archive", "*integrate-crew-desktop-dashboard*"))
+        self.assertTrue(os.path.isdir(active_spec_dir) or (len(arch_matches) > 0 and os.path.isdir(arch_matches[0])))
 
     def test_openspec_cwd_resolution_portable_in_mock_tree(self):
         """Resolution works in an arbitrary mock directory tree without hardcoded paths."""
