@@ -82,6 +82,8 @@ def kanban_db_path():
     base = base_home()
     k_home = os.path.join(base, "kanban")
     board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
+    if not board_env:
+        board_env = (crew_card.config_value("board") or "").strip()
     if board_env:
         if board_env == "default":
             p = os.path.join(base, "kanban.db")
@@ -107,6 +109,25 @@ def kanban_db_path():
             pass
     p = os.path.join(base, "kanban.db")
     return p if os.path.exists(p) else None
+
+
+def active_board_name():
+    board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
+    if not board_env:
+        board_env = (crew_card.config_value("board") or "").strip()
+    if board_env:
+        return board_env
+    base = base_home()
+    cur_ptr = os.path.join(base, "kanban", "current")
+    if os.path.exists(cur_ptr):
+        try:
+            with open(cur_ptr, "r", encoding="utf-8") as f:
+                slug = f.read().strip()
+            if slug:
+                return slug
+        except Exception:
+            pass
+    return "crew"
 
 
 def profile_home(profile):

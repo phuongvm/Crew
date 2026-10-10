@@ -359,6 +359,10 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
                 part = part.strip("\"'()[]{}<>,")
                 if ("/" in part or "\\" in part) and not part.startswith("-"):
                     words.append(part)
+            for m in re.finditer(r"([a-zA-Z0-9_.-]+(?:[/\\\\][a-zA-Z0-9_.-]+)+)", str(cmd or "")):
+                part = m.group(1).strip()
+                if part and not part.startswith("-"):
+                    words.append(part)
             if words and not any(os.path.exists(os.path.join(cur_cwd, w)) for w in words):
                 roots = []
                 for k in ("HERMES_WORKSPACE_ROOT", "WORKSPACE"):

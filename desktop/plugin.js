@@ -14,10 +14,37 @@ import {
 import React from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
+function getThemeTokens() {
+  if (typeof document === 'undefined') return { bg: '#041c1c', fg: '#ffffff', mode: 'dark' }
+  var root = window.getComputedStyle(document.documentElement)
+  var mode = document.documentElement.dataset.hermesMode || (root.getPropertyValue('color-scheme').trim()) || 'dark'
+  var bg = root.getPropertyValue('--dt-background').trim() || root.getPropertyValue('--ui-bg-editor').trim() || root.getPropertyValue('--background').trim() || (mode === 'light' ? '#ffffff' : '#041c1c')
+  var fg = root.getPropertyValue('--ui-text-primary').trim() || root.getPropertyValue('--dt-foreground').trim() || root.getPropertyValue('--foreground').trim() || (mode === 'light' ? '#17171a' : '#ffffff')
+  return { bg: bg, fg: fg, mode: mode }
+}
+
+function withThemeQuery(url) {
+  var t = getThemeTokens()
+  var sep = url.indexOf('?') === -1 ? '?' : '&'
+  return url + sep + 'theme=' + encodeURIComponent(t.mode) + '&bg=' + encodeURIComponent(t.bg) + '&fg=' + encodeURIComponent(t.fg)
+}
+
 function CrewPage() {
   var iframeRef = React.useRef(null)
   var [loading, setLoading] = React.useState(true)
   var [boardUrl, setBoardUrl] = React.useState('http://127.0.0.1:8799/')
+  var [boardTitle, setBoardTitle] = React.useState('Crew Coordination Board')
+
+  React.useEffect(function () {
+    function onMsg(e) {
+      if (e && e.data && e.data.type === 'hermes:board-info' && e.data.board) {
+        var b = String(e.data.board).replace(/-/g, ' ')
+        setBoardTitle((b.toLowerCase() === 'crew' ? 'Crew' : (b.charAt(0).toUpperCase() + b.slice(1))) + ' Coordination Board')
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return function () { window.removeEventListener('message', onMsg) }
+  }, [])
 
   React.useEffect(function () {
     var isMounted = true
@@ -30,7 +57,7 @@ function CrewPage() {
             if (base) {
               if (conn.token) {
                 if (isMounted) {
-                  setBoardUrl(base + '/api/plugins/crew/board?token=' + encodeURIComponent(conn.token))
+                  setBoardUrl(withThemeQuery(base + '/api/plugins/crew/board?token=' + encodeURIComponent(conn.token)))
                 }
                 return
               }
@@ -39,7 +66,7 @@ function CrewPage() {
                   var ticketResp = await window.hermesDesktop.api({ path: '/api/auth/ws-ticket', method: 'POST' })
                   if (ticketResp && ticketResp.ticket) {
                     if (isMounted) {
-                      setBoardUrl(base + '/api/plugins/crew/board?ticket=' + encodeURIComponent(ticketResp.ticket))
+                      setBoardUrl(withThemeQuery(base + '/api/plugins/crew/board?ticket=' + encodeURIComponent(ticketResp.ticket)))
                     }
                     return
                   }
@@ -48,7 +75,7 @@ function CrewPage() {
                 }
               }
               if (isMounted) {
-                setBoardUrl(base + '/api/plugins/crew/board')
+                setBoardUrl(withThemeQuery(base + '/api/plugins/crew/board'))
               }
               return
             }
@@ -58,7 +85,7 @@ function CrewPage() {
         // Fall back to default local URL
       }
       if (isMounted) {
-        setBoardUrl('http://127.0.0.1:8799/')
+        setBoardUrl(withThemeQuery('http://127.0.0.1:8799/'))
       }
     }
     resolveBoardUrl()
@@ -72,12 +99,15 @@ function CrewPage() {
       setLoading(false)
       var el = iframeRef.current
       if (!el) return
+      var t = getThemeTokens()
+      try {
+        if (el.contentWindow) {
+          el.contentWindow.postMessage({ type: 'hermes:theme', bg: t.bg, fg: t.fg, theme: t.mode }, '*')
+        }
+      } catch (postErr) {}
       try {
         var doc = el.contentDocument || (el.contentWindow && el.contentWindow.document)
         if (!doc) return
-        var style = window.getComputedStyle(document.documentElement)
-        var bg = style.getPropertyValue('--background-base').trim() || style.getPropertyValue('--background').trim() || '#041c1c'
-        var fg = style.getPropertyValue('--foreground-base').trim() || style.getPropertyValue('--foreground').trim() || '#ffffff'
         var existing = doc.getElementById('hermes-theme-sync')
         if (!existing) {
           var s = doc.createElement('style')
@@ -86,8 +116,8 @@ function CrewPage() {
           existing = s
         }
         existing.textContent =
-          ':root { --crew-bg: ' + bg + ' !important; --color-background: ' + bg + ' !important; --crew-fg: ' + fg + ' !important; } ' +
-          'html, body, main#board { background-color: ' + bg + ' !important; }'
+          ':root { color-scheme: ' + t.mode + ' !important; --crew-scheme: ' + t.mode + ' !important; --crew-bg: ' + t.bg + ' !important; --color-background: ' + t.bg + ' !important; --crew-fg: ' + t.fg + ' !important; } ' +
+          'html, body, main#board, main, #main, .page-card { background-color: ' + t.bg + ' !important; ' + (t.fg ? 'color: ' + t.fg + ' !important;' : '') + '}'
       } catch (err) {
         // Cross-origin fallback
       }
@@ -97,9 +127,18 @@ function CrewPage() {
     if (el) {
       el.addEventListener('load', syncTheme)
     }
+    var obs = null
+    try {
+      obs = new MutationObserver(syncTheme)
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-hermes-mode', 'class', 'style'] })
+    } catch (obsErr) {}
+
     return function () {
       if (el) {
         el.removeEventListener('load', syncTheme)
+      }
+      if (obs) {
+        obs.disconnect()
       }
     }
   }, [boardUrl])
@@ -147,7 +186,7 @@ function CrewPage() {
               jsx(Codicon, { name: 'organization', style: { fontSize: '14px', color: 'var(--primary, #34d399)' } }),
               jsx('span', {
                 style: { fontSize: '12px', fontWeight: 600, letterSpacing: '0.02em', color: 'var(--foreground, #ffffff)' },
-                children: 'Crew Coordination Board'
+                children: boardTitle
               }),
               jsx('span', {
                 style: {

@@ -78,33 +78,32 @@ def _forward_request(url: str, request: Request, body: bytes | None = None) -> R
                     html
                 )
 
-                # Inject theme override to match Hermes Dashboard background and style
-                theme_style = """
+                # Dynamic theme sync: accept query params (bg, fg, theme) or default to #041c1c dark fallback
+                default_dark_bg = "#041c1c"
+                bg_param = request.query_params.get("bg")
+                fg_param = request.query_params.get("fg")
+                theme_param = request.query_params.get("theme") or ("light" if bg_param and bg_param.lower() in ("#fff", "#ffffff", "white") else "dark")
+                if bg_param or theme_param:
+                    theme_bg = bg_param or ("#ffffff" if theme_param == "light" else "#041c1c")
+                    theme_fg = fg_param or ("#17171a" if theme_param == "light" else "#ffffff")
+                    theme_style = f"""
 <style id="hermes-theme-sync">
-:root {
-  --color-background: #041c1c !important;
-  --crew-bg: #041c1c !important;
-  --color-foreground: #ffffff !important;
-  --crew-fg: #ffffff !important;
-}
-html, body, main#board {
-  background-color: #041c1c !important;
-  color: #e2e8f0 !important;
-}
-header {
-  background-color: #031515 !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-}
-.lane {
-  background-color: rgba(255, 255, 255, 0.02) !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
-}
-.card {
-  background-color: #062323 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-}
+:root {{
+  color-scheme: {theme_param} !important;
+  --crew-scheme: {theme_param} !important;
+  --crew-bg: {theme_bg} !important;
+  --color-background: {theme_bg} !important;
+  --crew-fg: {theme_fg} !important;
+  --color-foreground: {theme_fg} !important;
+}}
+html, body, main#board, main, #main, .page-card {{
+  background-color: {theme_bg} !important;
+  color: {theme_fg} !important;
+}}
 </style>
 """
+                else:
+                    theme_style = ""
                 # Inject base href so all relative resources resolve under /api/plugins/crew/
                 token_param = request.query_params.get("token") or request.query_params.get("ticket")
                 try:
@@ -119,15 +118,22 @@ header {
 <script id="crew-auth-sync"{nonce_attr}>
 (function() {{
   var token = {json.dumps(auth_token)};
-  if (!token) return;
   function appendToken(url) {{
-    if (typeof url !== 'string' || url.indexOf('token=') !== -1) return url;
+    if (typeof url !== 'string') return url;
     if (url.indexOf('board.json') !== -1 || url.indexOf('card/') !== -1 || url.indexOf('/card/') !== -1 || url.indexOf('ack/') !== -1 || url.indexOf('/ack/') !== -1 || url.indexOf('board') !== -1) {{
       var parts = url.split('#');
       var base = parts[0];
       var hash = parts.length > 1 ? ('#' + parts.slice(1).join('#')) : '';
-      var sep = base.indexOf('?') === -1 ? '?' : '&';
-      return base + sep + 'token=' + encodeURIComponent(token) + hash;
+      var query = base.indexOf('?') === -1 ? '' : base.split('?')[1];
+      var rootUrl = base.split('?')[0];
+      var params = new URLSearchParams(query);
+      if (token && !params.has('token')) params.set('token', token);
+      var curParams = new URLSearchParams(location.search);
+      ['theme', 'bg', 'fg'].forEach(function(k){{
+        if (curParams.has(k) && !params.has(k)) params.set(k, curParams.get(k));
+      }});
+      var q = params.toString();
+      return rootUrl + (q ? ('?' + q) : '') + hash;
     }}
     return url;
   }}
@@ -145,8 +151,8 @@ header {
   }}
   document.addEventListener('click', function(e) {{
     var a = e.target && e.target.closest ? e.target.closest('a') : null;
-    if (a && a.href && a.href.indexOf('token=') === -1) {{
-      if (a.href.indexOf('/card/') !== -1 || a.href.indexOf('/board') !== -1 || a.href.indexOf('board') !== -1) {{
+    if (a && a.href) {{
+      if (a.href.indexOf('/card/') !== -1 || a.href.indexOf('card/') !== -1 || a.href.indexOf('/board') !== -1 || a.href.indexOf('board') !== -1) {{
         a.href = appendToken(a.href);
       }}
     }}

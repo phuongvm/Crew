@@ -242,6 +242,8 @@ def kanban_db(card_id=None):
                 pass
     k_home = os.path.join(base_home(), "kanban")
     board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
+    if not board_env:
+        board_env = (config_value("board") or "").strip()
     if board_env:
         if board_env == "default":
             p = os.path.join(base_home(), "kanban.db")

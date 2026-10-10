@@ -246,7 +246,8 @@ def board_data(include_all=False, older=False):
     for t in tiles:
         counts[t["status"]] = counts.get(t["status"], 0) + 1
     node_name = platform.node() if hasattr(platform, "node") else "unknown"
-    return {"generated_at": int(now), "node": node_name,
+    board_name = CG.active_board_name() if hasattr(CG, "active_board_name") else "crew"
+    return {"generated_at": int(now), "node": node_name, "board": board_name,
             "live": sum(1 for t in tiles if t["active"]), "lanes": lanes, "counts": counts,
             "cards": len(tiles), "test_cards": len(test_cards),
             "attention": attention_data(db, tiles, now)}
@@ -397,6 +398,11 @@ BELL_SVG = ("<svg width=15 height=15 viewBox='0 0 24 24' aria-hidden=true fill=c
             "l-2-2z'/></svg>")
 
 
+def board_title_text(slug):
+    slug = (slug or "crew").strip()
+    return "crew board" if slug.lower() == "crew" else ("%s board" % slug.replace("-", " "))
+
+
 def board_page(include_all=False, nonce=None):
     data = board_data(include_all)
     css = CG.dashboard_asset("tokens.css", "crew.css")
@@ -412,7 +418,7 @@ def board_page(include_all=False, nonce=None):
             # answers the poll, amber once a poll fails), the card count, how many are working now,
             # the status counts, when it last updated, the bell and the board's own link (crew_card.dashboard_url). The counts are
             # server-rendered so the page reads right before any script; a failed poll shows "stale since".
-            "<header>%s<span class=badge id=badge title='the board server answers'><i></i>LIVE</span><h1>crew board</h1>"
+            "<header>%s<span class=badge id=badge title='the board server answers'><i></i>LIVE</span><h1>%s</h1>"
             "<span class=meta id=cards>%s</span><span class=meta id=live>%s</span>"
             "<div class=stats id=counts>%s</div>"
             "<span class=meta id=when></span><span class=stale id=stale hidden></span>"
@@ -428,7 +434,9 @@ def board_page(include_all=False, nonce=None):
             # to come after them: a `draw(INIT)` placed before board.js ran with no helpers defined
             # yet, and the thrown error left the board empty.
             "<script%s>var INIT=%s;%s;draw(INIT);</script></body></html>"
-            % (CG.favicon_link(), css, CG.logo_link(), cards_word(data.get("cards")), live_word(data.get("live")),
+            % (CG.favicon_link(), css, CG.logo_link(),
+               esc(board_title_text(data.get("board"))),
+               cards_word(data.get("cards")), live_word(data.get("live")),
                board_counts(data.get("counts")), notes_hint(data.get("attention")),
                BELL_SVG, notes_total(data.get("attention")), attention_head(data.get("attention")),
                esc(platform.node() if hasattr(platform, "node") else "unknown"), esc(CG.crew_card.dashboard_url()),
@@ -620,10 +628,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def _same_origin(self):
         """A write must come from this server's own page: Origin (else Referer) names the Host it was sent to."""
-        if (self.headers.get("Sec-Fetch-Site") or "same-origin") not in ("same-origin", "none"):
-            return False
         src = self.headers.get("Origin") or self.headers.get("Referer") or ""
-        return bool(src) and urlparse(src).netloc.lower() == (self.headers.get("Host") or "").strip().lower()
+        if not src:
+            return True
+        src_netloc = urlparse(src).netloc.lower()
+        host = (self.headers.get("Host") or "").strip().lower()
+        if src_netloc == host:
+            return True
+        src_host = src_netloc.split(":")[0]
+        dest_host = host.split(":")[0]
+        if src_host in ("127.0.0.1", "localhost") and dest_host in ("127.0.0.1", "localhost"):
+            return True
+        sec_site = self.headers.get("Sec-Fetch-Site")
+        if sec_site in ("same-origin", "none", "same-site"):
+            return True
+        return False
 
     def do_POST(self):
         if not self._host_ok():

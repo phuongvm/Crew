@@ -52,6 +52,41 @@ class CrewDashboardCustomizationTests(unittest.TestCase):
             lib_js = f.read()
         self.assertIn('return "avatars/role/"', lib_js)
 
+    def test_config_yaml_board_resolution(self):
+        graph_path = os.path.join(CREW_ROOT, "scripts", "crew_graph.py")
+        with open(graph_path, "r", encoding="utf-8") as f:
+            graph_py = f.read()
+        self.assertIn('crew_card.config_value("board")', graph_py)
+
+        card_path = os.path.join(CREW_ROOT, "scripts", "crew_card.py")
+        with open(card_path, "r", encoding="utf-8") as f:
+            card_py = f.read()
+        self.assertIn('config_value("board")', card_py)
+
+    def test_detail_card_theme_synchronization(self):
+        card_js_path = os.path.join(CREW_ROOT, "scripts", "crew_dashboard", "card.js")
+        with open(card_path := card_js_path, "r", encoding="utf-8") as f:
+            card_js = f.read()
+        self.assertIn("applyDynamicTheme", card_js)
+        self.assertIn("hermes:theme", card_js)
+        self.assertIn("page-card", card_js)
+        self.assertIn("preserveThemeLinks", card_js)
+
+        board_js_path = os.path.join(CREW_ROOT, "scripts", "crew_dashboard", "board.js")
+        with open(board_js_path, "r", encoding="utf-8") as f:
+            board_js = f.read()
+        self.assertIn("applyDynamicTheme", board_js)
+        self.assertIn("hermes:theme", board_js)
+        self.assertIn("href=\"/card/'+esc(t.id)+q+'\"", board_js)
+        self.assertIn("href=\"/card/'+esc(r.id)+q+'\"", board_js)
+
+        api_path = os.path.join(CREW_ROOT, "dashboard", "plugin_api.py")
+        with open(api_path, "r", encoding="utf-8") as f:
+            api_py = f.read()
+        self.assertIn("appendToken", api_py)
+        self.assertIn("page-card", api_py)
+        self.assertIn("['theme', 'bg', 'fg']", api_py)
+
 
 if __name__ == "__main__":
     unittest.main()
