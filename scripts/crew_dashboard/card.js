@@ -802,15 +802,20 @@ function routeHTML(){
 function tabBody(n, m, tab){
   var ev = n.evidence || {};
   if(m.kind === "card"){
-    if(tab === "Contract") return '<dl>' + kvRow("Done when", md(ev.done_when||"")) +
+    if(tab === "Contract") return '<dl>' + kvRow("Goal", md(ev.goal||"")) + kvRow("Artifact", esc(ev.artifact||"")) +
+      kvRow("Lands at", esc(ev.lands_at||"")) + kvRow("Inputs", md(ev.inputs||"")) +
+      kvRow("Proof command", ev.proof_cmd ? '<span class="mono">' + esc(ev.proof_cmd) + '</span>' : "", ev.proof_mode ? "mode: " + ev.proof_mode : "") +
+      kvRow("Done when", md(ev.done_when||"")) +
       kvRow("Writer", esc((ev.writer_role||"") + (ev.assignee ? " · " + ev.assignee : ""))) + kvRow("Verifier", esc(ev.verifier||"")) +
       kvRow("Model pin", esc(ev.model_override ? (ev.provider_override ? ev.provider_override + "/" : "") + ev.model_override : "none - the role profile's model")) +
       kvRow("Budget", ev.ceiling ? esc(fmtTokens(ev.spent) + " of " + fmtTokens(ev.ceiling) + " tokens") : "") +
-      kvRow("Result", ev.result ? md(ev.result) : "") + '</dl>';
+      kvRow("Result", ev.result ? md(ev.result) : "") + '</dl>' +
+      (ev.body && String(ev.body).trim() ? '<div class="sec"><div class="label">Contract Specification &amp; Details</div><div class="prose">' + md(ev.body) + '</div></div>' : '');
     if(tab === "Route") return routeHTML();
     var dec = (ev.decisions || []).map(function(d){ return '<div class="rr"><time>' + esc(dayTime(d.ts)) + '</time><span>' + esc(d.label || d.decision || "") + '</span></div>'; }).join("");
     return (dec ? '<div class="sec"><div class="label">Coordinator decisions</div><div class="route">' + dec + '</div></div>' : '') +
-      roleAbout("coordinator") + rawFields([ev], {done_when:1, writer_role:1, assignee:1, verifier:1, model_override:1, provider_override:1, ceiling:1, spent:1, result:1, block_reason:1, status:1, decisions:1});
+      roleAbout("coordinator") + rawFields([ev], {done_when:1, writer_role:1, assignee:1, verifier:1, model_override:1, provider_override:1, ceiling:1, spent:1, result:1, block_reason:1, status:1, decisions:1,
+        goal:1, artifact:1, lands_at:1, inputs:1, proof_cmd:1, proof_mode:1, body:1});
   }
   if(m.kind === "verifier"){
     if(tab === "Proof") return '<dl>' + kvRow("Done when", md(ev.done_when||"")) + kvRow("Command", ev.command ? '<span class="mono">' + esc(ev.command) + '</span>' : "") +
