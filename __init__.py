@@ -88,6 +88,12 @@ def _tasks_db():
             return v
     k_home = os.path.join(HOME, "kanban")
     board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
+    if not board_env:
+        try:
+            from .scripts import crew_card
+            board_env = (crew_card.config_value("board") or "").strip()
+        except Exception:
+            pass
     if board_env:
         if board_env == "default":
             p = os.path.join(HOME, "kanban.db")
@@ -902,7 +908,7 @@ INTAKE_WINDOW_SECONDS = 1800
 _CREW_WINDOWS = {}        # session_id -> expiry epoch
 # The gateway and the interactive CLI rewrite `/crew <ask>` into the skill prompt before the turn;
 # this is the marker agent/skill_commands.build_skill_invocation_message writes for that rewrite.
-CREW_SKILL_INVOKED_RX = re.compile(r"\[IMPORTANT: The user has invoked the \"crew\" skill\b")
+CREW_SKILL_INVOKED_RX = re.compile(r'\[IMPORTANT: The user has invoked the "(?:crew|crew-no-spec)" skill\b')
 CARD_OPEN_RX = re.compile(r"crew_card\.py[\"']?\s+open(?=\s|$|[;&|])")
 PROBE_TITLE_RX = re.compile(r"--title(?:\s+|=)[\"']?PROBE\b")
 
@@ -1330,7 +1336,7 @@ def crew_tool_guard(tool_name=None, args=None, **kwargs):
     return None
 
 
-CREW_SLASH_RX = re.compile(r"^\s*/crew(?:\s+(.*))?\s*$", re.S)
+CREW_SLASH_RX = re.compile(r"^\s*/crew(?:-no-spec)?(?:\s+(.*))?\s*$", re.S)
 # /crew-diagnose is a skill, not a plugin command: a plugin command's handler can only return text, and
 # this pass has to run in the invoking session's own turn. The CLI and the gateway expand the skill
 # slash; a one-shot `hermes chat -q "/crew-diagnose ..."` does not, so the hook below supplies the text.
