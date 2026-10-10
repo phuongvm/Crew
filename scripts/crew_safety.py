@@ -23,6 +23,7 @@ script on a card records its sha256 on the card, and a later run of a changed sc
 refusal (`SCRIPT_CHANGED`) and the coordinator decides (crew_coordinator `revise_script`: it may accept the script or
 have the verifier rewrite it, with a reason on record); the writer never writes or changes a proof script.
 """
+import glob
 import hashlib
 import os
 import re
@@ -96,22 +97,7 @@ def _hermes():
     for src in sources:
         if src and os.path.isdir(src) and src not in sys.path:
             sys.path.append(src)
-    base = _base_home()
-    for sp in glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "Lib", "site-packages")):
-        if sp not in sys.path:
-            sys.path.append(sp)
-    for sp in glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "lib", "python*", "site-packages")):
-        if sp not in sys.path:
-            sys.path.append(sp)
-    for src in sources:
-        for venv_name in ("venv", ".venv"):
-            vdir = os.path.join(src, venv_name)
-            for sp in (
-                os.path.join(vdir, "Lib", "site-packages"),
-                *glob.glob(os.path.join(vdir, "lib", "python*", "site-packages")),
-            ):
-                if os.path.isdir(sp) and sp not in sys.path:
-                    sys.path.append(sp)
+    _venv_deps()
     try:
         import tools.approval_detection  # noqa: F401
     except ImportError as exc:
@@ -119,6 +105,38 @@ def _hermes():
             f"Hermes safety checks could not be loaded ({exc}). "
             "Please run under the Hermes venv interpreter."
         ) from exc
+
+
+def _venv_deps():
+    """Put Hermes's dependency venv on the path when this interpreter cannot import them itself: under the
+    package-manager layout a bare interpreter (cron, the gateway) runs the crew scripts while ruamel and the rest
+    live in the venv Hermes commits. Appended last, so anything the bare interpreter has wins."""
+    try:
+        import ruamel.yaml  # noqa: F401
+        return
+    except ImportError:
+        pass
+    import crew_card
+    py = crew_card.hermes_python()
+    candidates = []
+    if py:
+        vdir = os.path.dirname(os.path.dirname(py))
+        candidates.extend([
+            os.path.join(vdir, "Lib", "site-packages"),
+            os.path.join(vdir, "lib", "site-packages"),
+            *glob.glob(os.path.join(vdir, "lib", "python*", "site-packages")),
+        ])
+    base = _base_home()
+    candidates.extend(glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "Lib", "site-packages")))
+    candidates.extend(glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "lib", "python*", "site-packages")))
+    for src in _find_hermes_sources():
+        for venv_name in ("venv", ".venv"):
+            vdir = os.path.join(src, venv_name)
+            candidates.append(os.path.join(vdir, "Lib", "site-packages"))
+            candidates.extend(glob.glob(os.path.join(vdir, "lib", "python*", "site-packages")))
+    for sp in sorted(set(candidates)):
+        if os.path.isdir(sp) and sp not in sys.path:
+            sys.path.append(sp)
 
 
 def proof_env(extra=None):
@@ -169,8 +187,9 @@ def _permanently_approved(key, cmd):
 
 
 def _tirith_block(cmd):
-    """Why tirith stops this command, '' when it does not. An unusable scanner follows security.tirith_fail_open
-    exactly as tools/approval.py does: open (default) lets it through, closed blocks."""
+    """Why tirith stops this command, '' when it does not. A Hermes without the scanner (it was removed from core)
+    has nothing to stop it. An unusable scanner follows security.tirith_fail_open exactly as tools/approval.py
+    did: open (default) lets it through, closed blocks."""
     try:
         from tools.approval_context import _tirith_fail_open
         fail_open = _tirith_fail_open()
@@ -178,6 +197,13 @@ def _tirith_block(cmd):
         fail_open = True
     try:
         from tools.tirith_security import check_command_security
+    except ModuleNotFoundError:
+        return ""
+    except Exception:  # noqa: BLE001
+        check_command_security = None
+    if not check_command_security:
+        return ""
+    try:
         verdict = check_command_security(cmd)
     except Exception:  # noqa: BLE001
         return "" if fail_open else "the tirith scanner is unavailable and security.tirith_fail_open is false"
