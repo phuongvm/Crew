@@ -119,14 +119,21 @@ function drawCounts(c){
     return '<span class="'+h[0]+(n?'':' none')+'"><b>'+n+'</b>'+h[1]+'</span>'; }).join("");
 }
 
+// The active board's display name as /board.json serves it (board_name: board.json "name", else the formatted
+// slug; then the slug), shown exactly as written. No board name is baked in: an empty payload reads "Board".
+function boardTitle(d){
+  var name = d && (d.board_name || d.board);
+  name = name ? String(name).trim() : "";
+  return name || "Board";
+}
+
 function drawHeader(d){
-  if(d.board){
-    var h1=document.querySelector("header h1");
-    if(h1){
-      var bName = d.board.replace(/-/g, " ");
-      h1.textContent = bName.toLowerCase() === "crew" ? "crew board" : (bName + " board");
-    }
+  var title = boardTitle(d);
+  var h1=document.querySelector("header h1");
+  if(h1){
+    h1.textContent = title;
   }
+  document.title = title;
   var c=document.getElementById("cards"); if(c) c.textContent=d.cards+" card"+(d.cards===1?"":"s");
   var l=document.getElementById("live"); if(l){ l.textContent=d.live ? d.live+" working now" : "nothing running";
     l.className="meta"+(d.live?" on":""); }
@@ -193,7 +200,7 @@ function draw(d){
   if(!d || !d.lanes) return;
   LAST = d;
   if(d.board && window.parent && window.parent!==window){
-    try { window.parent.postMessage({ type: 'hermes:board-info', board: d.board }, '*'); } catch(e){}
+    try { window.parent.postMessage({ type: 'hermes:board-info', board: d.board, board_name: boardTitle(d) }, '*'); } catch(e){}
   }
   drawHeader(d);
   drawCounts(d.counts||{});

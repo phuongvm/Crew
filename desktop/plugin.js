@@ -29,17 +29,42 @@ function withThemeQuery(url) {
   return url + sep + 'theme=' + encodeURIComponent(t.mode) + '&bg=' + encodeURIComponent(t.bg) + '&fg=' + encodeURIComponent(t.fg)
 }
 
+var LOCAL_BOARD_URL = 'http://127.0.0.1:8799/'
+var LOCAL_HEALTH_URL = 'http://127.0.0.1:8799/healthz'
+var AUTH_REQUIRED_MESSAGE = 'Authentication required: please log in to Hermes Gateway or ensure local Crew daemon is running'
+
+// True when the local crew_graph_serve daemon answers. no-cors: the daemon sends no CORS headers, so the
+// response is opaque, but a resolved fetch proves the port is serving and a network error rejects.
+async function probeLocalDaemon(timeoutMs) {
+  if (typeof fetch !== 'function') return false
+  var ctrl = typeof AbortController === 'function' ? new AbortController() : null
+  var timer = ctrl ? setTimeout(function () { ctrl.abort() }, timeoutMs || 1500) : null
+  try {
+    await fetch(LOCAL_HEALTH_URL, { mode: 'no-cors', cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+    return true
+  } catch (probeErr) {
+    return false
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 function CrewPage() {
   var iframeRef = React.useRef(null)
   var [loading, setLoading] = React.useState(true)
   var [boardUrl, setBoardUrl] = React.useState('http://127.0.0.1:8799/')
-  var [boardTitle, setBoardTitle] = React.useState('Crew Coordination Board')
+  // Set instead of a board URL when no authenticated route and no local daemon exist: never iframe a raw 401.
+  var [authError, setAuthError] = React.useState('')
+  var [resolveNonce, setResolveNonce] = React.useState(0)
+  // No board name is baked in: the generic 'Board' shows until the board page posts its live name.
+  var [boardTitle, setBoardTitle] = React.useState('Board')
 
   React.useEffect(function () {
+    // The active board's display name, posted by board.js from /board.json (board_name, else board), shown as written.
     function onMsg(e) {
-      if (e && e.data && e.data.type === 'hermes:board-info' && e.data.board) {
-        var b = String(e.data.board).replace(/-/g, ' ')
-        setBoardTitle((b.toLowerCase() === 'crew' ? 'Crew' : (b.charAt(0).toUpperCase() + b.slice(1))) + ' Coordination Board')
+      if (e && e.data && e.data.type === 'hermes:board-info') {
+        var name = String(e.data.board_name || e.data.board || '').trim()
+        if (name) setBoardTitle(name)
       }
     }
     window.addEventListener('message', onMsg)
@@ -48,51 +73,57 @@ function CrewPage() {
 
   React.useEffect(function () {
     var isMounted = true
+    function applyUrl(url) {
+      if (!isMounted) return
+      setAuthError('')
+      setBoardUrl(withThemeQuery(url))
+    }
     async function resolveBoardUrl() {
+      var conn = null
       try {
         if (window.hermesDesktop && window.hermesDesktop.getConnection) {
-          var conn = await window.hermesDesktop.getConnection()
-          if (conn && conn.mode === 'remote') {
-            var base = (conn.baseUrl || '').replace(/\/+$/, '')
-            if (base) {
-              if (conn.token) {
-                if (isMounted) {
-                  setBoardUrl(withThemeQuery(base + '/api/plugins/crew/board?token=' + encodeURIComponent(conn.token)))
-                }
-                return
-              }
-              if (window.hermesDesktop && window.hermesDesktop.api) {
-                try {
-                  var ticketResp = await window.hermesDesktop.api({ path: '/api/auth/ws-ticket', method: 'POST' })
-                  if (ticketResp && ticketResp.ticket) {
-                    if (isMounted) {
-                      setBoardUrl(withThemeQuery(base + '/api/plugins/crew/board?ticket=' + encodeURIComponent(ticketResp.ticket)))
-                    }
-                    return
-                  }
-                } catch (ticketErr) {
-                  // Fall through to plain url
-                }
-              }
-              if (isMounted) {
-                setBoardUrl(withThemeQuery(base + '/api/plugins/crew/board'))
-              }
-              return
+          conn = await window.hermesDesktop.getConnection()
+        }
+      } catch (connErr) {
+        conn = null
+      }
+      var base = conn && conn.baseUrl ? String(conn.baseUrl).replace(/\/+$/, '') : ''
+      if (conn && conn.mode === 'remote' && base) {
+        if (conn.token) {
+          return applyUrl(base + '/api/plugins/crew/board?token=' + encodeURIComponent(conn.token))
+        }
+        if (window.hermesDesktop && window.hermesDesktop.api) {
+          try {
+            var ticketResp = await window.hermesDesktop.api({ path: '/api/auth/ws-ticket', method: 'POST' })
+            if (ticketResp && ticketResp.ticket) {
+              return applyUrl(base + '/api/plugins/crew/board?ticket=' + encodeURIComponent(ticketResp.ticket))
             }
+          } catch (ticketErr) {
+            // Not authenticated with the remote gateway: fall through to the local daemon.
           }
         }
-      } catch (err) {
-        // Fall back to default local URL
+        // No token and no ticket: the gateway URL would only render {"error":"unauthenticated",...}.
+        if (await probeLocalDaemon(1500)) {
+          return applyUrl(LOCAL_BOARD_URL)
+        }
+        if (isMounted) setAuthError(AUTH_REQUIRED_MESSAGE)
+        return
       }
-      if (isMounted) {
-        setBoardUrl(withThemeQuery('http://127.0.0.1:8799/'))
+      // Local backend (or no connection info): the daemon directly when it is up; otherwise the
+      // local backend's crew proxy, which starts the daemon on demand.
+      if (await probeLocalDaemon(1500)) {
+        return applyUrl(LOCAL_BOARD_URL)
       }
+      if (base && conn && conn.token) {
+        return applyUrl(base + '/api/plugins/crew/board?token=' + encodeURIComponent(conn.token))
+      }
+      applyUrl(LOCAL_BOARD_URL)
     }
     resolveBoardUrl()
     return function () {
       isMounted = false
     }
-  }, [])
+  }, [resolveNonce])
 
   React.useEffect(function () {
     function syncTheme() {
@@ -144,6 +175,11 @@ function CrewPage() {
   }, [boardUrl])
 
   var reloadBoard = function () {
+    if (authError) {
+      // Nothing loaded yet: re-run the resolution (login may have happened, or the daemon started).
+      setResolveNonce(function (n) { return n + 1 })
+      return
+    }
     if (iframeRef.current) {
       setLoading(true)
       iframeRef.current.src = boardUrl
@@ -234,18 +270,42 @@ function CrewPage() {
       }),
       jsx('div', {
         style: { flex: 1, width: '100%', position: 'relative', overflow: 'hidden' },
-        children: jsx('iframe', {
-          ref: iframeRef,
-          src: boardUrl,
-          style: {
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block',
-            backgroundColor: 'var(--background, #041c1c)'
-          },
-          title: 'Crew Board'
-        })
+        children: authError
+          ? jsxs('div', {
+              role: 'alert',
+              style: {
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                padding: '24px',
+                textAlign: 'center',
+                color: 'var(--foreground, #ffffff)'
+              },
+              children: [
+                jsx(Codicon, { name: 'lock', style: { fontSize: '28px', color: 'var(--primary, #34d399)' } }),
+                jsx('div', { style: { fontSize: '13px', fontWeight: 600 }, children: authError }),
+                jsx('div', {
+                  style: { fontSize: '11px', opacity: 0.7 },
+                  children: 'Start the daemon with serve-crew-dashboard.ps1, or sign in to the gateway, then press Refresh.'
+                }),
+                jsx(Button, { size: 'sm', variant: 'outline', onClick: reloadBoard, children: 'Retry' })
+              ]
+            })
+          : jsx('iframe', {
+              ref: iframeRef,
+              src: boardUrl,
+              style: {
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                display: 'block',
+                backgroundColor: 'var(--background, #041c1c)'
+              },
+              title: boardTitle
+            })
       })
     ]
   })

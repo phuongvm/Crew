@@ -111,7 +111,7 @@ def kanban_db_path():
     return p if os.path.exists(p) else None
 
 
-def active_board_name():
+def active_board_slug():
     board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
     if not board_env:
         board_env = (crew_card.config_value("board") or "").strip()
@@ -127,7 +127,35 @@ def active_board_name():
                 return slug
         except Exception:
             pass
-    return "crew"
+    return "default"
+
+
+def formatted_board_slug(slug):
+    """A board with no configured name reads as its Title Case slug plus " Board" ("default" -> "Default Board",
+    "skills-kb" -> "Skills Kb Board"); an empty slug is just "Board"."""
+    words = " ".join(w.capitalize() for w in (slug or "").replace("_", "-").split("-") if w)
+    if not words:
+        return "Board"
+    return words if words.lower().endswith(" board") or words.lower() == "board" else words + " Board"
+
+
+def active_board_name(slug=None):
+    """The board's display name: the "name" in kanban/boards/<slug>/board.json (kanban/board.json for
+    the default board), else the formatted slug. Read live on every call, so a rename shows at once."""
+    slug = (slug or active_board_slug() or "").strip()
+    k_home = os.path.join(base_home(), "kanban")
+    paths = [os.path.join(k_home, "boards", slug, "board.json")]
+    if slug == "default":
+        paths.append(os.path.join(k_home, "board.json"))
+    for p in paths:
+        try:
+            with open(p, "r", encoding="utf-8-sig") as f:
+                name = (json.load(f).get("name") or "").strip()
+            if name:
+                return name
+        except Exception:
+            pass
+    return formatted_board_slug(slug)
 
 
 def profile_home(profile):
