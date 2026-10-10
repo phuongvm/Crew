@@ -263,5 +263,23 @@ class CrewDashboardCustomizationTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(out.stdout.strip(), '["Ops Queue","ops","Board","Board"]')
 
+    def test_card_view_contract_metadata_and_specification(self):
+        card_js = self._read("scripts", "crew_dashboard", "card.js")
+        self.assertIn("ev.goal", card_js)
+        self.assertIn("ev.artifact", card_js)
+        self.assertIn("ev.lands_at", card_js)
+        self.assertIn("ev.inputs", card_js)
+        self.assertIn("ev.proof_cmd", card_js)
+        self.assertIn("Contract Specification &amp; Details", card_js)
+        self.assertIn("ev.body", card_js)
+
+        cg_src = self._read("scripts", "crew_graph.py")
+        self.assertIn('"goal": body_field(body, "Goal")', cg_src)
+        self.assertIn('"artifact": body_field(body, "Artifact")', cg_src)
+        self.assertIn('"lands_at": body_field(body, "Lands at")', cg_src)
+        self.assertIn('"inputs": body_field(body, "Inputs")', cg_src)
+        self.assertIn('"proof_cmd": body_field(body, "proof command")', cg_src)
+        self.assertIn('"body": body or ""', cg_src)
+
 if __name__ == "__main__":
     unittest.main()
