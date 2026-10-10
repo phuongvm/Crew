@@ -1,7 +1,7 @@
 ---
 name: crew-no-spec
 description: "Crew Fast-Track intake: /crew-no-spec <ask> - opens a direct Kanban card without OpenSpec artifacts."
-version: 0.7.9
+version: 0.8.1
 ---
 
 # /crew-no-spec - fast-track coordinator intake
