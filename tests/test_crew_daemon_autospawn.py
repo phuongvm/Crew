@@ -116,6 +116,14 @@ class DesktopAuthFallbackTests(unittest.TestCase):
         self.assertIn("setAuthError(AUTH_REQUIRED_MESSAGE)", js)
         self.assertIn("role: 'alert'", js)
 
+    def test_resolve_board_url_probes_local_daemon_first(self):
+        js = self._js()
+        idx_fn = js.index("async function resolveBoardUrl()")
+        idx_first_probe = js.index("probeLocalDaemon(1500)", idx_fn)
+        idx_remote_check = js.index("conn.mode === 'remote'", idx_fn)
+        self.assertLess(idx_first_probe, idx_remote_check,
+                        "resolveBoardUrl must probe local daemon before remote auth check")
+
     def test_probe_local_daemon_in_node(self):
         node = shutil.which("node")
         if not node:

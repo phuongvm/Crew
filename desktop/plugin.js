@@ -79,6 +79,9 @@ function CrewPage() {
       setBoardUrl(withThemeQuery(url))
     }
     async function resolveBoardUrl() {
+      if (await probeLocalDaemon(1500)) {
+        return applyUrl(LOCAL_BOARD_URL)
+      }
       var conn = null
       try {
         if (window.hermesDesktop && window.hermesDesktop.getConnection) {
