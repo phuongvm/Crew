@@ -75,87 +75,23 @@ def base_home():
 
 
 def kanban_db_path():
-    for env in ("HERMES_KANBAN_DB", "KANBAN_DB"):
-        v = (os.environ.get(env) or "").strip()
-        if v and os.path.exists(v):
-            return v
-    base = base_home()
-    k_home = os.path.join(base, "kanban")
-    board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
-    if not board_env:
-        board_env = (crew_card.config_value("board") or "").strip()
-    if board_env:
-        if board_env == "default":
-            p = os.path.join(base, "kanban.db")
-            if os.path.exists(p):
-                return p
-        b_path = os.path.join(k_home, "boards", board_env, "kanban.db")
-        if os.path.exists(b_path):
-            return b_path
-    cur_ptr = os.path.join(k_home, "current")
-    if os.path.exists(cur_ptr):
-        try:
-            with open(cur_ptr, "r", encoding="utf-8") as f:
-                slug = f.read().strip()
-            if slug == "default":
-                p = os.path.join(base, "kanban.db")
-                if os.path.exists(p):
-                    return p
-            elif slug:
-                b_path = os.path.join(k_home, "boards", slug, "kanban.db")
-                if os.path.exists(b_path):
-                    return b_path
-        except Exception:
-            pass
-    p = os.path.join(base, "kanban.db")
-    return p if os.path.exists(p) else None
+    """The active board's kanban.db, or None: crew_card.kanban_db() is the one resolver."""
+    return crew_card.kanban_db()
 
 
 def active_board_slug():
-    board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
-    if not board_env:
-        board_env = (crew_card.config_value("board") or "").strip()
-    if board_env:
-        return board_env
-    base = base_home()
-    cur_ptr = os.path.join(base, "kanban", "current")
-    if os.path.exists(cur_ptr):
-        try:
-            with open(cur_ptr, "r", encoding="utf-8") as f:
-                slug = f.read().strip()
-            if slug:
-                return slug
-        except Exception:
-            pass
-    return "default"
+    """The board this dashboard shows; crew_card.active_board_slug() is the one resolver."""
+    return crew_card.active_board_slug()
 
 
 def formatted_board_slug(slug):
-    """A board with no configured name reads as its Title Case slug plus " Board" ("default" -> "Default Board",
-    "skills-kb" -> "Skills Kb Board"); an empty slug is just "Board"."""
-    words = " ".join(w.capitalize() for w in (slug or "").replace("_", "-").split("-") if w)
-    if not words:
-        return "Board"
-    return words if words.lower().endswith(" board") or words.lower() == "board" else words + " Board"
+    """The Title Case fallback name for a board slug (crew_card.formatted_board_slug)."""
+    return crew_card.formatted_board_slug(slug)
 
 
 def active_board_name(slug=None):
-    """The board's display name: the "name" in kanban/boards/<slug>/board.json (kanban/board.json for
-    the default board), else the formatted slug. Read live on every call, so a rename shows at once."""
-    slug = (slug or active_board_slug() or "").strip()
-    k_home = os.path.join(base_home(), "kanban")
-    paths = [os.path.join(k_home, "boards", slug, "board.json")]
-    if slug == "default":
-        paths.append(os.path.join(k_home, "board.json"))
-    for p in paths:
-        try:
-            with open(p, "r", encoding="utf-8-sig") as f:
-                name = (json.load(f).get("name") or "").strip()
-            if name:
-                return name
-        except Exception:
-            pass
-    return formatted_board_slug(slug)
+    """The board's display name, read live on every call (crew_card.active_board_name)."""
+    return crew_card.active_board_name(slug)
 
 
 def profile_home(profile):

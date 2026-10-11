@@ -224,17 +224,6 @@ function CrewPage() {
                 style: { fontSize: '12px', fontWeight: 600, letterSpacing: '0.02em', color: 'var(--foreground, #ffffff)' },
                 children: boardTitle
               }),
-              jsx('span', {
-                style: {
-                  fontSize: '10px',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: 'rgba(52, 211, 153, 0.15)',
-                  color: '#34d399',
-                  fontWeight: 500
-                },
-                children: 'v0.7.9'
-              })
             ]
           }),
           jsxs('div', {
@@ -289,7 +278,7 @@ function CrewPage() {
                 jsx('div', { style: { fontSize: '13px', fontWeight: 600 }, children: authError }),
                 jsx('div', {
                   style: { fontSize: '11px', opacity: 0.7 },
-                  children: 'Start the daemon with serve-crew-dashboard.ps1, or sign in to the gateway, then press Refresh.'
+                  children: 'Start the crew dashboard service (crew_graph_serve.py, set up by install.py), or sign in to the gateway, then press Refresh.'
                 }),
                 jsx(Button, { size: 'sm', variant: 'outline', onClick: reloadBoard, children: 'Retry' })
               ]

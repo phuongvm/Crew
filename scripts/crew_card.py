@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Crew card tool: open contract cards on the kanban board and record verifier verdicts.
+"""Crew card tool: open contract cards on the kanban board and record verifier verdicts. (v0.8.1)
 
 Deterministic, stdlib only. Used by the plugin's kanban_create hooks, by the coordinator loop and by the
 crew-verifier profile. The contract gate lives here, not only in a prompt: a card is refused
@@ -164,19 +164,8 @@ def profile_exists(name):
     return os.path.isfile(os.path.join(base_home(), "profiles", name, "config.yaml"))
 
 
-ROLE_MAP = {
-    "coordinator": "leader",
-    "worker": "coder",
-    "verifier": "reviewer",
-    "content": "designer",
-}
-
-
 def role_profile(role):
-    """Assignee for a role: mapped specialist profile (leader, coder, reviewer, designer), or <prefix><role> when that profile exists, else the current profile."""
-    mapped = ROLE_MAP.get(role)
-    if mapped and profile_exists(mapped):
-        return mapped
+    """Assignee for a role: <prefix><role> when that profile exists, else the current profile."""
     name = profile_prefix() + role
     return name if profile_exists(name) else current_profile()
 
@@ -226,54 +215,136 @@ def default_budget(role):
     return val if isinstance(val, int) else DEFAULT_BUDGET
 
 
-def kanban_db(card_id=None):
+DEFAULT_BOARD = "default"
+# Hermes's own slug rule (hermes_cli/kanban_db.py _BOARD_SLUG_RE): strict enough to stop traversal and separators.
+SLUG_RX = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def kanban_home():
+    """Root the boards hang off, as Hermes's kanban_home(): HERMES_KANBAN_HOME, else the base home."""
+    override = (os.environ.get("HERMES_KANBAN_HOME") or "").strip()
+    return os.path.expanduser(override) if override else base_home()
+
+
+def _valid_board_slug(candidate):
+    """The slug Hermes would accept (stripped, lowercased, SLUG_RX), or "" for an empty or malformed one, so a
+    stale or hand-edited `current` such as `../x` never becomes a path."""
+    s = str(candidate or "").strip().lower()
+    return s if SLUG_RX.match(s) else ""
+
+
+def _board_holds_live_board(b_dir):
+    """A named board dir is a board only with its board.json (Hermes's identity marker) and not archived: an
+    archived board leaves a tombstone board.json that must not be revived. A malformed board.json still marks a
+    board, as Hermes's read_board_metadata treats it."""
+    meta = os.path.join(b_dir, "board.json")
+    if not os.path.isfile(meta):
+        return False
+    try:
+        with open(meta, encoding="utf-8-sig") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return True
+    return not (isinstance(data, dict) and data.get("archived"))
+
+
+def _kanban_db_fallback():
+    """The bare-interpreter resolver (no hermes_cli to ask), mirroring hermes_cli.kanban_db.kanban_db_path():
+    HERMES_KANBAN_BOARD, then <kanban home>/kanban/current, each only for a valid slug naming a live board,
+    else `default`, whose db stays at <kanban home>/kanban.db. None when the resolved file does not exist."""
+    root = kanban_home()
+    slug = DEFAULT_BOARD
+    candidates = [os.environ.get("HERMES_KANBAN_BOARD") or ""]
+    try:
+        with open(os.path.join(root, "kanban", "current"), encoding="utf-8-sig") as fh:
+            candidates.append(fh.read())
+    except OSError:
+        pass
+    for cand in candidates:
+        s = _valid_board_slug(cand)
+        if s == DEFAULT_BOARD:
+            break
+        if s and _board_holds_live_board(os.path.join(root, "kanban", "boards", s)):
+            slug = s
+            break
+    if slug == DEFAULT_BOARD:
+        path = os.path.join(root, "kanban.db")
+    else:
+        path = os.path.join(root, "kanban", "boards", slug, "kanban.db")
+    return path if os.path.exists(path) else None
+
+
+def _hermes_kanban_db_path():
+    """hermes_cli.kanban_db.kanban_db_path() as a string, or None when hermes_cli is not importable here."""
+    try:
+        kb, _ = hermes_kb()
+        return str(kb.kanban_db_path())
+    except Exception:
+        return None
+
+
+def kanban_db():
+    """The crew's board file, or None. A HERMES_KANBAN_DB / KANBAN_DB pin naming an existing file wins (the proof
+    board sets them); then Hermes's own resolver where hermes_cli is importable; else _kanban_db_fallback()."""
     for path in (os.environ.get("HERMES_KANBAN_DB") or "", os.environ.get("KANBAN_DB") or ""):
+        path = path.strip()
         if path and os.path.exists(path):
             return path
-    if card_id:
-        import glob
-        for path in glob.glob(os.path.join(base_home(), "kanban", "boards", "*", "kanban.db")):
-            try:
-                conn = sqlite3.connect("file:%s?mode=ro" % path, uri=True)
-                if conn.execute("select 1 from tasks where id = ?", (card_id,)).fetchone():
-                    conn.close()
-                    return path
-                conn.close()
-            except Exception:
-                pass
-    k_home = os.path.join(base_home(), "kanban")
-    board_env = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
-    if not board_env:
-        board_env = (config_value("board") or "").strip()
-    if board_env:
-        if board_env == "default":
-            p = os.path.join(base_home(), "kanban.db")
-            if os.path.exists(p):
-                return p
-        b_path = os.path.join(k_home, "boards", board_env, "kanban.db")
-        if os.path.exists(b_path):
-            return b_path
-    cur_ptr = os.path.join(k_home, "current")
-    if os.path.exists(cur_ptr):
+    path = _hermes_kanban_db_path()
+    if path is not None:
+        return path if os.path.exists(path) else None
+    return _kanban_db_fallback()
+
+
+def active_board_slug():
+    """The board the dashboard shows: HERMES_KANBAN_BOARD, else crew.board in config.yaml, else the
+    kanban/current pointer Hermes writes on `hermes kanban boards switch`, else "default"."""
+    slug = (os.environ.get("HERMES_KANBAN_BOARD") or "").strip()
+    if not slug:
+        slug = (config_value("board") or "").strip()
+    if slug:
+        return slug
+    try:
+        with open(os.path.join(kanban_home(), "kanban", "current"), "r", encoding="utf-8") as fh:
+            slug = fh.read().strip()
+    except OSError:
+        slug = ""
+    return slug or DEFAULT_BOARD
+
+
+def formatted_board_slug(slug):
+    """A board with no configured name reads as its Title Case slug plus " Board" ("default" -> "Default Board",
+    "skills-kb" -> "Skills Kb Board"); an empty slug is just "Board"."""
+    words = " ".join(w.capitalize() for w in (slug or "").replace("_", "-").split("-") if w)
+    if not words:
+        return "Board"
+    return words if words.lower().endswith(" board") or words.lower() == "board" else words + " Board"
+
+
+def active_board_name(slug=None):
+    """The board's display name: the "name" in kanban/boards/<slug>/board.json (kanban/board.json for
+    the default board), else the formatted slug. Read live on every call, so a rename shows at once."""
+    slug = (slug or active_board_slug() or "").strip()
+    k_home = os.path.join(kanban_home(), "kanban")
+    paths = []
+    safe = _valid_board_slug(slug)
+    if safe:
+        paths.append(os.path.join(k_home, "boards", safe, "board.json"))
+    if slug == DEFAULT_BOARD:
+        paths.append(os.path.join(k_home, "board.json"))
+    for p in paths:
         try:
-            with open(cur_ptr, "r", encoding="utf-8") as f:
-                slug = f.read().strip()
-            if slug == "default":
-                p = os.path.join(base_home(), "kanban.db")
-                if os.path.exists(p):
-                    return p
-            elif slug:
-                b_path = os.path.join(k_home, "boards", slug, "kanban.db")
-                if os.path.exists(b_path):
-                    return b_path
-        except Exception:
+            with open(p, "r", encoding="utf-8-sig") as fh:
+                name = (json.load(fh).get("name") or "").strip()
+            if name:
+                return name
+        except (OSError, ValueError, AttributeError):
             pass
-    p = os.path.join(base_home(), "kanban.db")
-    return p if os.path.exists(p) else None
+    return formatted_board_slug(slug)
 
 
 def card_row(card_id):
-    db = kanban_db(card_id)
+    db = kanban_db()
     if not db:
         return None
     try:

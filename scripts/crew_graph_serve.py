@@ -248,8 +248,7 @@ def board_data(include_all=False, older=False):
     counts = {}
     for t in tiles:
         counts[t["status"]] = counts.get(t["status"], 0) + 1
-    node_name = platform.node() if hasattr(platform, "node") else "unknown"
-    return {"generated_at": int(now), "node": node_name, "board": board_slug, "board_name": board_name,
+    return {"generated_at": int(now), "node": platform.node(), "board": board_slug, "board_name": board_name,
             "live": sum(1 for t in tiles if t["active"]), "lanes": lanes, "counts": counts,
             "cards": len(tiles), "test_cards": len(test_cards),
             "attention": attention_data(db, tiles, now)}
@@ -431,19 +430,18 @@ def board_page(include_all=False, nonce=None):
             "<div id=notes hidden><div class=nh><span id=notehead>%s</span>"
             "<button id=clearall title='clear every listed row'>clear all</button></div>"
             "<div id=noterows></div></div></span>"
-            "<span class=node>%s - kanban <a class=tailnet target='_blank' rel='noopener noreferrer' href='%s/'>open in new tab ↗</a>"
+            "<span class=node>%s - kanban <a class=tailnet href='%s/'>link</a>"
             "</span></span></header>"
             "<main id=board></main>"
             # The helpers that draw a lane live at the END of the script body, so the first paint has
             # to come after them: a `draw(INIT)` placed before board.js ran with no helpers defined
             # yet, and the thrown error left the board empty.
             "<script%s>var INIT=%s;%s;draw(INIT);</script></body></html>"
-            % (esc(title_text), CG.favicon_link(), css, CG.logo_link(),
-               esc(title_text),
+            % (esc(title_text), CG.favicon_link(), css, CG.logo_link(), esc(title_text),
                cards_word(data.get("cards")), live_word(data.get("live")),
                board_counts(data.get("counts")), notes_hint(data.get("attention")),
                BELL_SVG, notes_total(data.get("attention")), attention_head(data.get("attention")),
-               esc(platform.node() if hasattr(platform, "node") else "unknown"), esc(CG.crew_card.dashboard_url()),
+               esc(platform.node()), esc(CG.crew_card.dashboard_url()),
                (' nonce="%s"' % esc(nonce)) if nonce else "", js_data(data),
                CG.dashboard_asset("lib.js", "board.js")))
 
@@ -590,7 +588,7 @@ def csp(nonce):
     """The page policy: nothing but this origin; scripts only with the response's own nonce."""
     return ("default-src 'self'; script-src 'self'%s; style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
-            "frame-ancestors 'self' file: app: vscode-file: http://127.0.0.1:* http://localhost:*" % ((" 'nonce-%s'" % nonce) if nonce else ""))
+            "frame-ancestors 'none'" % ((" 'nonce-%s'" % nonce) if nonce else ""))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -598,21 +596,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(self, code, body, ctype, nonce=None, extra=()):
         raw = body.encode("utf-8") if isinstance(body, str) else body
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(raw)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
-        if ctype.startswith("text/html"):
-            self.send_header("Content-Security-Policy", csp(nonce))
-        for k, v in extra:
-            self.send_header(k, v)
-        self.end_headers()
         try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            if ctype.startswith("text/html"):
+                self.send_header("Content-Security-Policy", csp(nonce))
+            for k, v in extra:
+                self.send_header(k, v)
+            self.end_headers()
             self.wfile.write(raw)
-        except BrokenPipeError:
-            pass
+        except (BrokenPipeError, ConnectionError):
+            self.close_connection = True
 
     def _host_ok(self):
         host = (self.headers.get("Host") or "").strip().lower()
@@ -632,21 +630,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _same_origin(self):
         """A write must come from this server's own page: Origin (else Referer) names the Host it was sent to."""
+        if (self.headers.get("Sec-Fetch-Site") or "same-origin") not in ("same-origin", "none"):
+            return False
         src = self.headers.get("Origin") or self.headers.get("Referer") or ""
-        if not src:
-            return True
-        src_netloc = urlparse(src).netloc.lower()
-        host = (self.headers.get("Host") or "").strip().lower()
-        if src_netloc == host:
-            return True
-        src_host = src_netloc.split(":")[0]
-        dest_host = host.split(":")[0]
-        if src_host in ("127.0.0.1", "localhost") and dest_host in ("127.0.0.1", "localhost"):
-            return True
-        sec_site = self.headers.get("Sec-Fetch-Site")
-        if sec_site in ("same-origin", "none", "same-site"):
-            return True
-        return False
+        return bool(src) and urlparse(src).netloc.lower() == (self.headers.get("Host") or "").strip().lower()
 
     def do_POST(self):
         if not self._host_ok():
