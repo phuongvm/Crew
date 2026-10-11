@@ -19,7 +19,7 @@
 ## Group 3: Skill Tests & Source Commit
 - [x] 3.1 Verify existing crew tests pass with updated skills
   - **Proof**: `python -c "import sys, unittest; sys.path.insert(0, 'O:/workspaces/oss/crew/tests'); sys.path.insert(0, 'O:/workspaces/oss/crew/scripts'); sys.path.insert(0, 'O:/workspaces/oss/crew'); import test_crew_intake_create, test_crew_dashboard_customization; res1 = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromModule(test_crew_intake_create)); res2 = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromModule(test_crew_dashboard_customization)); assert res1.wasSuccessful() and res2.wasSuccessful(); print('PASS 3.1')"`
-- [ ] 3.2 Commit changes to `oss/crew` fork and push to `origin/main`
+- [x] 3.2 Commit changes to `oss/crew` fork and push to `origin/main`
   - **Proof**: `git -C O:/workspaces/oss/crew status --short` (clean working copy, commit recorded)
 
 ## Group 4: Universal Multi-Profile Deployment
