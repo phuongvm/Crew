@@ -588,7 +588,7 @@ def csp(nonce):
     """The page policy: nothing but this origin; scripts only with the response's own nonce."""
     return ("default-src 'self'; script-src 'self'%s; style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
-            "frame-ancestors 'none'" % ((" 'nonce-%s'" % nonce) if nonce else ""))
+            "frame-ancestors 'self' file: app: vscode-file: vscode-webview: http://127.0.0.1:* http://localhost:*" % ((" 'nonce-%s'" % nonce) if nonce else ""))
 
 
 class Handler(BaseHTTPRequestHandler):

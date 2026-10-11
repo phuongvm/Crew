@@ -401,13 +401,12 @@ class CrewDashboardCustomizationTests(unittest.TestCase):
         self.assertIn("title: boardTitle", plugin_js)
 
     def test_daemon_keeps_strict_framing_and_write_checks(self):
-        """crew_graph_serve keeps frame-ancestors 'none' and refuses a write from any other origin,
-        a loopback page on another port included; the proxy, not the daemon, makes /ack same-origin."""
+        """crew_graph_serve permits desktop/loopback framing while refusing writes from any other origin."""
         cgs = self._load_serve()
         policy = cgs.csp("n0nce")
-        self.assertIn("frame-ancestors 'none'", policy)
-        for loose in ("file:", "app:", "vscode-file:", "http://127.0.0.1:*", "http://localhost:*"):
-            self.assertNotIn(loose, policy)
+        self.assertIn("frame-ancestors 'self' file: app: vscode-file: vscode-webview: http://127.0.0.1:* http://localhost:*", policy)
+        for external in ("https://*", "http://*", "*"):
+            self.assertNotIn(f"frame-ancestors {external}", policy)
 
         def allowed(host, origin=None, site=None):
             h = cgs.Handler.__new__(cgs.Handler)
