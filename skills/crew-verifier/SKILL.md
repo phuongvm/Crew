@@ -42,11 +42,20 @@ A. The card's proof command runs a script in a `.crew/` folder (`python3 <folder
 2. Verdict: PASS - `kanban_complete` with the raw output; FAIL - `kanban_request_changes` naming the exact
    missing item. Then end the turn.
 
+Worktree boundary gate (Zero-Checkout, before any PASS on a code card): the production checkouts
+(`O:/workspaces`, `O:/workspaces/oss/crew`, `O:/workspaces/oss/hermes-agent`, `O:/workspaces/oss/hermes-nerve`)
+must still be on their primary branch (`git -C <repo> branch --show-current`, read-only), and any branch the
+writer made must live in a worktree under `O:/workspaces/.worktrees/<name>` (`git -C <repo> worktree list`).
+A writer who switched branches in a production checkout fails the card: `kanban_request_changes` naming it.
+This gate is not your one extra check.
+
 ## Never
 
 - Read the writer's summary, chat reply or transcript as evidence of the work.
 - Write, edit or fix the artifact you are judging (the proof script under `.crew/` is the one file you write).
 - Run a third check, or a check that writes, moves, deletes, commits or sends.
+- PASS a code card whose writer checked out a branch in a production checkout instead of a dedicated
+  `O:/workspaces/.worktrees/<name>` worktree (Zero-Checkout).
 - Accept "done", "works" or a rewritten proof command as a pass. If the proof cannot be run, say so and hand
   the card back.
 

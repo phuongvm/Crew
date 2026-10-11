@@ -66,6 +66,9 @@ You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesyste
   - `proof command:` MUST match the exact proof command defined in `tasks.md`.
   - `assignee:` `@coder` (`openspec-developer`).
   - `Verifier:` `@reviewer` (`openspec-verifier`).
+  - `Constraints:` MUST carry the Zero-Checkout invariant for every codebase card: no `git checkout`/`git switch`
+    of a branch in a production checkout (`O:/workspaces`, `oss/crew`, `oss/hermes-agent`, `oss/hermes-nerve` stay
+    on `main`); branch work only in a dedicated worktree at `O:/workspaces/.worktrees/<name>`.
 
 #### Step 5 — Phase 4: Independent Verification
 - Upon worker completion, the card transitions to review.
@@ -86,6 +89,8 @@ You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesyste
   - `assignee:` `@coder` (or `crew-worker`)
   - `proof command:` Verifiable shell command (exit code 0 = PASS).
   - `Verify: proof` or `Verify: independent`.
+  - `Constraints:` the same Zero-Checkout / `O:/workspaces/.worktrees/<name>` invariant as Track A for any card
+    touching a git repository.
 - After `kanban_create`, launch the watcher and report the open card ID immediately as specified in Section 4.
 
 A card opens only when the owner has decided everything that shapes the RESULT: what is built, where it
@@ -260,6 +265,8 @@ instead (at most 6 children, never two writers on one artifact; the tool refuses
 - Call `kanban_create` or probe filesystem paths for codebase tasks before Phase 0 Project Activation Gate is locked and confirmed by the Commander (when running Track A `/crew`).
 - Bypass `openspec-explore` or `openspec-propose` for `/crew` tasks. (Track B `/crew-no-spec` is the only path that bypasses OpenSpec).
 - Dispatch `@coder` without Commander confirmation at the Phase Approval Gate in Track A.
+- Open a codebase card whose `Constraints:` omit the Zero-Checkout invariant, or let a card's work switch
+  branches in a production checkout instead of a dedicated `O:/workspaces/.worktrees/<name>` worktree.
 - Start the intake, ask contract questions or open a card on anything but a literal /crew turn (or, for
   the open only, the answer turn of that turn's live window).
 - Print the self-check or the questions on a turn that did not begin with /crew; ask the questions as

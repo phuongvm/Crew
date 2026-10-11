@@ -24,6 +24,10 @@ The coordinator turns the ask directly into a single Kanban contract card and as
 - **Done when**: Observable end state.
 - **Proof command**: One verifiable shell command returning exit code 0 on success.
 - **Verify**: `proof` (command only) or `independent`.
+- **Constraints**: for any card touching a git repository, MUST carry the Zero-Checkout invariant: never
+  `git checkout`/`git switch` a branch in a production checkout (`O:/workspaces`, `oss/crew`,
+  `oss/hermes-agent`, `oss/hermes-nerve` stay on `main`); branch work only in a dedicated worktree at
+  `O:/workspaces/.worktrees/<name>`.
 
 ### Open the Card and Launch Watcher (Section 4)
 
@@ -42,7 +46,7 @@ GOAL: <one sentence>
 Artifact: <what>
 Lands at: <where>
 For: <who>
-Constraints: <what must not change>
+Constraints: <what must not change>; Zero-Checkout: no branch checkout in production checkouts, branch work only in O:/workspaces/.worktrees/<name>
 Done when: <observable end state>
 proof command: <one shell command>
 Proof mode: safe

@@ -10,6 +10,11 @@ Loaded on a crew card whose role is worker. You are the only writer on this card
 
 ## Do
 1. Read the card: GOAL, `Done when`, the `Verify:` line and the `proof command`.
+   Zero-Checkout invariant: production checkouts that host live services (`O:/workspaces`,
+   `O:/workspaces/oss/crew`, `O:/workspaces/oss/hermes-agent`, `O:/workspaces/oss/hermes-nerve`) stay on their
+   primary branch (`main`). Any branch work (feature, fix, upstream PR, merge reconciliation) happens in a
+   dedicated worktree: `git -C <repo> worktree add O:/workspaces/.worktrees/<name> -b <branch>`. Edit, build
+   and test inside that worktree only.
 2. Do the work: files, config, services, pages. Stay inside the card's scope. Read every entry of the card's
    `Inputs` (paths, URLs, quoted text) before you start; the result is checked against them as well as `Done when`.
    A proof script the proof command names (`<folder>/.crew/<card folder>/verify.py`) belongs to the verifier: you never create,
@@ -36,6 +41,8 @@ Loaded on a crew card whose role is worker. You are the only writer on this card
 
 ## Never
 - Claim done without a PASS line for the proof command.
+- Never checkout a branch (`git checkout <branch>`, `git checkout -b`, `git switch`) in a production checkout
+  (Zero-Checkout). Branch work lives only in a dedicated worktree under `O:/workspaces/.worktrees/<name>`.
 - Edit anything the card does not name, or the card's own proof command.
 - Send anything outward (mail, posts, chat to outsiders).
 - Edit a skill file (crew's skills are shipped and overwritten on update). A lesson worth keeping: `python3 "$HERMES_HOME/plugins/crew/scripts/crew_card.py" lesson --role <role> --text "..."` (role = who it applies to: worker, content, verifier, coordinator or all).
