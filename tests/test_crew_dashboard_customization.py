@@ -443,6 +443,40 @@ class CrewDashboardCustomizationTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(out.stdout.strip(), '["Ops Queue","ops","Board","Board"]')
 
+    def test_handler_send_catches_connection_error_and_client_aborts(self):
+        """Handler._send safely handles ConnectionError, ConnectionAbortedError,
+        ConnectionResetError, and BrokenPipeError without unhandled exceptions,
+        marking close_connection = True."""
+        cgs = self._load_serve()
+
+        for exc in (
+            BrokenPipeError(32, "Broken pipe"),
+            ConnectionAbortedError(10053, "An established connection was aborted by the software in your host machine"),
+            ConnectionResetError(10054, "An existing connection was forcibly closed by the remote host"),
+            ConnectionError("connection lost"),
+        ):
+            h = cgs.Handler.__new__(cgs.Handler)
+            h.close_connection = False
+            h.send_response = MagicMock()
+            h.send_header = MagicMock()
+            h.end_headers = MagicMock()
+            h.wfile = MagicMock()
+            h.wfile.write.side_effect = exc
+
+            h._send(200, "hello", "text/plain")
+            self.assertTrue(h.close_connection, "close_connection should be True on %r" % exc)
+
+        # Simulate error during header flushing (end_headers)
+        h = cgs.Handler.__new__(cgs.Handler)
+        h.close_connection = False
+        h.send_response = MagicMock()
+        h.send_header = MagicMock()
+        h.end_headers = MagicMock(side_effect=ConnectionAbortedError(10053, "Aborted in header flush"))
+        h.wfile = MagicMock()
+
+        h._send(200, "hello", "text/plain")
+        self.assertTrue(h.close_connection)
+
 @unittest.skipUnless(_load_hermes_auth(), "hermes-agent is not installed")
 class HermesTokenAuthTests(unittest.TestCase):
     """The plugin routes behind Hermes's real auth_middleware, as the dashboard mounts them."""
@@ -532,6 +566,20 @@ class LiveUpstreamTests(unittest.TestCase):
         # The health line names the active board (here the default board, no board.json: its formatted slug).
         self.assertTrue(resp.text.startswith("ok "), resp.text)
         self.assertIn("cards=", resp.text)
+
+    def test_upstream_client_abort_handled_gracefully(self):
+        import socket
+        import struct
+        host, port = self.srv.server_address
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((host, port))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        req = "GET / HTTP/1.1" + chr(13) + chr(10) + "Host: 127.0.0.1" + chr(13) + chr(10) + chr(13) + chr(10)
+        s.sendall(req.encode("ascii"))
+        s.close()
+
+        resp = self.client.get("/api/plugins/crew/healthz")
+        self.assertEqual(resp.status_code, 200)
 
 
 if __name__ == "__main__":
