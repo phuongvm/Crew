@@ -1057,14 +1057,17 @@ function discussionCoord(st){
 }
 function sessionRef(coord){ return "@session:" + (coord.profile ? coord.profile + "/" : "") + coord.sessionId; }
 
-// Inside the Hermes Desktop tile the click asks the host to open the conversation (desktop/plugin.js handles
-// `hermes:open-session`); in a plain browser there is no host, so it copies the session reference instead. The
-// web dashboard's crew tab also frames the page, but its bridge (dashboard/plugin_api.py, which defines
-// window.__crewNav) has no chat to open, so that frame copies too rather than post into nothing.
+// A framed page asks its host to open the conversation with `hermes:open-session`: the Hermes Desktop tile
+// (desktop/plugin.js -> host.openSession) and the web dashboard's crew tab (dashboard/dist/index.js -> the
+// dashboard's /chat?resume=<id>&profile=<profile>). The dashboard frame is a same-origin srcdoc page whose bridge
+// (dashboard/plugin_api.py) defines window.__crewNav, so there the message is addressed to the dashboard's own
+// origin only. A standalone page (the :8799 daemon in a plain browser) has no host: it copies the reference.
 function openDiscussion(coord, done){
-  if(window.parent && window.parent !== window && !window.__crewNav){
+  if(window.parent && window.parent !== window){
     try {
-      window.parent.postMessage({type: "hermes:open-session", sessionId: coord.sessionId, profile: coord.profile}, "*");
+      var target = "*";
+      if(window.__crewNav){ target = window.parent.location.origin; }
+      window.parent.postMessage({type: "hermes:open-session", sessionId: coord.sessionId, profile: coord.profile}, target);
       done("opening");
       return;
     } catch(e){}
@@ -1086,7 +1089,7 @@ function sitDiscussionChip(box, coord){
   var b = document.createElement("button");
   b.type = "button"; b.className = "copy jump"; b.id = id;
   b.textContent = (COPYFLASH[id] && COPYFLASH[id] > Date.now()) ? (COPYFLASH[id + ":label"] || "open \u2197") : "open \u2197";
-  b.title = "Jump to the discussion session in Hermes Desktop (copies @session:... in a browser)";
+  b.title = "Jump to the discussion session in Hermes (copies @session:... in a standalone browser)";
   b.setAttribute("aria-label", b.title);
   b.setAttribute("data-session", coord.sessionId);
   if(coord.profile) b.setAttribute("data-profile", coord.profile);

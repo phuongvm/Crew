@@ -9,6 +9,8 @@
   - **Proof**: `python -c "content = open('O:/workspaces/.worktrees/wt-crew-session-traceability/scripts/crew_dashboard/card.js', encoding='utf-8').read(); assert 'hermes:open-session' in content and 'parseSessionCoord' in content; print('PASS 2.1')"`
 - [x] 2.2 Update `desktop/plugin.js` to listen for `hermes:open-session` and invoke `host.openSession(sessionId, { profile })`
   - **Proof**: `python -c "content = open('O:/workspaces/.worktrees/wt-crew-session-traceability/desktop/plugin.js', encoding='utf-8').read(); assert 'hermes:open-session' in content and 'host.openSession' in content; print('PASS 2.2')"`
+- [x] 2.3 Update `dashboard/dist/index.js` to listen for `hermes:open-session` and navigate parent window to `/chat?resume=<sid>&profile=<prof>`
+  - **Proof**: `python -c "content = open('O:/workspaces/.worktrees/wt-crew-web-dashboard-session/dashboard/dist/index.js', encoding='utf-8').read(); assert 'hermes:open-session' in content and 'openChatSession' in content; print('PASS 2.3')"`
 
 ## Group 3: Coordinator Sub-Task Provenance Engine
 - [x] 3.1 Update `scripts/crew_card.py` to inherit parent `session_id` and coordinator origin across child tasks in `run_plan`

@@ -608,19 +608,96 @@ console.log(JSON.stringify({copied: copied, toast: toast && toast.textContent, o
         self.assertTrue(out["on"])
         self.assertEqual("status", out["role"])
 
-    def test_the_web_dashboard_frame_copies_instead_of_posting_into_nothing(self):
+    def test_the_web_dashboard_frame_posts_open_session_to_its_own_origin(self):
         script = self.DOM + self._card_fns() + r"""
 var copied = [], posted = [];
 function copyText(text, done){ copied.push(text); done(true); }
-var window = {parent: {postMessage: function(m){ posted.push(m); }}, __crewNav: function(){}};
+var window = {parent: {location: {origin: "http://127.0.0.1:9119"},
+  postMessage: function(m, t){ posted.push([m, t]); }}, __crewNav: function(){}};
+var box = new El("div");
+sitDiscussionChip(box, parseSessionCoord("default/s1"));
+var btn = box.children[0].children[2];
+btn.click();
+console.log(JSON.stringify({copied: copied, posted: posted, after: btn.textContent}));
+"""
+        out = self._run(script)
+        self.assertEqual([[{"type": "hermes:open-session", "sessionId": "s1", "profile": "default"},
+                           "http://127.0.0.1:9119"]], out["posted"])         # never "*" from the dashboard frame
+        self.assertEqual([], out["copied"])
+        self.assertEqual("opening", out["after"])
+
+    def test_a_frame_whose_parent_refuses_the_post_falls_back_to_copy(self):
+        script = self.DOM + self._card_fns() + r"""
+var copied = [];
+function copyText(text, done){ copied.push(text); done(true); }
+var window = {parent: {postMessage: function(){ throw new Error("cross-origin"); }}};
 var box = new El("div");
 sitDiscussionChip(box, parseSessionCoord("default/s1"));
 box.children[0].children[2].click();
-console.log(JSON.stringify({copied: copied, posted: posted}));
+console.log(JSON.stringify({copied: copied}));
+"""
+        self.assertEqual(["@session:default/s1"], self._run(script)["copied"])
+
+    # dashboard/dist/index.js is one IIFE: its helpers are indented two spaces, so they end at "\n  }".
+    def _dashboard_fns(self):
+        src = self._read("dashboard", "dist", "index.js")
+        rx_at = src.index("var SESSION_IDENT_RE")
+        out = [src[rx_at:src.index("\n", rx_at)]]
+        for name in ("parseOpenSession", "chatResumePath", "openChatSession"):
+            start = src.index("function %s(" % name)
+            out.append(src[start:src.index("\n  }", start) + 4])
+        return "\n".join(out)
+
+    def test_web_dashboard_listens_for_open_session_from_its_own_frame_only(self):
+        src = self._read("dashboard", "dist", "index.js")
+        handler = src[src.index("function onMessage(e)"):src.index("window.addEventListener(\"message\", onMessage)")]
+        self.assertIn("e.source !== frame.contentWindow", handler)
+        self.assertIn("e.origin !== window.location.origin", handler)
+        self.assertIn("d.type === \"hermes:open-session\"", handler)
+        self.assertLess(handler.index("e.origin !== window.location.origin"), handler.index("hermes:open-session"))
+        self.assertIn("openChatSession(target, window)", handler)
+        self.assertIn("crew:navigate", handler)                                     # board/card links still work
+
+    def test_web_dashboard_navigates_to_chat_resume_with_profile(self):
+        script = self._dashboard_fns() + r"""
+function makeWin(base){
+  var events = [], pushed = [], assigned = [];
+  var win = {__HERMES_BASE_PATH__: base, events: events, pushed: pushed, assigned: assigned,
+    history: {state: {usr: null, key: "k0", idx: 3},
+      pushState: function(s, t, u){ this.state = s; pushed.push(u); }},
+    PopStateEvent: function(type, init){ this.type = type; this.state = init.state; },
+    dispatchEvent: function(ev){ events.push([ev.type, ev.state.idx]); },
+    location: {assign: function(u){ assigned.push(u); }}};
+  return win;
+}
+var w1 = makeWin(""), w2 = makeWin("hermes/"), w3 = makeWin("");
+openChatSession(parseOpenSession({type: "hermes:open-session", sessionId: "20261012_092737_07d8d5",
+  profile: "default"}), w1);
+openChatSession(parseOpenSession({type: "hermes:open-session", sessionId: "s1"}), w2);
+w3.history = null;                                         // no history API: a plain page load
+openChatSession(parseOpenSession({type: "hermes:open-session", sessionId: "s2", profile: "leader"}), w3);
+console.log(JSON.stringify({w1: [w1.pushed, w1.events, w1.assigned], w2: w2.pushed, w3: [w3.pushed, w3.assigned]}));
 """
         out = self._run(script)
-        self.assertEqual([], out["posted"])
-        self.assertEqual(["@session:default/s1"], out["copied"])
+        self.assertEqual([["/chat?resume=20261012_092737_07d8d5&profile=default"], [["popstate", 4]], []], out["w1"])
+        self.assertEqual(["/hermes/chat?resume=s1"], out["w2"])                    # reverse-proxied base path
+        self.assertEqual([[], ["/chat?resume=s2&profile=leader"]], out["w3"])
+
+    def test_web_dashboard_drops_malformed_open_session_payloads(self):
+        script = self._dashboard_fns() + r"""
+var bad = [null, "x", {type: "crew:navigate", sessionId: "s1"}, {type: "hermes:open-session"},
+  {type: "hermes:open-session", sessionId: "../../etc/passwd"}, {type: "hermes:open-session", sessionId: "a&b=c"},
+  {type: "hermes:open-session", sessionId: "no-session"}, {type: "hermes:open-session", sessionId: "s1", profile: "a/b"},
+  {type: "hermes:open-session", sessionId: "s1", profile: "x?y"}, {type: "hermes:open-session", sessionId: "javascript:1"},
+  {type: "hermes:open-session", sessionId: new Array(200).join("a")}];
+var parsed = bad.map(parseOpenSession);
+var calls = 0, win = {location: {assign: function(){ calls++; }}};
+parsed.forEach(function(t){ openChatSession(t, win); });
+console.log(JSON.stringify({parsed: parsed, calls: calls}));
+"""
+        out = self._run(script)
+        self.assertEqual([None] * 11, out["parsed"])
+        self.assertEqual(0, out["calls"])
 
     def test_a_card_without_a_session_renders_no_chip_and_throws_nothing(self):
         script = self.DOM + self._card_fns() + r"""

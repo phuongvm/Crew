@@ -36,6 +36,23 @@ The Crew Desktop plugin (`desktop/plugin.js`) SHALL listen for `hermes:open-sess
 
 ---
 
+### Requirement: Web Dashboard PostMessage Session Navigation Bridge
+The Crew Web Dashboard plugin (`dashboard/dist/index.js`) SHALL listen for `hermes:open-session` messages dispatched by the embedded dashboard iframe and navigate the parent window to the target chat session `/chat?resume=<sessionId>&profile=<profile>`.
+
+#### Scenario: Web dashboard receives valid open-session message
+- **GIVEN** Hermes Web Dashboard has mounted the Crew tab (`/crew`) with an embedded srcdoc iframe
+- **WHEN** the embedded iframe posts `{ type: "hermes:open-session", sessionId: "20261012_092737_07d8d5", profile: "default" }`
+- **THEN** `dashboard/dist/index.js` MUST validate that the event source matches the iframe's `contentWindow` and the event origin matches `window.location.origin`
+- **AND** MUST validate that `sessionId` and optional `profile` conform to `^[A-Za-z0-9_-]+$`
+- **AND** MUST navigate the dashboard window to `/chat?resume=20261012_092737_07d8d5&profile=default` (respecting `__HERMES_BASE_PATH__` if present) using browser history API or location assignment.
+
+#### Scenario: Web dashboard rejects messages from untrusted origins or malformed payloads
+- **GIVEN** a message arriving from an untrusted origin, or a payload with invalid characters (e.g. path traversal, punctuation, shell characters)
+- **WHEN** `dashboard/dist/index.js` receives the event
+- **THEN** `dashboard/dist/index.js` MUST discard the event without navigating.
+
+---
+
 ### Requirement: Child Task Session Provenance Inheritance
 When a parent task is decomposed into child tasks via `crew_card.py plan` or coordinator sub-task spawning, the child tasks SHALL inherit the root task's `session_id` and coordinator origin.
 
