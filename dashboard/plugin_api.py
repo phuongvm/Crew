@@ -242,17 +242,36 @@ _BRIDGE_JS = r"""(function () {
   };
   window.XMLHttpRequest = FX;
   function nav(path) { parent.postMessage({ type: "crew:navigate", path: path }, origin); }
-  window.__crewNav = function (u) { var r = rel(u); if (r) nav(r.path + r.search); };
+  // Board/card links carry the page's own query on (board.js appends location.search), so inside the tab
+  // they arrive as card/<id>?theme=..&bg=..&fg=..: the theme params are dropped here (the tab re-adds its
+  // current theme on every load), "all=1" is the one parameter kept, anything else leaves the link alone.
+  var NAV_PATH_RE = /^(board|card\/[A-Za-z0-9_-]+)$/, THEME_KEYS = { theme: 1, bg: 1, fg: 1 };
+  function navSearch(search) {
+    var out = "", ok = true;
+    new URLSearchParams(search || "").forEach(function (v, k) {
+      if (THEME_KEYS.hasOwnProperty(k)) return;
+      if (k === "all" && v === "1") out = "?all=1";
+      else ok = false;
+    });
+    return ok ? out : null;
+  }
+  function navTarget(u) {
+    var r = rel(u);
+    if (!r || !NAV_PATH_RE.test(r.path)) return null;
+    var s = navSearch(r.search);
+    return s === null ? null : r.path + s;
+  }
+  window.__crewNav = function (u) { var t = navTarget(u); if (t) nav(t); };
   document.addEventListener("click", function (e) {
     if (e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
     if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
     var href = a.getAttribute("href");
-    if (href.charAt(0) === "#") return;
-    var r = rel(href);
-    if (!r || !/^(board|card\/[A-Za-z0-9_-]+)$/.test(r.path) || (r.search && r.search !== "?all=1")) return;
+    if (!href || href.charAt(0) === "#") return;
+    var t = navTarget(href);
+    if (!t) return;
     e.preventDefault();
-    nav(r.path + r.search);
+    nav(t);
   }, true);
   // Role faces: an <img src> load sends no session header, so the page's face URL (lib.js faceUrl, rewritten
   // by the proxy to call __crewFace) starts as an empty placeholder naming the face; the observer below

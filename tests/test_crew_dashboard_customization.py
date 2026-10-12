@@ -779,6 +779,119 @@ var warned = 0; console.warn = function(){ warned++; };
         self.assertEqual(2, out["warned"])
 
 
+class BridgeCardNavigationTests(unittest.TestCase):
+    """Web Dashboard bridge (plugin_api._BRIDGE_JS), run in node: board.js appends the page's own query
+    (?theme=..&bg=..&fg=..) to every card link, so a card click inside the tab must still post crew:navigate with
+    a path the tab accepts (dist/index.js PAGE_RE). The bridge under test is the string the proxy injects."""
+
+    BASE = "http://127.0.0.1:9119/api/plugins/crew/"
+
+    def setUp(self):
+        import shutil
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        self.node = str(node)
+
+    def _page_re(self):
+        with open(os.path.join(CREW_ROOT, "dashboard", "dist", "index.js"), "r", encoding="utf-8") as f:
+            src = f.read()
+        at = src.index("var PAGE_RE")
+        return src[at:src.index("\n", at)]
+
+    def _clicks(self, hrefs, crew_nav=()):
+        """Load the bridge into a stub srcdoc frame, click an <a href> per entry, call __crewNav per crew_nav.
+        Returns {clicks: [[posted path or null, defaultPrevented]], navs: [...], posted_to: [...], page_re: [...]}."""
+        import subprocess
+        script = r"""
+var posted = [], listeners = {};
+var parentWin = {location: {origin: "http://127.0.0.1:9119"}, __HERMES_BASE_PATH__: "",
+  __HERMES_PLUGIN_SDK__: {authedFetch: function(){ return Promise.reject(new Error("no fetch in test")); }},
+  postMessage: function(m, o){ posted.push([m, o]); }};
+var window = {parent: parentWin};
+var document = {baseURI: %s, documentElement: {},
+  addEventListener: function(t, fn){ (listeners[t] = listeners[t] || []).push(fn); }};
+function MutationObserver(){ this.observe = function(){}; }
+function FileReader(){}
+%s
+%s
+var clicks = %s.map(function(href){
+  var before = posted.length;
+  var a = {target: "", hasAttribute: function(){ return false; }, getAttribute: function(){ return href; }};
+  var e = {defaultPrevented: false, button: 0, target: {closest: function(){ return a; }},
+           preventDefault: function(){ this.defaultPrevented = true; }};
+  listeners.click.forEach(function(fn){ fn(e); });
+  var msg = posted.length > before ? posted[posted.length - 1][0] : null;
+  return [msg && msg.type === "crew:navigate" ? msg.path : null, e.defaultPrevented];
+});
+var navs = %s.map(function(u){
+  var before = posted.length; window.__crewNav(u);
+  return posted.length > before ? posted[posted.length - 1][0].path : null;
+});
+console.log(JSON.stringify({clicks: clicks, navs: navs,
+  posted_to: posted.map(function(p){ return p[1]; }),
+  page_re: posted.map(function(p){ return PAGE_RE.test(p[0].path); })}));
+""" % (json.dumps(self.BASE), self._page_re(), plugin_api._BRIDGE_JS, json.dumps(list(hrefs)),
+       json.dumps(list(crew_nav)))
+        out = subprocess.run([self.node, "-e", script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    def test_card_links_with_theme_query_navigate_to_the_card(self):
+        out = self._clicks([
+            "card/t_74c73ccb?theme=dark&bg=%23041c1c&fg=%23ffffff",   # board.js card tile inside the tab
+            "card/t_abc?theme=light",
+            "card/t_abc?bg=%23ffffff&fg=%2317171a",
+            "/api/plugins/crew/card/t_abc?fg=%23fff&theme=dark",       # absolute under the plugin prefix
+            "card/t_abc",                                              # no query at all: unchanged behaviour
+        ])
+        self.assertEqual([["card/t_74c73ccb", True], ["card/t_abc", True], ["card/t_abc", True],
+                          ["card/t_abc", True], ["card/t_abc", True]], out["clicks"])
+        self.assertTrue(all(out["page_re"]))                           # every posted path is one the tab loads
+        self.assertEqual({"http://127.0.0.1:9119"}, set(out["posted_to"]))  # never "*"
+
+    def test_board_links_keep_all_and_drop_theme(self):
+        out = self._clicks(["board?theme=dark&bg=%23041c1c&fg=%23ffffff", "board?all=1&theme=dark&bg=%23041c1c",
+                            "board?theme=light&all=1", "board?all=1", "board", "./"])
+        self.assertEqual([["board", True], ["board?all=1", True], ["board?all=1", True], ["board?all=1", True],
+                          ["board", True], ["board", True]], out["clicks"])
+        self.assertTrue(all(out["page_re"]))
+
+    def test_links_outside_the_navigation_allowlist_are_left_alone(self):
+        out = self._clicks([
+            "card/t_abc?theme=dark&evil=1",           # an unknown parameter beside the theme ones
+            "board?all=0&theme=dark",
+            "board?older=1",
+            "card/t_abc.json?theme=dark",             # data, not a page
+            "card/../ack/x?theme=dark",               # normalises out of card/
+            "card/t_abc/extra?theme=dark",
+            "http://evil.example/card/t_abc?theme=dark",
+            "/api/kanban/card/t_abc?theme=dark",      # another Hermes API
+            "#top",
+            "",
+        ])
+        self.assertEqual([[None, False]] * 10, out["clicks"])
+        self.assertEqual([], out["posted_to"])
+
+    def test_crew_nav_strips_theme_params_too(self):
+        out = self._clicks([], crew_nav=["board", "board?theme=dark&bg=%23041c1c", "card/t_abc?theme=light",
+                                         "board?all=1&fg=%23ffffff", "card/t_abc?x=1", "avatars/role/x.svg"])
+        self.assertEqual(["board", "board", "card/t_abc", "board?all=1", None, None], out["navs"])
+        self.assertTrue(all(out["page_re"]))
+
+    def test_proxied_board_page_carries_the_fixed_bridge(self):
+        req = MagicMock()
+        req.query_params = {"theme": "dark"}
+        req.headers = {"host": "127.0.0.1:9119"}
+        req.url.scheme = "http"
+        page = plugin_api._rewrite_html("<html><head><title>b</title></head><body></body></html>", req,
+                                        UPSTREAM_CSP)
+        bridge = page[page.index('<script id="crew-parent-bridge"'):]
+        self.assertIn("THEME_KEYS = { theme: 1, bg: 1, fg: 1 }", bridge)
+        self.assertIn("window.__crewNav = function (u) { var t = navTarget(u); if (t) nav(t); };", bridge)
+        self.assertNotIn('r.search !== "?all=1"', bridge)              # the old exact-match gate is gone
+
+
 @unittest.skipUnless(_load_hermes_auth(), "hermes-agent is not installed")
 class HermesTokenAuthTests(unittest.TestCase):
     """The plugin routes behind Hermes's real auth_middleware, as the dashboard mounts them."""
