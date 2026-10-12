@@ -1052,25 +1052,55 @@ function discussionCoord(st){
   if(coord) return coord;
   var sid = String(st.session_id || "").trim();
   if(!sid || sid === "no-session" || !SESSION_ID_RX.test(sid)) return null;
-  var prof = String(st.coordinator || "").split("/")[0].trim();
+  // the profile the session lives in: crew_graph's discovery (session_profile), else the Coordinator: line's
+  var prof = String(st.session_profile || "").trim() || String(st.coordinator || "").split("/")[0].trim();
   return {profile: SESSION_ID_RX.test(prof) ? prof : "", sessionId: sid};
 }
 function sessionRef(coord){ return "@session:" + (coord.profile ? coord.profile + "/" : "") + coord.sessionId; }
 
+// Where a framed page addresses `hermes:open-session`. The web dashboard's srcdoc frame (window.__crewNav, set by
+// the dashboard/plugin_api.py bridge) posts to the dashboard's own origin only; reading parent.location throws
+// when the dashboard sits on another loopback origin (localhost vs 127.0.0.1, :9119 vs :8799), so the embedding
+// page's origin from document.referrer is next. Only a frame with no bridge and no known parent (the Desktop
+// tile, an app:// host) posts to "*", and it carries nothing but a session id the host re-validates.
+function openSessionTarget(){
+  if(!window.__crewNav) return "*";
+  try { var o = window.parent.location.origin; if(o && o !== "null") return o; } catch(e){}
+  try {
+    var ref = (typeof document !== "undefined" && document.referrer) || "";
+    var m = /^(https?:\/\/[^\/?#]+)/i.exec(ref);
+    if(m) return m[1];
+  } catch(e){}
+  return "*";
+}
+
+// The dashboard's chat for a session, for a standalone page (the :8799 daemon in a plain browser): crew_graph
+// ships hermes_chat_url (the Hermes dashboard's base URL). Only an http(s) base is used.
+function chatUrlFor(coord, base){
+  base = String(base || "").trim().replace(/\/+$/, "");
+  if(!/^https?:\/\/[^\s"'<>]+$/i.test(base)) return "";
+  return base + "/chat?resume=" + encodeURIComponent(coord.sessionId) +
+    (coord.profile ? "&profile=" + encodeURIComponent(coord.profile) : "");
+}
+
 // A framed page asks its host to open the conversation with `hermes:open-session`: the Hermes Desktop tile
 // (desktop/plugin.js -> host.openSession) and the web dashboard's crew tab (dashboard/dist/index.js -> the
-// dashboard's /chat?resume=<id>&profile=<profile>). The dashboard frame is a same-origin srcdoc page whose bridge
-// (dashboard/plugin_api.py) defines window.__crewNav, so there the message is addressed to the dashboard's own
-// origin only. A standalone page (the :8799 daemon in a plain browser) has no host: it copies the reference.
+// dashboard's /chat?resume=<id>&profile=<profile>). Working out the target never decides the outcome: only a
+// postMessage that itself throws falls back. A standalone page opens the dashboard's chat in a new tab when it
+// knows where the dashboard is, and copies the @session reference otherwise.
 function openDiscussion(coord, done){
   if(window.parent && window.parent !== window){
     try {
-      var target = "*";
-      if(window.__crewNav){ target = window.parent.location.origin; }
-      window.parent.postMessage({type: "hermes:open-session", sessionId: coord.sessionId, profile: coord.profile}, target);
+      window.parent.postMessage({type: "hermes:open-session", sessionId: coord.sessionId, profile: coord.profile},
+                                openSessionTarget());
       done("opening");
       return;
     } catch(e){}
+  }
+  var url = chatUrlFor(coord, (typeof state !== "undefined" && state) ? state.hermes_chat_url : "");
+  if(url && typeof window.open === "function"){
+    // noopener makes window.open return null even when the tab opened, so only a throw falls through to copy
+    try { window.open(url, "_blank", "noopener"); done("opening"); return; } catch(e){}
   }
   var ref = sessionRef(coord);
   copyText(ref, function(ok){
@@ -1089,7 +1119,7 @@ function sitDiscussionChip(box, coord){
   var b = document.createElement("button");
   b.type = "button"; b.className = "copy jump"; b.id = id;
   b.textContent = (COPYFLASH[id] && COPYFLASH[id] > Date.now()) ? (COPYFLASH[id + ":label"] || "open \u2197") : "open \u2197";
-  b.title = "Jump to the discussion session in Hermes (copies @session:... in a standalone browser)";
+  b.title = "Jump to the discussion session in Hermes (opens the dashboard chat, or copies @session:... when no dashboard is known)";
   b.setAttribute("aria-label", b.title);
   b.setAttribute("data-session", coord.sessionId);
   if(coord.profile) b.setAttribute("data-profile", coord.profile);

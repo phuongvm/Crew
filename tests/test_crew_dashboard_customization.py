@@ -549,7 +549,8 @@ function shortId(s){ s=String(s); return s.length<=14 ? s : s.slice(0,7)+".."+s.
         self.assertIn("hermes:open-session", src)
         rx = src[src.index("var SESSION_ID_RX"):src.index("\n", src.index("var SESSION_ID_RX"))]
         return rx + "\n" + "\n".join(self._fn(src, n) for n in (
-            "parseSessionCoord", "discussionCoord", "sessionRef", "openDiscussion", "sitDiscussionChip", "showToast"))
+            "parseSessionCoord", "discussionCoord", "sessionRef", "openSessionTarget", "chatUrlFor",
+            "openDiscussion", "sitDiscussionChip", "showToast"))
 
     def test_parse_session_coord_accepts_a_session_and_refuses_the_rest(self):
         script = self._card_fns() + r"""
@@ -638,24 +639,131 @@ console.log(JSON.stringify({copied: copied}));
 """
         self.assertEqual(["@session:default/s1"], self._run(script)["copied"])
 
+    def test_discovered_session_profile_names_the_chip(self):
+        script = self._card_fns() + r"""
+console.log(JSON.stringify([
+  discussionCoord({coordinator: "", session_id: "20261012_131459_eb9bfb", session_profile: "default"}),
+  discussionCoord({coordinator: "leader/no-session", session_id: "s9", session_profile: "coder"}),
+  discussionCoord({coordinator: "", session_id: "s9", session_profile: "../x"}),
+  discussionCoord({coordinator: "default/c1", session_id: "s9", session_profile: "coder"})]));
+"""
+        out = self._run(script)
+        self.assertEqual({"profile": "default", "sessionId": "20261012_131459_eb9bfb"}, out[0])
+        self.assertEqual({"profile": "coder", "sessionId": "s9"}, out[1])               # discovery wins over the line
+        self.assertEqual({"profile": "", "sessionId": "s9"}, out[2])                    # a bad profile is dropped
+        self.assertEqual({"profile": "default", "sessionId": "c1"}, out[3])             # Coordinator: still first
+
+    def test_a_dashboard_frame_on_another_loopback_origin_posts_to_the_referrer_origin(self):
+        # parent.location.origin throws cross-origin (dashboard on localhost:9119, page on 127.0.0.1:8799):
+        # the old code fell through to the clipboard; now the embedding origin comes from document.referrer.
+        script = self.DOM + self._card_fns() + r"""
+var copied = [], posted = [];
+function copyText(text, done){ copied.push(text); done(true); }
+document.referrer = "http://localhost:9119/crew?x=1";
+var parentWin = {postMessage: function(m, t){ posted.push([m, t]); }};
+Object.defineProperty(parentWin, "location", {get: function(){ throw new Error("SecurityError"); }});
+var window = {parent: parentWin, __crewNav: function(){}};
+var box = new El("div");
+sitDiscussionChip(box, parseSessionCoord("default/s1"));
+var btn = box.children[0].children[2];
+btn.click();
+console.log(JSON.stringify({copied: copied, posted: posted, after: btn.textContent}));
+"""
+        out = self._run(script)
+        self.assertEqual([[{"type": "hermes:open-session", "sessionId": "s1", "profile": "default"},
+                           "http://localhost:9119"]], out["posted"])
+        self.assertEqual([], out["copied"])
+        self.assertEqual("opening", out["after"])
+
+    def test_open_session_target_never_throws_and_scopes_the_bridge_frame(self):
+        script = self._card_fns() + r"""
+var document = {referrer: ""};
+var out = [];
+var window = {parent: {}};                                         out.push(openSessionTarget());   // desktop tile
+window = {parent: {location: {origin: "http://127.0.0.1:9119"}}, __crewNav: 1}; out.push(openSessionTarget());
+window = {parent: {location: {origin: "null"}}, __crewNav: 1};    document.referrer = "https://dash.example:8443/a";
+out.push(openSessionTarget());
+window = {parent: {get location(){ throw new Error("x"); }}, __crewNav: 1}; document.referrer = "javascript:alert(1)";
+out.push(openSessionTarget());
+console.log(JSON.stringify(out));
+"""
+        self.assertEqual(["*", "http://127.0.0.1:9119", "https://dash.example:8443", "*"], self._run(script))
+
+    def test_a_standalone_browser_opens_the_dashboard_chat_when_it_knows_the_dashboard(self):
+        script = self.DOM + self._card_fns() + r"""
+var copied = [], opened = [];
+function copyText(text, done){ copied.push(text); done(true); }
+var state = {hermes_chat_url: "http://127.0.0.1:9119/"};
+var window = {open: function(u, n, f){ opened.push([u, n, f]); return null; }}; window.parent = window;
+var box = new El("div");
+sitDiscussionChip(box, parseSessionCoord("default/20261012_131459_eb9bfb"));
+var btn = box.children[0].children[2];
+btn.click();
+console.log(JSON.stringify({copied: copied, opened: opened, after: btn.textContent}));
+"""
+        out = self._run(script)
+        self.assertEqual([["http://127.0.0.1:9119/chat?resume=20261012_131459_eb9bfb&profile=default",
+                           "_blank", "noopener"]], out["opened"])
+        self.assertEqual([], out["copied"])
+        self.assertEqual("opening", out["after"])
+
+    def test_a_standalone_browser_with_an_unsafe_or_blocked_dashboard_url_copies_instead(self):
+        script = self.DOM + self._card_fns() + r"""
+var copied = [], opened = [];
+function copyText(text, done){ copied.push(text); done(true); }
+var state = {hermes_chat_url: "javascript:alert(1)"};
+var window = {open: function(u){ opened.push(u); }}; window.parent = window;
+var box = new El("div");
+sitDiscussionChip(box, parseSessionCoord("default/s1"));
+box.children[0].children[2].click();
+state = {hermes_chat_url: "http://127.0.0.1:9119"};
+window.open = function(){ throw new Error("popup blocked"); };
+box.children[0].children[2].click();
+console.log(JSON.stringify({copied: copied, opened: opened,
+  urls: [chatUrlFor({sessionId: "s1", profile: ""}, "https://d.example/base/"), chatUrlFor({sessionId: "s1"}, "")]}));
+"""
+        out = self._run(script)
+        self.assertEqual([], out["opened"])
+        self.assertEqual(["@session:default/s1", "@session:default/s1"], out["copied"])
+        self.assertEqual(["https://d.example/base/chat?resume=s1", ""], out["urls"])
+
     # dashboard/dist/index.js is one IIFE: its helpers are indented two spaces, so they end at "\n  }".
     def _dashboard_fns(self):
         src = self._read("dashboard", "dist", "index.js")
-        rx_at = src.index("var SESSION_IDENT_RE")
-        out = [src[rx_at:src.index("\n", rx_at)]]
-        for name in ("parseOpenSession", "chatResumePath", "openChatSession"):
+        out = []
+        for rx in ("var SESSION_IDENT_RE", "var LOOPBACK_ORIGIN_RE"):
+            rx_at = src.index(rx)
+            out.append(src[rx_at:src.index("\n", rx_at)])
+        for name in ("parseOpenSession", "isSessionOriginAllowed", "chatResumePath", "openChatSession"):
             start = src.index("function %s(" % name)
             out.append(src[start:src.index("\n  }", start) + 4])
         return "\n".join(out)
+
+    def test_web_dashboard_accepts_open_session_from_loopback_origins_only(self):
+        script = self._dashboard_fns() + r"""
+var cases = [
+  ["http://127.0.0.1:9119", "http://127.0.0.1:9119"], ["http://127.0.0.1:8799", "http://127.0.0.1:9119"],
+  ["http://localhost:8799", "http://127.0.0.1:9119"], ["http://[::1]:9119", "http://localhost:9119"],
+  ["https://agent4070-dashboard.ptdev.vip", "https://agent4070-dashboard.ptdev.vip"],
+  ["http://evil.example", "http://127.0.0.1:9119"], ["http://127.0.0.1.evil.example", "http://127.0.0.1:9119"],
+  ["http://127.0.0.1:8799", "https://agent4070-dashboard.ptdev.vip"], ["null", "http://127.0.0.1:9119"],
+  ["", "http://127.0.0.1:9119"], [null, "http://127.0.0.1:9119"]];
+console.log(JSON.stringify(cases.map(function(c){ return isSessionOriginAllowed(c[0], c[1]); })));
+"""
+        self.assertEqual([True, True, True, True, True, False, False, False, False, False, False], self._run(script))
 
     def test_web_dashboard_listens_for_open_session_from_its_own_frame_only(self):
         src = self._read("dashboard", "dist", "index.js")
         handler = src[src.index("function onMessage(e)"):src.index("window.addEventListener(\"message\", onMessage)")]
         self.assertIn("e.source !== frame.contentWindow", handler)
-        self.assertIn("e.origin !== window.location.origin", handler)
         self.assertIn("d.type === \"hermes:open-session\"", handler)
-        self.assertLess(handler.index("e.origin !== window.location.origin"), handler.index("hermes:open-session"))
+        # open-session: the origin is checked (own or loopback) before the payload is acted on
+        self.assertIn("isSessionOriginAllowed(e.origin, window.location.origin)", handler)
+        self.assertLess(handler.index("isSessionOriginAllowed"), handler.index("openChatSession(target, window)"))
         self.assertIn("openChatSession(target, window)", handler)
+        # crew:navigate stays same-origin only, checked before the page is changed
+        self.assertIn("e.origin !== window.location.origin", handler)
+        self.assertLess(handler.index("e.origin !== window.location.origin"), handler.index("setPage(d.path)"))
         self.assertIn("crew:navigate", handler)                                     # board/card links still work
 
     def test_web_dashboard_navigates_to_chat_resume_with_profile(self):
@@ -890,6 +998,129 @@ console.log(JSON.stringify({clicks: clicks, navs: navs,
         self.assertIn("THEME_KEYS = { theme: 1, bg: 1, fg: 1 }", bridge)
         self.assertIn("window.__crewNav = function (u) { var t = navTarget(u); if (t) nav(t); };", bridge)
         self.assertNotIn('r.search !== "?all=1"', bridge)              # the old exact-match gate is gone
+
+
+class OriginSessionDiscoveryTests(unittest.TestCase):
+    """crew_graph.find_origin_session: a card with no tasks.session_id and no Coordinator: line (a `hermes kanban
+    create` from a terminal, an OpenSpec pipeline card such as t_ea95ab52) still names the discussion it came from,
+    read from the profiles' state.db; the card's own worker sessions are never taken for its origin."""
+
+    CREATED = 1791811364
+
+    def setUp(self):
+        import sqlite3
+        import crew_graph
+        self.cg = crew_graph
+        self.cg._ORIGIN_CACHE.clear()
+        self.tmp = tempfile.TemporaryDirectory(prefix="crew-origin-")
+        base = self.tmp.name
+        self.board = os.path.join(base, "kanban.db")
+
+        def state(path, sessions, messages):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            db = sqlite3.connect(path)
+            db.execute("create table sessions (id text primary key, parent_session_id text, source text, model text, "
+                       "title text, started_at real, ended_at real, message_count integer, tool_call_count integer, "
+                       "input_tokens integer, output_tokens integer, profile_name text)")
+            db.execute("create table messages (id integer primary key autoincrement, session_id text, role text, "
+                       "content text, tool_calls text, timestamp real)")
+            for sid, src in sessions:
+                db.execute("insert into sessions (id, source, started_at) values (?,?,?)", (sid, src, self.CREATED - 900))
+            db.executemany("insert into messages (session_id, role, content, tool_calls, timestamp) values (?,?,?,?,?)",
+                           messages)
+            db.commit()
+            db.close()
+
+        c = self.CREATED
+        # default: the desktop discussion that ran `hermes kanban create` and saw "Created t_ea95ab52" first
+        state(os.path.join(base, "state.db"), [("20261012_131459_eb9bfb", "desktop"), ("old_chat", "desktop")], [
+            ("old_chat", "user", "talk about t_ea95ab52 last week", None, c - 86400),          # outside the window
+            ("20261012_131459_eb9bfb", "assistant", "", '[{"function":{"name":"terminal","arguments":'
+             '"{\\"command\\":\\"hermes kanban create ...\\"}"}}]', c - 2),
+            ("20261012_131459_eb9bfb", "tool", '{"output": "Created t_ea95ab52  (ready, assignee=coder)"}', None, c + 1),
+        ])
+        # coder: the card's own worker session mentions it too (earlier than nothing, but it is the worker)
+        state(os.path.join(base, "profiles", "coder", "state.db"), [("worker_sess", "kanban")], [
+            ("worker_sess", "user", "work kanban task t_ea95ab52", None, c - 1),
+        ])
+        # leader: a later reviewer-style mention that must lose to the earliest
+        state(os.path.join(base, "profiles", "leader", "state.db"), [("later_sess", "oneshot")], [
+            ("later_sess", "tool", "read t_ea95ab52 card", None, c + 600),
+        ])
+        db = sqlite3.connect(self.board)
+        db.execute("create table task_events (id integer primary key autoincrement, task_id text, run_id integer, "
+                   "kind text, payload text, created_at integer)")
+        db.execute("insert into task_events (task_id, run_id, kind, payload, created_at) values (?,?,?,?,?)",
+                   ("t_ea95ab52", 1, "session", json.dumps({"session": "worker_sess"}), c + 30))
+        db.execute("insert into task_events (task_id, run_id, kind, payload, created_at) values (?,?,?,?,?)",
+                   ("t_crew", None, "origin", json.dumps({"session": "20261012_092737_07d8d5", "by": "default"}), c))
+        db.execute("insert into task_events (task_id, run_id, kind, payload, created_at) values (?,?,?,?,?)",
+                   ("t_nosess", None, "origin", json.dumps({"session": "no-session", "by": "default"}), c))
+        db.commit()
+        db.close()
+        self.env = patch.dict(os.environ, {"HERMES_HOME": base})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.cg._ORIGIN_CACHE.clear()
+        self.tmp.cleanup()
+
+    def test_a_cli_created_card_resolves_its_discussion_from_state_db(self):
+        prof, sid = self.cg.find_origin_session(self.board, "t_ea95ab52", None, self.CREATED)
+        self.assertEqual(("default", "20261012_131459_eb9bfb"), (prof, sid))
+
+    def test_the_cards_own_worker_session_is_never_its_origin(self):
+        import sqlite3
+        db = sqlite3.connect(os.path.join(self.tmp.name, "state.db"))
+        db.execute("delete from messages where session_id = '20261012_131459_eb9bfb'")
+        db.commit()
+        db.close()
+        prof, sid = self.cg.find_origin_session(self.board, "t_ea95ab52", None, self.CREATED)
+        self.assertNotEqual("worker_sess", sid)
+        self.assertEqual(("leader", "later_sess"), (prof, sid))          # next earliest non-worker mention
+
+    def test_the_row_session_id_wins_and_crews_origin_record_is_next(self):
+        self.assertEqual(("", "row_sid"), self.cg.find_origin_session(self.board, "t_ea95ab52", "row_sid", self.CREATED))
+        self.assertEqual(("default", "20261012_092737_07d8d5"),
+                         self.cg.find_origin_session(self.board, "t_crew", None, self.CREATED))
+
+    def test_no_mention_no_session_and_unsafe_ids_give_no_chip(self):
+        self.assertEqual(("", ""), self.cg.find_origin_session(self.board, "t_unknown", None, self.CREATED))
+        self.assertEqual(("", ""), self.cg.find_origin_session(self.board, "t_nosess", None, None))
+        self.assertEqual(("", ""), self.cg.find_origin_session(self.board, "", None, self.CREATED))
+        # a row session_id that is not a plain id is not trusted; discovery runs instead
+        self.assertEqual(("default", "20261012_131459_eb9bfb"),
+                         self.cg.find_origin_session(self.board, "t_ea95ab52", "../etc", self.CREATED))
+
+    def test_a_found_origin_is_cached_and_a_miss_is_retried_after_the_ttl(self):
+        self.cg.find_origin_session(self.board, "t_ea95ab52", None, self.CREATED)
+        with patch.object(self.cg, "discover_state_dbs", side_effect=AssertionError("re-scanned")):
+            self.assertEqual("20261012_131459_eb9bfb",
+                             self.cg.find_origin_session(self.board, "t_ea95ab52", None, self.CREATED)[1])
+        self.assertEqual(("", ""), self.cg.find_origin_session(self.board, "t_late", None, self.CREATED))
+        prof, sid, found, ts = self.cg._ORIGIN_CACHE["t_late"]
+        self.cg._ORIGIN_CACHE["t_late"] = (prof, sid, found, ts - self.cg.ORIGIN_MISS_TTL_S - 1)
+        with patch.object(self.cg, "_origin_from_messages", return_value=("coder", "late_sess")) as again:
+            self.assertEqual(("coder", "late_sess"),
+                             self.cg.find_origin_session(self.board, "t_late", None, self.CREATED))
+            again.assert_called_once()
+
+    def test_card_box_fields_carries_the_discovered_profile(self):
+        f = self.cg.card_box_fields({"session_id": "20261012_131459_eb9bfb", "session_profile": "default"})
+        self.assertEqual("20261012_131459_eb9bfb", f["session_id"])
+        self.assertEqual("default", f["session_profile"])
+        self.assertEqual("", self.cg.card_box_fields({})["session_profile"])
+
+    def test_hermes_chat_url_is_an_http_base_or_the_loopback_default(self):
+        with patch.dict(os.environ, {"CREW_HERMES_DASHBOARD_URL": "https://dash.example/"}):
+            self.assertEqual("https://dash.example", self.cg.hermes_chat_url())
+        with patch.dict(os.environ, {"CREW_HERMES_DASHBOARD_URL": "javascript:alert(1)"}):
+            self.assertEqual("http://127.0.0.1:9119", self.cg.hermes_chat_url())
+        with open(os.path.join(self.tmp.name, "config.yaml"), "w") as fh:
+            fh.write("dashboard:\n  theme: default\n  public_url: https://agent4070-dashboard.ptdev.vip\n")
+        with patch.dict(os.environ, {"CREW_HERMES_DASHBOARD_URL": ""}):
+            self.assertEqual("https://agent4070-dashboard.ptdev.vip", self.cg.hermes_chat_url())
 
 
 @unittest.skipUnless(_load_hermes_auth(), "hermes-agent is not installed")

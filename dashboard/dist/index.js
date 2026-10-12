@@ -36,6 +36,20 @@
     return { sessionId: sid, profile: prof };
   }
 
+  // The origins a card frame may post hermes:open-session from: the dashboard's own, or - when the dashboard
+  // itself is served on loopback - any loopback origin (127.0.0.1 / localhost / [::1], any port), so a card page
+  // served by the crew daemon (:8799) or reached as localhost while the dashboard is 127.0.0.1:9119 still opens
+  // its session. A remote origin never qualifies, and the payload is re-validated by parseOpenSession anyway.
+  var LOOPBACK_ORIGIN_RE = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?$/i;
+
+  function isSessionOriginAllowed(origin, own) {
+    origin = String(origin || "");
+    own = String(own || "");
+    if (!origin || origin === "null") return false;
+    if (origin === own) return true;
+    return LOOPBACK_ORIGIN_RE.test(origin) && LOOPBACK_ORIGIN_RE.test(own);
+  }
+
   // The dashboard's chat route for a session, under the base path the server injected when reverse-proxied.
   function chatResumePath(target, basePath) {
     var base = String(basePath || "");
@@ -123,13 +137,15 @@
     React.useEffect(function () {
       function onMessage(e) {
         var frame = iframeRef.current;
-        if (!frame || e.source !== frame.contentWindow || e.origin !== window.location.origin) return;
+        if (!frame || e.source !== frame.contentWindow) return;
         var d = e.data;
         if (d && d.type === "hermes:open-session") {
+          if (!isSessionOriginAllowed(e.origin, window.location.origin)) return;
           var target = parseOpenSession(d);
           if (target) openChatSession(target, window);
           return;
         }
+        if (e.origin !== window.location.origin) return;
         if (!d || d.type !== "crew:navigate" || typeof d.path !== "string" || !PAGE_RE.test(d.path)) return;
         setPage(d.path);
       }
