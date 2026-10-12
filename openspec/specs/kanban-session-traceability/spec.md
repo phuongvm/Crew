@@ -6,7 +6,7 @@ Provide bidirectional traceability and interactive navigation between Kanban car
 ## Requirements
 
 ### Requirement: Clickable Discussion Session in Card View
-The Crew Dashboard card view (`scripts/crew_dashboard/card.js`) SHALL render an interactive **Discussion Session** link or chip whenever the card carries a valid coordinator or discussion session identifier (`<profile>/<session_id>`).
+The Crew Dashboard card view (`scripts/crew_dashboard/card.js`) SHALL render an interactive **Discussion Session** link or chip whenever the card carries a valid coordinator or discussion session identifier (`<profile>/<session_id>`), or when an originating discussion session is resolved from history.
 
 #### Scenario: User clicks discussion session in Desktop embedded iframe
 - **GIVEN** a card with `coordinator = "default/20261012_092737_07d8d5"` viewed within the Hermes Desktop CREW tab
@@ -14,11 +14,17 @@ The Crew Dashboard card view (`scripts/crew_dashboard/card.js`) SHALL render an 
 - **THEN** `card.js` MUST emit `window.parent.postMessage({ type: "hermes:open-session", sessionId: "20261012_092737_07d8d5", profile: "default" }, "*")`
 - **AND** the chip MUST provide visual click feedback.
 
+#### Scenario: User clicks discussion session in Web Dashboard embedded iframe
+- **GIVEN** a card viewed within the Hermes Web Dashboard CREW tab (`/crew`)
+- **WHEN** the user clicks the Discussion Session chip
+- **THEN** `card.js` MUST dispatch `window.parent.postMessage({ type: "hermes:open-session", sessionId: coord.sessionId, profile: coord.profile }, target)` safely without throwing `SecurityError` even if parent origin is restricted.
+
 #### Scenario: User clicks discussion session in standalone external browser
 - **GIVEN** a card viewed in a standard web browser where `window.parent === window`
 - **WHEN** the user clicks the Discussion Session chip
-- **THEN** the application SHALL copy the formatted link `@session:default/20261012_092737_07d8d5` to the system clipboard
-- **AND** SHALL display a toast notification informing the user that the session link was copied.
+- **THEN** the application SHALL copy the formatted link `@session:<profile>/<session_id>` to the system clipboard
+- **AND** SHALL display a toast notification informing the user that the session link was copied
+- **AND** SHALL attempt to open the session in a new tab via `window.open` targeting `/chat?resume=<sessionId>&profile=<profile>`.
 
 ---
 
@@ -36,6 +42,34 @@ The Crew Desktop plugin (`desktop/plugin.js`) SHALL listen for `hermes:open-sess
 - **GIVEN** an arbitrary message event arriving from an untrusted origin or carrying an invalid `sessionId` (e.g. containing path traversal or shell characters)
 - **WHEN** `plugin.js` processes the event
 - **THEN** `plugin.js` MUST ignore the event and MUST NOT invoke `host.openSession`.
+
+---
+
+### Requirement: Web Dashboard PostMessage Session Navigation Bridge
+The Crew Web Dashboard plugin (`dashboard/dist/index.js`) SHALL listen for `hermes:open-session` messages dispatched by the embedded dashboard iframe and navigate the parent window to the target chat session `/chat?resume=<sessionId>&profile=<profile>`.
+
+#### Scenario: Web dashboard receives valid open-session message
+- **GIVEN** Hermes Web Dashboard has mounted the Crew tab (`/crew`) with an embedded srcdoc iframe
+- **WHEN** the embedded iframe posts `{ type: "hermes:open-session", sessionId: "20261012_092737_07d8d5", profile: "default" }`
+- **THEN** `dashboard/dist/index.js` MUST validate that the event source matches the iframe's `contentWindow` and the event origin matches `window.location.origin` or trusted loopback origins
+- **AND** MUST validate that `sessionId` and optional `profile` conform to `^[A-Za-z0-9_-]+$`
+- **AND** MUST navigate the dashboard window to `/chat?resume=20261012_092737_07d8d5&profile=default` (respecting `__HERMES_BASE_PATH__` if present) using browser history API or location assignment.
+
+#### Scenario: Web dashboard rejects messages from untrusted origins or malformed payloads
+- **GIVEN** a message arriving from an untrusted origin, or a payload with invalid characters (e.g. path traversal, punctuation, shell characters)
+- **WHEN** `dashboard/dist/index.js` receives the event
+- **THEN** `dashboard/dist/index.js` MUST discard the event without navigating.
+
+---
+
+### Requirement: Originating Session Auto-Discovery for External and Legacy Tasks
+The backend graph builder (`scripts/crew_graph.py`) SHALL automatically discover the originating owner or coordinator chat session for cards created without an explicit `Coordinator:` body field or `tasks.session_id`.
+
+#### Scenario: Card created via CLI or external tooling without session metadata
+- **GIVEN** a card in `kanban.db` with `session_id = NULL` and no `Coordinator:` header in its body
+- **WHEN** `crew_graph.py` resolves the card's fields
+- **THEN** `find_origin_session` SHALL search `task_events` for an `origin` event, or scan `state.db` across all profiles for the earliest message mentioning the card ID within 15 minutes of creation (excluding worker sessions)
+- **AND** SHALL return the discovered `{profile, sessionId}` so the card renders an active discussion session chip.
 
 ---
 
