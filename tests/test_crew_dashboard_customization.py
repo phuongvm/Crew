@@ -497,6 +497,211 @@ class CrewDashboardCustomizationTests(unittest.TestCase):
         self.assertIn('"proof_cmd": body_field(body, "proof command")', cg_src)
         self.assertIn('"body": body or ""', cg_src)
 
+
+class SessionTraceabilityJsTests(unittest.TestCase):
+    """kanban-session-traceability, run in node: the card page's discussion chip (card.js) and the Desktop tile's
+    bridge (desktop/plugin.js). The functions are sliced out of the shipped files, so the code under test is the
+    code that ships; the DOM, clipboard and window are minimal stand-ins."""
+
+    def setUp(self):
+        import shutil
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        self.node = str(node)
+
+    def _read(self, *parts):
+        with open(os.path.join(CREW_ROOT, *parts), "r", encoding="utf-8") as f:
+            return f.read()
+
+    @staticmethod
+    def _fn(src, name):
+        start = src.index("function %s(" % name)
+        return src[start:src.index("\n}", start) + 2]
+
+    def _run(self, script):
+        import subprocess
+        out = subprocess.run([self.node, "-e", script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    # A DOM just big enough for the chip: elements with children, attributes, listeners and classList.
+    DOM = r"""
+function El(tag){ this.tagName = tag; this.children = []; this.attrs = {}; this.listeners = {}; this.textContent = "";
+  var self = this; this.classList = {set: {}, add: function(c){ self.classList.set[c] = 1; },
+  remove: function(c){ delete self.classList.set[c]; }}; }
+El.prototype.appendChild = function(c){ this.children.push(c); return c; };
+El.prototype.setAttribute = function(k, v){ this.attrs[k] = String(v); };
+El.prototype.addEventListener = function(k, f){ this.listeners[k] = f; };
+El.prototype.click = function(){ this.listeners.click({stopPropagation: function(){}}); };
+var byId = {};
+var document = {body: new El("body"), createElement: function(t){ return new El(t); },
+  getElementById: function(id){ return byId[id] || null; }};
+var origAppend = El.prototype.appendChild;
+El.prototype.appendChild = function(c){ if(c.id) byId[c.id] = c; return origAppend.call(this, c); };
+function setTimeout(){ return 0; } function clearTimeout(){}
+var COPYFLASH = {};
+function shortId(s){ s=String(s); return s.length<=14 ? s : s.slice(0,7)+".."+s.slice(-5); }
+"""
+
+    def _card_fns(self):
+        src = self._read("scripts", "crew_dashboard", "card.js")
+        self.assertIn("hermes:open-session", src)
+        rx = src[src.index("var SESSION_ID_RX"):src.index("\n", src.index("var SESSION_ID_RX"))]
+        return rx + "\n" + "\n".join(self._fn(src, n) for n in (
+            "parseSessionCoord", "discussionCoord", "sessionRef", "openDiscussion", "sitDiscussionChip", "showToast"))
+
+    def test_parse_session_coord_accepts_a_session_and_refuses_the_rest(self):
+        script = self._card_fns() + r"""
+console.log(JSON.stringify([
+  parseSessionCoord("default/20261012_092737_07d8d5"), parseSessionCoord(" owner-chat/s-1 "),
+  parseSessionCoord("default/no-session"), parseSessionCoord("default"), parseSessionCoord("a/b/c"),
+  parseSessionCoord("x/../etc"), parseSessionCoord("x/a;b"), parseSessionCoord(""), parseSessionCoord(null),
+  parseSessionCoord(42), discussionCoord({coordinator: "", session_id: "row_session"}),
+  discussionCoord({coordinator: "leader/no-session", session_id: "row_session"}),
+  discussionCoord({}), discussionCoord(null)]));
+"""
+        out = self._run(script)
+        self.assertEqual({"profile": "default", "sessionId": "20261012_092737_07d8d5"}, out[0])
+        self.assertEqual({"profile": "owner-chat", "sessionId": "s-1"}, out[1])
+        self.assertEqual([None] * 8, out[2:10])
+        self.assertEqual({"profile": "", "sessionId": "row_session"}, out[10])         # the row's session_id
+        self.assertEqual({"profile": "leader", "sessionId": "row_session"}, out[11])
+        self.assertEqual([None, None], out[12:])                                        # legacy card: no chip
+
+    def test_the_chip_posts_open_session_to_the_desktop_parent(self):
+        script = self.DOM + self._card_fns() + r"""
+var posted = [];
+var parentWin = {postMessage: function(msg, target){ posted.push([msg, target]); }};
+var window = {parent: parentWin};
+var box = new El("div");
+sitDiscussionChip(box, parseSessionCoord("default/20261012_092737_07d8d5"));
+var chip = box.children[0], btn = chip.children[2];
+btn.click();
+console.log(JSON.stringify({n: box.children.length, label: chip.children[1].textContent, id: btn.id,
+  posted: posted, after: btn.textContent, data: btn.attrs["data-session"]}));
+"""
+        out = self._run(script)
+        self.assertEqual(1, out["n"])
+        self.assertEqual("cardSessionJump", out["id"])
+        self.assertEqual("default/2026101..7d8d5", out["label"])
+        self.assertEqual([[{"type": "hermes:open-session", "sessionId": "20261012_092737_07d8d5",
+                            "profile": "default"}, "*"]], out["posted"])
+        self.assertEqual("opening", out["after"])                                       # visual click feedback
+        self.assertEqual("20261012_092737_07d8d5", out["data"])
+
+    def test_a_standalone_browser_copies_the_session_and_shows_a_toast(self):
+        script = self.DOM + self._card_fns() + r"""
+var copied = [];
+function copyText(text, done){ copied.push(text); done(true); }
+var window = {}; window.parent = window;
+var box = new El("div");
+sitDiscussionChip(box, parseSessionCoord("default/20261012_092737_07d8d5"));
+box.children[0].children[2].click();
+var toast = byId.crewToast;
+console.log(JSON.stringify({copied: copied, toast: toast && toast.textContent, on: !!(toast && toast.classList.set.on),
+  role: toast && toast.attrs.role}));
+"""
+        out = self._run(script)
+        self.assertEqual(["@session:default/20261012_092737_07d8d5"], out["copied"])
+        self.assertEqual("Session link copied: @session:default/20261012_092737_07d8d5", out["toast"])
+        self.assertTrue(out["on"])
+        self.assertEqual("status", out["role"])
+
+    def test_the_web_dashboard_frame_copies_instead_of_posting_into_nothing(self):
+        script = self.DOM + self._card_fns() + r"""
+var copied = [], posted = [];
+function copyText(text, done){ copied.push(text); done(true); }
+var window = {parent: {postMessage: function(m){ posted.push(m); }}, __crewNav: function(){}};
+var box = new El("div");
+sitDiscussionChip(box, parseSessionCoord("default/s1"));
+box.children[0].children[2].click();
+console.log(JSON.stringify({copied: copied, posted: posted}));
+"""
+        out = self._run(script)
+        self.assertEqual([], out["posted"])
+        self.assertEqual(["@session:default/s1"], out["copied"])
+
+    def test_a_card_without_a_session_renders_no_chip_and_throws_nothing(self):
+        script = self.DOM + self._card_fns() + r"""
+var box = new El("div");
+sitDiscussionChip(box, discussionCoord({coordinator: "default/no-session"}));
+sitDiscussionChip(box, discussionCoord({}));
+console.log(JSON.stringify(box.children.length));
+"""
+        self.assertEqual(0, self._run(script))
+
+    def test_render_sit_fields_adds_the_chip_after_the_coordinator(self):
+        src = self._read("scripts", "crew_dashboard", "card.js")
+        fields = self._fn(src, "renderSitFields")
+        self.assertIn("sitDiscussionChip(box, discussionCoord(state))", fields)
+        self.assertLess(fields.index("cardCoCopy"), fields.index("sitDiscussionChip"))
+
+    def _plugin_fns(self):
+        src = self._read("desktop", "plugin.js")
+        rx = src[src.index("var SESSION_IDENT_RE"):src.index("\n", src.index("var SESSION_IDENT_RE"))]
+        return rx + "\n" + self._fn(src, "parseOpenSession") + "\n" + self._fn(src, "openCardSession")
+
+    def test_desktop_bridge_imports_host_and_handles_open_session(self):
+        src = self._read("desktop", "plugin.js")
+        imports = src[src.index("import {"):src.index("from '@hermes/plugin-sdk'")]
+        self.assertIn("host", imports)
+        self.assertIn("e.data.type === 'hermes:open-session'", src)
+        self.assertIn("e.source !== frame.contentWindow", src)                      # only our own iframe
+        self.assertIn("openCardSession(target, host)", src)
+        self.assertIn("hermes:board-info", src)                                     # the board title still works
+
+    def test_desktop_bridge_calls_host_open_session_for_a_valid_payload(self):
+        script = self._plugin_fns() + r"""
+var calls = [];
+var host = {openSession: function(sid, opts){ calls.push([sid, opts]); return Promise.resolve(); }};
+(async function(){
+  var ok = await openCardSession(parseOpenSession({type: "hermes:open-session",
+    sessionId: "20261012_092737_07d8d5", profile: "default"}), host);
+  var noProfile = await openCardSession(parseOpenSession({type: "hermes:open-session", sessionId: "s1"}), host);
+  console.log(JSON.stringify({ok: ok, noProfile: noProfile, calls: calls}));
+})();
+"""
+        out = self._run(script)
+        self.assertTrue(out["ok"])
+        self.assertTrue(out["noProfile"])
+        self.assertEqual([["20261012_092737_07d8d5", {"profile": "default"}], ["s1", {}]], out["calls"])
+
+    def test_desktop_bridge_rejects_malformed_payloads_and_never_calls_the_host(self):
+        script = self._plugin_fns() + r"""
+var calls = [];
+var host = {openSession: function(sid, opts){ calls.push([sid, opts]); return Promise.resolve(); }};
+var bad = [null, "x", {type: "hermes:theme", sessionId: "s1"}, {type: "hermes:open-session"},
+  {type: "hermes:open-session", sessionId: "../../etc/passwd"}, {type: "hermes:open-session", sessionId: "a;rm -rf"},
+  {type: "hermes:open-session", sessionId: "no-session"}, {type: "hermes:open-session", sessionId: "s1", profile: "a/b"},
+  {type: "hermes:open-session", sessionId: "s1", profile: "<x>"}, {type: "hermes:open-session", sessionId: "$(id)"},
+  {type: "hermes:open-session", sessionId: new Array(200).join("a")}];
+(async function(){
+  var parsed = bad.map(parseOpenSession);
+  for (var i = 0; i < parsed.length; i++) await openCardSession(parsed[i], host);
+  console.log(JSON.stringify({parsed: parsed, calls: calls}));
+})();
+"""
+        out = self._run(script)
+        self.assertEqual([None] * 11, out["parsed"])
+        self.assertEqual([], out["calls"])
+
+    def test_desktop_bridge_survives_a_host_without_open_session_or_a_failing_one(self):
+        script = self._plugin_fns() + r"""
+var t = parseOpenSession({type: "hermes:open-session", sessionId: "s1", profile: "default"});
+var warned = 0; console.warn = function(){ warned++; };
+(async function(){
+  var r = [await openCardSession(t, null), await openCardSession(t, {}),
+           await openCardSession(t, {openSession: function(){ return Promise.reject(new Error("no")); }}),
+           await openCardSession(t, {openSession: function(){ throw new Error("sync"); }})];
+  console.log(JSON.stringify({r: r, warned: warned}));
+})();
+"""
+        out = self._run(script)
+        self.assertEqual([False, False, False, False], out["r"])
+        self.assertEqual(2, out["warned"])
+
+
 @unittest.skipUnless(_load_hermes_auth(), "hermes-agent is not installed")
 class HermesTokenAuthTests(unittest.TestCase):
     """The plugin routes behind Hermes's real auth_middleware, as the dashboard mounts them."""

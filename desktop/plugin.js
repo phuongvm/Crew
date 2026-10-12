@@ -9,7 +9,7 @@
  */
 
 import {
-  Button, Codicon, ROUTES_AREA, SIDEBAR_NAV_AREA
+  Button, Codicon, host, ROUTES_AREA, SIDEBAR_NAV_AREA
 } from '@hermes/plugin-sdk'
 import React from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
@@ -32,6 +32,38 @@ function withThemeQuery(url) {
 var LOCAL_BOARD_URL = 'http://127.0.0.1:8799/'
 var LOCAL_HEALTH_URL = 'http://127.0.0.1:8799/healthz'
 var AUTH_REQUIRED_MESSAGE = 'Authentication required: please log in to Hermes Gateway or ensure local Crew daemon is running'
+
+// A card page's "discussion" chip posts { type: 'hermes:open-session', sessionId, profile } (card.js openDiscussion).
+// The payload is plain identifiers or nothing: a session id with a slash, a dot or a shell character, or a
+// profile that is not a profile name, is dropped before it can reach host.openSession.
+var SESSION_IDENT_RE = /^[A-Za-z0-9_-]+$/
+
+function parseOpenSession(data) {
+  if (!data || typeof data !== 'object' || data.type !== 'hermes:open-session') return null
+  var sid = String(data.sessionId == null ? '' : data.sessionId).trim()
+  var prof = String(data.profile == null ? '' : data.profile).trim()
+  if (!sid || sid.length > 128 || sid === 'no-session' || !SESSION_IDENT_RE.test(sid)) return null
+  if (prof && (prof.length > 64 || !SESSION_IDENT_RE.test(prof))) return null
+  return { sessionId: sid, profile: prof }
+}
+
+// Opens the card's discussion in Desktop. Resolves false (never throws) when the host cannot.
+function openCardSession(target, sdkHost) {
+  if (!target || !sdkHost || typeof sdkHost.openSession !== 'function') return Promise.resolve(false)
+  var opts = target.profile ? { profile: target.profile } : {}
+  try {
+    return Promise.resolve(sdkHost.openSession(target.sessionId, opts)).then(
+      function () { return true },
+      function (err) {
+        console.warn('[Crew] host.openSession failed:', err)
+        return false
+      }
+    )
+  } catch (err) {
+    console.warn('[Crew] host.openSession failed:', err)
+    return Promise.resolve(false)
+  }
+}
 
 // True when the local crew_graph_serve daemon answers. no-cors: the daemon sends no CORS headers, so the
 // response is opaque, but a resolved fetch proves the port is serving and a network error rejects.
@@ -61,10 +93,17 @@ function CrewPage() {
 
   React.useEffect(function () {
     // The active board's display name, posted by board.js from /board.json (board_name, else board), shown as written.
+    // A card page's discussion chip posts hermes:open-session; only our own board iframe is listened to.
     function onMsg(e) {
-      if (e && e.data && e.data.type === 'hermes:board-info') {
+      if (!e || !e.data) return
+      if (e.data.type === 'hermes:board-info') {
         var name = String(e.data.board_name || e.data.board || '').trim()
         if (name) setBoardTitle(name)
+      } else if (e.data.type === 'hermes:open-session') {
+        var frame = iframeRef.current
+        if (!frame || e.source !== frame.contentWindow) return
+        var target = parseOpenSession(e.data)
+        if (target) openCardSession(target, host)
       }
     }
     window.addEventListener('message', onMsg)

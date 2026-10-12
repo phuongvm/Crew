@@ -1030,6 +1030,87 @@ function renderSitFields(){
     {id: "cardIdCopy", value: state.card_id || "", title: "copy the kanban id"});
   sitFieldRow(box, "coordinator", state.coordinator || "",
     {id: "cardCoCopy", value: state.coordinator || "", title: "copy the coordinator session"});
+  sitDiscussionChip(box, discussionCoord(state));
+}
+
+// The discussion a card came from, as {profile, sessionId}, or null. `Coordinator: <profile>/<session id>` first
+// (crew_card writes it on every card it opens, and a plan's children inherit the plan's), then the card row's
+// session_id. "no-session" and anything that is not a plain id are not a session: no chip, never a broken link.
+var SESSION_ID_RX = /^[A-Za-z0-9_-]+$/;
+function parseSessionCoord(str){
+  if(!str || typeof str !== "string") return null;
+  var parts = str.trim().split("/");
+  if(parts.length !== 2) return null;
+  var profile = parts[0].trim(), sid = parts[1].trim();
+  if(!sid || sid === "no-session" || !SESSION_ID_RX.test(sid)) return null;
+  if(profile && !SESSION_ID_RX.test(profile)) return null;
+  return {profile: profile, sessionId: sid};
+}
+function discussionCoord(st){
+  st = st || {};
+  var coord = parseSessionCoord(st.coordinator);
+  if(coord) return coord;
+  var sid = String(st.session_id || "").trim();
+  if(!sid || sid === "no-session" || !SESSION_ID_RX.test(sid)) return null;
+  var prof = String(st.coordinator || "").split("/")[0].trim();
+  return {profile: SESSION_ID_RX.test(prof) ? prof : "", sessionId: sid};
+}
+function sessionRef(coord){ return "@session:" + (coord.profile ? coord.profile + "/" : "") + coord.sessionId; }
+
+// Inside the Hermes Desktop tile the click asks the host to open the conversation (desktop/plugin.js handles
+// `hermes:open-session`); in a plain browser there is no host, so it copies the session reference instead. The
+// web dashboard's crew tab also frames the page, but its bridge (dashboard/plugin_api.py, which defines
+// window.__crewNav) has no chat to open, so that frame copies too rather than post into nothing.
+function openDiscussion(coord, done){
+  if(window.parent && window.parent !== window && !window.__crewNav){
+    try {
+      window.parent.postMessage({type: "hermes:open-session", sessionId: coord.sessionId, profile: coord.profile}, "*");
+      done("opening");
+      return;
+    } catch(e){}
+  }
+  var ref = sessionRef(coord);
+  copyText(ref, function(ok){
+    showToast(ok ? "Session link copied: " + ref : "Copy failed - select and copy: " + ref);
+    done(ok ? "copied" : "select + copy");
+  });
+}
+function sitDiscussionChip(box, coord){
+  if(!coord) return;                                   // a legacy card with no session: no chip, nothing thrown
+  var id = "cardSessionJump";
+  var r = document.createElement("span"); r.className = "fp act discussion";
+  var k = document.createElement("span"); k.className = "fk"; k.textContent = "\ud83d\udcac discussion";
+  var v = document.createElement("span"); v.className = "fv";
+  v.textContent = (coord.profile ? coord.profile + "/" : "") + shortId(coord.sessionId);
+  v.title = (coord.profile ? coord.profile + "/" : "") + coord.sessionId;
+  var b = document.createElement("button");
+  b.type = "button"; b.className = "copy jump"; b.id = id;
+  b.textContent = (COPYFLASH[id] && COPYFLASH[id] > Date.now()) ? (COPYFLASH[id + ":label"] || "open \u2197") : "open \u2197";
+  b.title = "Jump to the discussion session in Hermes Desktop (copies @session:... in a browser)";
+  b.setAttribute("aria-label", b.title);
+  b.setAttribute("data-session", coord.sessionId);
+  if(coord.profile) b.setAttribute("data-profile", coord.profile);
+  b.addEventListener("click", function(e){
+    e.stopPropagation();
+    openDiscussion(coord, function(label){
+      COPYFLASH[id] = Date.now() + 1600; COPYFLASH[id + ":label"] = label;
+      b.textContent = label;
+      setTimeout(function(){ b.textContent = "open \u2197"; }, 1600);
+    });
+  });
+  r.appendChild(k); r.appendChild(v); r.appendChild(b);
+  box.appendChild(r);
+}
+function showToast(text){
+  var t = document.getElementById("crewToast");
+  if(!t){
+    t = document.createElement("div"); t.id = "crewToast"; t.className = "crew-toast";
+    t.setAttribute("role", "status"); t.setAttribute("aria-live", "polite");
+    document.body.appendChild(t);
+  }
+  t.textContent = text; t.classList.add("on");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(function(){ t.classList.remove("on"); }, 2600);
 }
 // The run counts as a key-number grid (the panel's KPI row), right-aligned on the top event line; a count
 // above zero takes its state's tone.

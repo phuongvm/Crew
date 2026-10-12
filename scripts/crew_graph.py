@@ -956,6 +956,9 @@ def card_box_fields(card_ev):
         "card_created_at": card_ev.get("created_at"),
         "card_run_count": card_ev.get("run_count") or 0,
         "coordinator": card_ev.get("coordinator") or "",
+        # the card row's discussion session (tasks.session_id): the card page links back to it when the
+        # Coordinator: line names none (a card opened by kanban_create from inside a chat)
+        "session_id": card_ev.get("session_id") or "",
         "budget": {"spent": card_ev.get("spent") or 0, "ceiling": card_ev.get("ceiling") or 0},
     }
 
@@ -1495,6 +1498,7 @@ class _Builder(object):
             "status": tstatus, "block_kind": block_kind, "created_at": created_at,
             "run_count": len(runs), "writer_role": writer_role,
             "coordinator": body_field(body, "Coordinator"),
+            "session_id": card_session_id or "",
             "verifier": body_field(body, "Verifier"),
             "done_when": body_field(body, "Done when"),
             # body_field is case-insensitive, so "Goal" also reads the writer's `GOAL:` label.
