@@ -1298,7 +1298,7 @@ console.log(JSON.stringify(regs.map(function(c){
 
     def test_dual_mode_registers_tile_and_pane_together(self):
         regs = {r["id"]: r for r in self._registered()}
-        self.assertEqual({"page", "nav", "crew-flow-graph-pane"}, set(regs))
+        self.assertEqual({"page", "nav", "crew-flow-graph-pane", "crew-pane-companion"}, set(regs))
         # The tile, unchanged: /crew route rendering CrewPage + the asTile sidebar row.
         self.assertEqual("routes", regs["page"]["area"])
         self.assertEqual({"path": "/crew"}, regs["page"]["data"])
@@ -1316,10 +1316,14 @@ console.log(JSON.stringify(regs.map(function(c){
         self.assertTrue(pane["rest_passed"])            # the board list goes through ctx.rest, not a raw fetch
 
     def test_pane_is_hide_only_so_closing_it_never_disables_the_tile(self):
-        # Desktop disables a plugin when its ONLY pane is closed; hideOnly turns Close into hide/show.
-        pane = [r for r in self._registered() if r["area"] == "panes"]
-        self.assertEqual(1, len(pane))
-        self.assertIs(True, pane[0]["data"].get("hideOnly"))
+        # Desktop disables a plugin when its ONLY pane is closed; registering a companion pane in panes
+        # ensures closeTreePane calls dismissTreePane (collapsing the zone) instead of setPluginEnabled(false).
+        panes = [r for r in self._registered() if r["area"] == "panes"]
+        self.assertGreater(len(panes), 1)
+        flow_pane = next(p for p in panes if p["id"] == "crew-flow-graph-pane")
+        self.assertIsNone(flow_pane["data"].get("hideOnly"))
+        companion = next(p for p in panes if p["id"] == "crew-pane-companion")
+        self.assertEqual("floating", companion["data"].get("placement"))
 
     def test_pane_embeds_through_sandboxed_frame_only(self):
         with open(os.path.join(CREW_ROOT, "desktop", "plugin.js"), "r", encoding="utf-8") as f:

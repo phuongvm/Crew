@@ -665,14 +665,22 @@ var plugin = {
         data: { codicon: 'organization', label: 'Crew', path: '/crew', asTile: true }
       },
       {
-        // The Flow Graph pane, beside the tile above (Issue #10). hideOnly: Close on the only pane of a
-        // plugin disables the whole plugin in Desktop, which would take the /crew tile with it; a hide-only
-        // pane is shown/hidden instead (tab menu, ⌘K) and the tile stays.
+        // The Flow Graph pane, beside the tile above (Issue #10).
+        // Having a companion pane in PANES_AREA ensures closeTreePane dismisses this pane
+        // (collapsing the zone) instead of disabling the entire plugin and removing the /crew tile.
+        // hideOnly is omitted so closing doesn't trigger isLastShownInGroup ("Last tab stays").
         id: PANE_ID,
         area: PANES_AREA,
         title: PANE_TITLE,
-        data: { placement: 'right', width: '380px', hideOnly: true },
+        data: { placement: 'right', width: '380px' },
         render: function() { return jsx(CrewFlowGraphPane, { rest: ctx.rest }) }
+      },
+      {
+        id: 'crew-pane-companion',
+        area: PANES_AREA,
+        title: 'Crew Companion',
+        data: { placement: 'floating' },
+        render: function() { return null }
       }
     ])
   }
