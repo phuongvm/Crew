@@ -23,14 +23,15 @@ script on a card records its sha256 on the card, and a later run of a changed sc
 refusal (`SCRIPT_CHANGED`) and the coordinator decides (crew_coordinator `revise_script`: it may accept the script or
 have the verifier rewrite it, with a reason on record); the writer never writes or changes a proof script.
 """
-import glob
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 import sys
 from collections import namedtuple
 
+IS_WINDOWS = os.name == "nt"     # a name of its own so a test can pin the Windows branch on Linux
 PROOF_MODES = ("safe", "brave")
 APPROVED = "approved"            # a mode only proof_mode() returns: safe, but this exact command has the owner's yes
 BLOCKED_RC = 126                 # what a shell says for "found but refused"; Result.blocked carries the reason
@@ -85,15 +86,57 @@ Result = namedtuple("Result", "rc out blocked")
 SCRIPT_CHANGED = "proof script changed since it first ran: "     # the prefix crew_coordinator.proof_blocked_ask keys on
 # An absolute script path in a proof command. Relative paths (and ones with spaces) are not bound: they depend on
 # the cwd, and the intake writes absolute paths (`<folder>/.crew/verify.py`).
-SCRIPT_RX = re.compile(r"(?<![\w./~-])(/[^\s'\"`;|&<>()$]+\.(?:py|sh|js))(?![\w/.-])")
+# A script path a proof names: POSIX absolute (/x/site/.crew/verify.py, also Git Bash's /c/Users/...) or a Windows
+# drive path (C:/x/verify.py, C:\\x\\verify.py).
+SCRIPT_RX = re.compile(r"(?<![\w./~-])((?:[A-Za-z]:[/\\]|/)[^\s'\"`;|&<>()$]+\.(?:py|sh|js))(?![\w/.-])")
+_GIT_BASH_DRIVE_RX = re.compile(r"^/([A-Za-z])(?=/)")
+
+
+def _script_file(path):
+    """Where a script path named in a proof is on disk. Git Bash writes C:\\x as /c/x, which Windows Python cannot
+    open: without this mapping a script named that way would silently escape the hash binding."""
+    if IS_WINDOWS:
+        return _GIT_BASH_DRIVE_RX.sub(lambda m: m.group(1).upper() + ":", path)
+    return path
+
+
+def git_bash():
+    """The bash a proof runs under on Windows: the one Hermes itself runs commands in. HERMES_GIT_BASH_PATH, then the
+    PortableGit Hermes's installer puts under <Hermes home>\\git (bin\\bash.exe, MinGit's usr\\bin\\bash.exe),
+    then Git for Windows' own, found from git.exe. Never a bare `bash` on PATH (C:\\Windows\\System32\\bash.exe is
+    WSL's, a different machine with different paths), never cmd.exe. '' when no Git Bash is installed."""
+    import crew_card
+    custom = os.environ.get("HERMES_GIT_BASH_PATH") or ""
+    if custom and os.path.isfile(custom):
+        return custom
+    for root in (crew_card.base_home(), crew_card.default_home()):
+        for rel in (("git", "bin", "bash.exe"), ("git", "usr", "bin", "bash.exe")):
+            cand = os.path.join(root, *rel)
+            if os.path.isfile(cand):
+                return cand
+    git = shutil.which("git")
+    if not git:
+        return ""
+    here = os.path.dirname(git)
+    for root in (os.path.dirname(here), os.path.dirname(os.path.dirname(here)), here):
+        for rel in (("bin", "bash.exe"), ("usr", "bin", "bash.exe")):
+            cand = os.path.join(root, *rel)
+            if os.path.isfile(cand):
+                return cand
+    return ""
 
 
 def _hermes():
     """Make Hermes's own modules importable (the crew scripts run under any python): its source root goes on
     the path whole, because an editable install exposes the packages but not top-level modules like hermes_yaml.
-    Raises ImportError when there is no Hermes."""
+    The root is HERMES_AGENT_SRC, else crew_card.hermes_root() (this Hermes home's hermes-agent, which on a native
+    Windows install is <%LOCALAPPDATA%\\hermes>\\hermes-agent). Raises ImportError when there is no Hermes."""
     import glob
-    sources = _find_hermes_sources()
+    import crew_card
+    sources = list(_find_hermes_sources())
+    root = crew_card.hermes_root()
+    if root and root not in sources:
+        sources.append(root)
     for src in sources:
         if src and os.path.isdir(src) and src not in sys.path:
             sys.path.append(src)
@@ -126,6 +169,8 @@ def _venv_deps():
             os.path.join(vdir, "lib", "site-packages"),
             *glob.glob(os.path.join(vdir, "lib", "python*", "site-packages")),
         ])
+        if hasattr(crew_card, "venv_site_packages"):
+            candidates.extend(crew_card.venv_site_packages(vdir))
     base = _base_home()
     candidates.extend(glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "Lib", "site-packages")))
     candidates.extend(glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "lib", "python*", "site-packages")))
@@ -302,7 +347,7 @@ def script_hashes(cmd):
     out = {}
     for path in SCRIPT_RX.findall(str(cmd or "")):
         try:
-            with open(path, "rb") as fh:
+            with open(_script_file(path), "rb") as fh:
                 out[path] = hashlib.sha256(fh.read()).hexdigest()
         except OSError:
             continue
@@ -426,9 +471,18 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
                     if any(os.path.exists(os.path.join(r, w)) for w in words):
                         cwd = r
                         break
+    argv = cmd
+    if IS_WINDOWS:
+        # A proof is bash. cmd.exe reads `echo hi; exit 3`, `sleep` and `rm` differently, and a safety check that
+        # judged the bash text would then guard something other than what runs.
+        bash = git_bash()
+        if not bash:
+            return Result(127, "Git Bash was not found next to git.exe: crew proofs run in Git Bash on Windows "
+                               "(install Git for Windows); the proof was not run", "")
+        argv = [bash, "-c", cmd]
     try:
-        done = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=cwd,
-                              env=proof_env())
+        done = subprocess.run(argv, shell=not IS_WINDOWS, capture_output=True, text=True, timeout=timeout, cwd=cwd,
+                              env=proof_env(), encoding="utf-8", errors="replace")
         return Result(done.returncode, (done.stdout or "") + (done.stderr or ""), "")
     except subprocess.TimeoutExpired:
         return Result(124, "proof command timed out after %ss" % timeout, "")

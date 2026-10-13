@@ -46,7 +46,7 @@ class CardTestCase(unittest.TestCase):
     def write(self, relpath, text):
         path = os.path.join(self.home, relpath)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as fh:
+        with open(path, "w", encoding="utf-8") as fh:
             fh.write(text)
         return path
 
@@ -184,7 +184,7 @@ class RolesJsonTests(CardTestCase):
     """default_budget(role) / budget_floor(): read from roles/roles.json, never hardcoded."""
 
     def repo_roles(self):
-        with open(REPO / "roles" / "roles.json") as fh:
+        with open(REPO / "roles" / "roles.json", encoding="utf-8") as fh:
             return json.load(fh)
 
     def test_repo_roles_json_supplies_each_role_budget(self):
@@ -268,7 +268,7 @@ class FixtureAssigneeTests(unittest.TestCase):
         import re
         scripts = Path(crew_card.__file__).resolve().parent
         for name in ("crew_heal_proof.py", "crew_probe_skip_proof.py"):
-            text = (scripts / name).read_text()
+            text = (scripts / name).read_text(encoding="utf-8")
             inserts = re.findall(r"insert into tasks.*?values.*?\n.*?\n", text, re.S)
             self.assertTrue(inserts, name)
             for chunk in inserts:
@@ -434,7 +434,7 @@ class SplitPlanTests(CardTestCase):
         self.assertEqual("", crew_card.proof_cmd(child["body"]))
         self.assertIsNone(child.get("model"))
         closeout = self.made[-1]
-        self.assertEqual("python3 %s closeout --cards %s && (%s)" % (crew_card.SELF, child["id"], self.PROOF),
+        self.assertEqual("%s %s closeout --cards %s && (%s)" % (crew_card.PYTHON, crew_card.SELF, child["id"], self.PROOF),
                          crew_card.proof_cmd(closeout["body"]))
 
     def test_a_split_child_closes_without_a_pass_line_and_a_normal_child_still_needs_one(self):
@@ -473,7 +473,7 @@ class SplitPlanTests(CardTestCase):
         self.assertIn("kanban_request_review", closeout)
         self.assertIn('reviewer="%s"' % crew_card.role_profile("verifier"), closeout)
         self.assertNotIn(" verdict --card", closeout)           # the coordinator never runs the verifier's script
-        self.assertEqual("python3 %s closeout --cards t_2 && (%s)" % (crew_card.SELF, script), crew_card.proof_cmd(closeout))
+        self.assertEqual("%s %s closeout --cards t_2 && (%s)" % (crew_card.PYTHON, crew_card.SELF, script), crew_card.proof_cmd(closeout))
         self.assertTrue(crew_card.needs_pass(closeout))
 
     def test_a_plain_proof_closeout_is_still_run_by_the_coordinator(self):
@@ -688,7 +688,7 @@ class VerdictLineTests(CardTestCase):
         rec = crew_card.record_verdict("t_v", self.PROOF, 0, "ok", 0.5)
         self.assertEqual("default", rec["by"])
         self.assertEqual(42, rec["run_id"])
-        with open(crew_card.verdict_path("t_v")) as fh:
+        with open(crew_card.verdict_path("t_v"), encoding="utf-8") as fh:
             line = json.loads(fh.read())
         self.assertEqual(("default", 42, "PASS"), (line["by"], line["run_id"], line["verdict"]))
         self.assertNotIn("profile", line)
@@ -722,10 +722,10 @@ class VerdictLineTests(CardTestCase):
         rec = crew_card.record_verdict("t_v", command or self.PROOF, rc, "", 0, by=by)
         if ts is not None:
             path = crew_card.verdict_path("t_v")
-            with open(path) as fh:
+            with open(path, encoding="utf-8") as fh:
                 lines = [json.loads(x) for x in fh]
             lines[-1]["ts"] = ts
-            with open(path, "w") as fh:
+            with open(path, "w", encoding="utf-8") as fh:
                 fh.write("".join(json.dumps(x) + "\n" for x in lines))
         return rec
 

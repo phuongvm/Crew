@@ -66,7 +66,7 @@ HTML_COLOURS = {
 
 def base_home():
     """Return the base Hermes home directory (the parent that holds profiles/)."""
-    h = os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
+    h = crew_card.hermes_home()
     h = os.path.abspath(h)
     # If HERMES_HOME points at a profile home (<base>/profiles/<name>), walk up.
     if os.path.basename(os.path.dirname(h)) == "profiles" and os.path.basename(h) != "profiles":
@@ -705,7 +705,7 @@ def load_roles():
     data = None
     for path in candidates:
         try:
-            with open(path) as fh:
+            with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)
             break
         except Exception:
@@ -782,7 +782,7 @@ def load_ledger(card_id):
         for suffix in ("", ".spent"):
             path = os.path.join(home, "crew", "budget", card_id + ".json" + suffix)
             try:
-                with open(path) as fh:
+                with open(path, encoding="utf-8") as fh:
                     data = json.load(fh)
             except Exception:
                 continue
@@ -803,7 +803,7 @@ def load_ledger_totals(card_id):
         for suffix in ("", ".spent"):
             path = os.path.join(home, "crew", "budget", card_id + ".json" + suffix)
             try:
-                with open(path) as fh:
+                with open(path, encoding="utf-8") as fh:
                     data = json.load(fh)
             except Exception:
                 continue
@@ -997,7 +997,7 @@ def load_progress_units(card_id):
     for home in home_roots():
         path = os.path.join(home, "crew", "progress", safe + ".json")
         try:
-            with open(path) as fh:
+            with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)
         except Exception:
             continue
@@ -2240,7 +2240,13 @@ def render_html(graph, json_filename, nonce=None):
     title = _html.escape("crew graph - " + card_id)
 
     css = dashboard_asset("tokens.css", "crew.css")
+    # fill card.js's placeholders before the asset is embedded, the card data last, so nothing a card
+    # carries is ever scanned for a placeholder (placeholders are plain identifiers, so the asset stays
+    # valid JavaScript for linters and code scanning)
     js = dashboard_asset("lib.js", "card.js")
+    js = js.replace("__CREW_JSON_NAME__", _js_safe(json_filename))
+    js = js.replace("__CREW_COLOURS__", json.dumps(HTML_COLOURS))
+    js = js.replace("__CREW_INITIAL__", initial)
 
     html_doc = """<!DOCTYPE html>
 <html lang="en">
@@ -2251,7 +2257,7 @@ def render_html(graph, json_filename, nonce=None):
 {favicon}
 <style>{css}</style>
 </head>
-<body class="page-card" data-card="%(card_id)s">
+<body class="page-card" data-card="{card_attr}">
 {brand}
 <div id="event"></div>
 <div id="main">
@@ -2338,14 +2344,10 @@ def render_html(graph, json_filename, nonce=None):
 </script>
 </body>
 </html>
-""".format(title=title, favicon=favicon_link(), brand=logo_link(), css=css, js=js,
+""".format(title=title, card_attr=_html.escape(card_id, quote=True), favicon=favicon_link(), brand=logo_link(), css=css, js=js,
                nonce_attr=(' nonce="%s"' % _html.escape(nonce, quote=True)) if nonce else "", **_tok_fields(graph.get("tokens")),
                **_brief_fields(graph))
 
-    html_doc = html_doc.replace("%(card_id)s", _html.escape(card_id, quote=True))
-    html_doc = html_doc.replace("%(json_name)s", _js_safe(json_filename))
-    html_doc = html_doc.replace("%(initial)s", initial)
-    html_doc = html_doc.replace("%(colours)s", json.dumps(HTML_COLOURS))
     return html_doc
 
 
@@ -2398,7 +2400,7 @@ def main(argv=None):
         path = args.json or _default_path(args.outdir or os.getcwd(), graph["card_id"], ".graph.json")
         path = os.path.abspath(path)
         try:
-            with open(path, "w") as fh:
+            with open(path, "w", encoding="utf-8") as fh:
                 fh.write(render_json(graph))
         except Exception as exc:
             print("could not write JSON: %s" % exc)
@@ -2418,9 +2420,9 @@ def main(argv=None):
         json_path = os.path.splitext(html_path)[0] + ".json"
         json_name = os.path.basename(json_path)
         try:
-            with open(json_path, "w") as fh:
+            with open(json_path, "w", encoding="utf-8") as fh:
                 fh.write(render_json(graph))
-            with open(html_path, "w") as fh:
+            with open(html_path, "w", encoding="utf-8") as fh:
                 fh.write(render_html(graph, json_name))
         except Exception as exc:
             print("could not write HTML: %s" % exc)
@@ -2460,6 +2462,8 @@ def watch_loop(card_ref, seconds, colour, steps_n):
 
 
 if __name__ == "__main__":
+    import crew_proc
+    crew_proc.utf8_stdio()
     try:
         sys.exit(main())
     except KeyboardInterrupt:

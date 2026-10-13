@@ -3,13 +3,15 @@
  *
  * Registers /crew route + sidebar nav entry below OpenSpec under the TOOLS group.
  * Provides live flow graph, multi-agent kanban view, and attention task monitoring.
+ * Dual mode: the /crew tile (asTile) and a right-hand 'Crew Flow Graph' pane (PANES_AREA, SandboxedFrame)
+ * are registered together and neither replaces the other.
  *
  * Packaging: single uncompiled ESM file. Runtime loader scans
  * ~/.hermes/plugins/crew/desktop/plugin.js or desktop-plugins/crew/plugin.js.
  */
 
 import {
-  Button, Codicon, host, ROUTES_AREA, SIDEBAR_NAV_AREA
+  Button, Codicon, host, PANES_AREA, ROUTES_AREA, SandboxedFrame, SIDEBAR_NAV_AREA
 } from '@hermes/plugin-sdk'
 import React from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
@@ -342,6 +344,308 @@ function CrewPage() {
   })
 }
 
+// ---------------------------------------------------------------- Flow Graph extension pane (PANES_AREA)
+// Issue #10: one card's flow graph in a right-hand Desktop pane, BESIDE the /crew tile, never instead of it.
+// The card list comes from ctx.rest('/board.json') (this plugin's own authenticated, profile-aware namespace);
+// the graph is the crew card page inside the SDK's SandboxedFrame (opaque origin: the page cannot reach the app,
+// its storage or the preload bridge). A frame src never carries the gateway token: the local daemon needs no
+// credential and a remote gateway gets a single-use ws-ticket.
+
+var PANE_ID = 'crew-flow-graph-pane'
+var PANE_TITLE = 'Crew Flow Graph'
+var PANE_POLL_MS = 5000
+var CARD_ID_RE = /^[A-Za-z0-9_-]+$/
+// The pane's default card: what is working now first, then what needs the owner, then the rest.
+var PANE_LANE_ORDER = ['running', 'blocked', 'review', 'queued', 'done']
+var BOARD_UNREACHABLE_MESSAGE = 'Crew board unreachable: the crew dashboard service is not answering'
+
+// The board's cards in pane order (archived lane left out), only ids a frame src may carry.
+function paneCards(board) {
+  var lanes = board && Array.isArray(board.lanes) ? board.lanes : []
+  var out = []
+  PANE_LANE_ORDER.forEach(function (key) {
+    lanes.forEach(function (lane) {
+      if (!lane || lane.key !== key || !Array.isArray(lane.tiles)) return
+      lane.tiles.forEach(function (tile) {
+        if (tile && CARD_ID_RE.test(String(tile.id || ''))) out.push(tile)
+      })
+    })
+  })
+  return out
+}
+
+// The card to show: the current one while it is still on the board (no focus jumps), else the first in pane order.
+function pickFocusCard(cards, currentId) {
+  if (!cards || !cards.length) return ''
+  for (var i = 0; i < cards.length; i++) {
+    if (currentId && cards[i].id === currentId) return currentId
+  }
+  return cards[0].id
+}
+
+// What makes the shown graph stale: a status move, a new run, a new outcome or a different live run.
+function cardSignature(tile) {
+  if (!tile) return ''
+  var run = tile.active && tile.active.run != null ? tile.active.run : ''
+  return [tile.status || '', tile.runs || 0, tile.last_outcome || '', run].join('|')
+}
+
+// The pane frame's src for a card, or null when nothing reachable is authorised (the pane then shows why).
+// Ladder: local backend -> the local daemon; any gateway -> its crew proxy with a single-use ticket;
+// remote without a ticket -> the local daemon. conn.token is never put in a URL.
+async function resolvePaneFrameSrc(cardId, env) {
+  if (!CARD_ID_RE.test(String(cardId || ''))) return null
+  var probe = env && env.probe ? env.probe : probeLocalDaemon
+  var desktop = env && 'desktop' in env ? env.desktop : (typeof window !== 'undefined' ? window.hermesDesktop : null)
+  var path = 'card/' + encodeURIComponent(cardId)
+  var conn = null
+  try {
+    if (desktop && desktop.getConnection) conn = await desktop.getConnection()
+  } catch (connErr) {
+    conn = null
+  }
+  var base = conn && conn.baseUrl ? String(conn.baseUrl).replace(/\/+$/, '') : ''
+  if (!/^https?:\/\//i.test(base)) base = ''
+  var remote = !!(conn && conn.mode === 'remote' && base)
+  if (!remote && await probe(1500)) return LOCAL_BOARD_URL + path
+  if (base && desktop && desktop.api) {
+    try {
+      var resp = await desktop.api({ path: '/api/auth/ws-ticket', method: 'POST' })
+      if (resp && resp.ticket) {
+        return base + '/api/plugins/crew/' + path + '?ticket=' + encodeURIComponent(resp.ticket)
+      }
+    } catch (ticketErr) {
+      // Not signed in to this gateway: the local daemon is the last rung.
+    }
+  }
+  if (remote && await probe(1500)) return LOCAL_BOARD_URL + path
+  return null
+}
+
+function shortCardTitle(title) {
+  var t = String(title || '').trim()
+  return t.length > 48 ? t.slice(0, 47) + '…' : t
+}
+
+function CrewFlowGraphPane(props) {
+  var rest = props ? props.rest : null
+  var frameRef = React.useRef(null)
+  var cardIdRef = React.useRef('')
+  var sigRef = React.useRef('')
+  var [cards, setCards] = React.useState([])
+  var [cardId, setCardId] = React.useState('')
+  var [boardError, setBoardError] = React.useState('')
+  var [frameSrc, setFrameSrc] = React.useState('')
+  var [frameError, setFrameError] = React.useState('')
+  var [reloadNonce, setReloadNonce] = React.useState(0)
+  var [pollNonce, setPollNonce] = React.useState(0)
+  cardIdRef.current = cardId
+
+  function postTheme() {
+    var el = frameRef.current
+    if (!el || !el.contentWindow) return
+    var t = getThemeTokens()
+    try {
+      // The frame's origin is opaque, so '*' is the only target that reaches it; theme colours are not secret.
+      el.contentWindow.postMessage({ type: 'hermes:theme', bg: t.bg, fg: t.fg, theme: t.mode }, '*')
+    } catch (postErr) {}
+  }
+
+  // The board poll: the card list, the focused card, and a frame reload when that card moved on.
+  // A hidden pane does not poll (host.paneVisibility, feature-detected on older desktops).
+  React.useEffect(function () {
+    var alive = true
+    var timer = null
+    var visible = null
+    try {
+      if (host && typeof host.paneVisibility === 'function') visible = host.paneVisibility('crew:' + PANE_ID)
+    } catch (visErr) {
+      visible = null
+    }
+    async function poll() {
+      if (!alive) return
+      if (visible && typeof visible.get === 'function' && !visible.get()) {
+        timer = setTimeout(poll, PANE_POLL_MS)
+        return
+      }
+      try {
+        if (typeof rest !== 'function') throw new Error('ctx.rest unavailable')
+        var board = await rest('/board.json')
+        if (!alive) return
+        var list = paneCards(board)
+        var id = pickFocusCard(list, cardIdRef.current)
+        var tile = null
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id === id) tile = list[i]
+        }
+        var sig = id + '#' + cardSignature(tile)
+        setCards(list)
+        setBoardError('')
+        if (id !== cardIdRef.current) {
+          setCardId(id)
+        } else if (sigRef.current && sig !== sigRef.current) {
+          setReloadNonce(function (n) { return n + 1 })
+        }
+        sigRef.current = sig
+      } catch (pollErr) {
+        if (alive) setBoardError(BOARD_UNREACHABLE_MESSAGE)
+      }
+      if (alive) timer = setTimeout(poll, PANE_POLL_MS)
+    }
+    poll()
+    return function () {
+      alive = false
+      if (timer) clearTimeout(timer)
+    }
+  }, [rest, pollNonce])
+
+  // The frame src for the focused card, re-resolved on every reload (a ticket is single-use).
+  React.useEffect(function () {
+    var alive = true
+    if (!cardId) {
+      setFrameSrc('')
+      setFrameError('')
+      return function () { alive = false }
+    }
+    resolvePaneFrameSrc(cardId).then(function (src) {
+      if (!alive) return
+      if (src) {
+        setFrameError('')
+        setFrameSrc(withThemeQuery(src))
+      } else {
+        setFrameSrc('')
+        setFrameError(AUTH_REQUIRED_MESSAGE)
+      }
+    })
+    return function () { alive = false }
+  }, [cardId, reloadNonce])
+
+  // The card page's discussion chip (hermes:open-session) from our own frame only; theme follows the app.
+  React.useEffect(function () {
+    function onMsg(e) {
+      var frame = frameRef.current
+      if (!frame || !e || e.source !== frame.contentWindow || !e.data) return
+      if (e.data.type === 'hermes:open-session') {
+        var target = parseOpenSession(e.data)
+        if (target) openCardSession(target, host)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    var obs = null
+    try {
+      obs = new MutationObserver(postTheme)
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-hermes-mode', 'class', 'style'] })
+    } catch (obsErr) {}
+    return function () {
+      window.removeEventListener('message', onMsg)
+      if (obs) obs.disconnect()
+    }
+  }, [])
+
+  var refresh = function () {
+    setPollNonce(function (n) { return n + 1 })
+    setReloadNonce(function (n) { return n + 1 })
+  }
+
+  var openTile = function () {
+    if (host && typeof host.navigate === 'function') host.navigate('/crew')
+  }
+
+  var message = boardError || frameError || (!cardId ? 'No cards on the board' : '')
+
+  return jsxs('div', {
+    style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+    children: [
+      jsxs('header', {
+        style: {
+          minHeight: '32px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '0 8px',
+          borderBottom: '1px solid var(--border, rgba(255, 255, 255, 0.08))'
+        },
+        children: [
+          jsx(Codicon, { name: 'organization', style: { fontSize: '13px', color: 'var(--primary, #34d399)' } }),
+          jsx('select', {
+            value: cardId,
+            'aria-label': 'Crew card',
+            title: 'Crew card',
+            disabled: !cards.length,
+            onChange: function (e) {
+              sigRef.current = ''
+              setCardId(e.target.value)
+            },
+            style: {
+              flex: 1,
+              minWidth: 0,
+              height: '22px',
+              fontSize: '11px',
+              background: 'transparent',
+              color: 'var(--foreground, #ffffff)',
+              border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
+              borderRadius: '4px'
+            },
+            children: cards.map(function (tile) {
+              return jsx('option', { value: tile.id, children: tile.id + ' · ' + shortCardTitle(tile.title) }, tile.id)
+            })
+          }),
+          jsx(Button, {
+            size: 'sm',
+            variant: 'ghost',
+            onClick: refresh,
+            title: 'Refresh',
+            style: { height: '22px', padding: '0 4px' },
+            children: jsx(Codicon, { name: 'refresh', style: { fontSize: '12px' } })
+          }),
+          jsx(Button, {
+            size: 'sm',
+            variant: 'ghost',
+            onClick: openTile,
+            title: 'Open the Crew board tile',
+            style: { height: '22px', padding: '0 4px' },
+            children: jsx(Codicon, { name: 'link-external', style: { fontSize: '12px' } })
+          })
+        ]
+      }),
+      jsx('div', {
+        style: { flex: 1, position: 'relative', overflow: 'hidden' },
+        children: message
+          ? jsxs('div', {
+              role: boardError || frameError ? 'alert' : 'status',
+              style: {
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '16px',
+                textAlign: 'center',
+                fontSize: '12px',
+                color: 'var(--foreground, #ffffff)'
+              },
+              children: [
+                jsx('div', { children: message }),
+                boardError || frameError
+                  ? jsx(Button, { size: 'sm', variant: 'outline', onClick: refresh, children: 'Retry' })
+                  : null
+              ]
+            })
+          : frameSrc
+            ? jsx(SandboxedFrame, {
+                ref: frameRef,
+                src: frameSrc,
+                title: PANE_TITLE,
+                onLoad: postTheme,
+                style: { width: '100%', height: '100%', display: 'block' }
+              }, cardId + ':' + reloadNonce)
+            : jsx('div', { role: 'status', style: { padding: '16px', fontSize: '12px', opacity: 0.7 }, children: 'Loading flow graph…' })
+      })
+    ]
+  })
+}
+
 var plugin = {
   id: 'crew',
   name: 'Crew',
@@ -359,9 +663,79 @@ var plugin = {
         area: SIDEBAR_NAV_AREA,
         order: 55,
         data: { codicon: 'organization', label: 'Crew', path: '/crew', asTile: true }
+      },
+      {
+        // The Flow Graph pane, beside the tile above (Issue #10). hideOnly: Close on the only pane of a
+        // plugin disables the whole plugin in Desktop, which would take the /crew tile with it; a hide-only
+        // pane is shown/hidden instead (tab menu, ⌘K) and the tile stays.
+        id: PANE_ID,
+        area: PANES_AREA,
+        title: PANE_TITLE,
+        data: { placement: 'right', width: '380px', hideOnly: true },
+        render: function() { return jsx(CrewFlowGraphPane, { rest: ctx.rest }) }
       }
     ])
   }
 }
 
 export default plugin
+
+
+const ID = '[A-Za-z0-9_-]+'
+const BOARD_QUERY = '(\\?(?:all=1|older=1)(?:&(?:all=1|older=1))?)?'
+
+const ROUTES = [
+  { method: 'GET', re: new RegExp('^board\\.json' + BOARD_QUERY + '$'), to: m => '/board.json' + (m[1] || ''), out: 'json' },
+  { method: 'GET', re: new RegExp('^card/(' + ID + ')\\.json$'), to: m => '/card/' + m[1] + '.json', out: 'json' },
+  { method: 'GET', re: /^avatars\/role\/([a-z0-9][a-z0-9_-]{0,39})\.svg$/, to: m => '/embed/avatar/role/' + m[1] + '.svg', out: 'data_url' },
+  { method: 'POST', re: new RegExp('^ack/(' + ID + ')(\\?undo=1)?$'), to: m => '/embed/ack/' + m[1] + (m[2] || ''), out: 'ack' }
+]
+
+const NAV_RE = new RegExp('^(?:(board)|card/(' + ID + '))(\\?all=1)?$')
+
+export function routeFor(method, path) {
+  if (typeof method !== 'string' || typeof path !== 'string') return null
+  for (const r of ROUTES) {
+    const m = r.method === method.toUpperCase() ? r.re.exec(path) : null
+    if (m) return { path: r.to(m), out: r.out }
+  }
+  return null
+}
+
+export function navTarget(path) {
+  const m = typeof path === 'string' ? NAV_RE.exec(path) : null
+  return m ? { page: m[1] ? 'board' : 'card', id: m[2] || null, all: !!m[3] } : null
+}
+
+export function toDataUrl(html) {
+  const bytes = new TextEncoder().encode(html)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000))
+  return 'data:text/html;charset=utf-8;base64,' + btoa(bin)
+}
+
+function reply(source, id, body) {
+  try { source.postMessage({ crew: 1, id, ...body }, '*') } catch (e) { /* the frame went away */ }
+}
+
+export async function handleFrameMessage(ctx, frameWindow, event, setView) {
+  const m = event.data
+  if (!frameWindow || event.source !== frameWindow || !m || m.crew !== 1) return
+  if (m.navigate !== undefined) {
+    const view = navTarget(m.navigate)
+    if (view) setView(view)
+    return
+  }
+  const id = m.id
+  if (typeof id !== 'number') return
+  const route = routeFor(m.method, m.path)
+  if (!route) return reply(event.source, id, { error: 'crew: path not allowed' })
+  try {
+    const res = await ctx.rest(route.path, { method: m.method.toUpperCase() })
+    if (route.out === 'json') reply(event.source, id, { status: 200, text: JSON.stringify(res) })
+    else if (route.out === 'data_url') reply(event.source, id, { status: 200, text: res.data_url })
+    else reply(event.source, id, { status: res.status, text: res.text })
+  } catch (e) {
+    reply(event.source, id, { error: String((e && e.message) || e) })
+  }
+}

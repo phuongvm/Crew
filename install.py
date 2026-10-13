@@ -31,6 +31,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SRC_DIR = Path(__file__).resolve().parent          # the libs/crew directory (source of truth)
+if str(SRC_DIR / "scripts") not in sys.path:
+    sys.path.insert(0, str(SRC_DIR / "scripts"))
+import crew_card  # noqa: E402 - the one place that knows where Hermes, its venv and its default home are on this OS
 UNIT_GRAPH_NAME = "crew-graph-http.service"
 GRAPH_PORT = 8799
 UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
@@ -56,14 +59,17 @@ PROOFS_SHIM_TEXT = (
     "# switches to the Hermes python itself.\n"
     "import os\n"
     "import sys\n"
+    "import subprocess\n"
     "\n"
     "runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), \"..\", \"plugins\", \"crew\", \"scripts\",\n"
     "                      \"crew_proofs.py\")\n"
-    "os.execv(sys.executable, [sys.executable, runner, \"--quiet\"] + sys.argv[1:])\n")
+    "\n"
+    "# not os.execv: on Windows that ends this process at once with status 0, before the proofs have run\n"
+    "sys.exit(subprocess.call([sys.executable, runner, \"--quiet\"] + sys.argv[1:]))\n")
 
 # Everything in the package's scripts/ ships: one list derived from the tree, so a new script can never be left
 # out of the installed copy (crew_safety.py once was, and every importer crashed). Bytecode never ships.
-SCRIPT_FILES = sorted(str(p.relative_to(SRC_DIR / "scripts")) for p in (SRC_DIR / "scripts").rglob("*")
+SCRIPT_FILES = sorted(p.relative_to(SRC_DIR / "scripts").as_posix() for p in (SRC_DIR / "scripts").rglob("*")
                       if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc")
 # Scripts the package once shipped and has since deleted.
 RETIRED_SCRIPT_FILES = ["crew_follow.py", "crew_follow_proof.py", "crew_observer.py", "crew_observer.sh",
@@ -89,7 +95,7 @@ ROLE_FILES = ["roles.json", "briefs/coordinator.md", "briefs/worker.md", "briefs
 
 
 def hermes_bin():
-    return os.environ.get("HERMES_BIN") or shutil.which("hermes") or os.path.expanduser("~/.local/bin/hermes")
+    return crew_card.hermes_bin()
 
 
 def python3_bin():
@@ -101,7 +107,9 @@ def python3_bin():
 
 def resolve_profile_home(name):
     name = (name or "").strip()
-    base = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
+    base = os.environ.get("HERMES_HOME") or crew_card.default_home()
+    if os.path.basename(os.path.dirname(os.path.abspath(base))) == "profiles":
+        base = os.path.dirname(os.path.dirname(os.path.abspath(base)))
     if not name or name == "default":
         return base
     return os.path.join(base, "profiles", name)
@@ -118,7 +126,7 @@ def h(profile, *args):
     if args[:2] == ("config", "set"):
         _CFG_CACHE.pop(profile or "", None)   # a write makes the cached reads of that profile stale
     return subprocess.run([hermes_bin(), *profile_flag(profile), *args],
-                          capture_output=True, text=True, timeout=240)
+                          capture_output=True, text=True, timeout=240, encoding="utf-8", errors="replace")
 
 
 _REAL_H = h
@@ -149,12 +157,8 @@ print(json.dumps(out))
 def _hermes_python():
     """(python, root) of the Hermes install that can import hermes_cli: the package manager's committed venv,
     else a legacy in-tree venv (crew_card.hermes_python decides); (None, None) when neither exists."""
-    scripts = os.path.join(SRC_DIR, "scripts")
-    if scripts not in sys.path:
-        sys.path.insert(0, scripts)
-    import crew_card
     root = os.path.dirname(os.path.dirname(os.path.realpath(hermes_bin())))
-    for cand in (os.path.join(Path.home(), ".hermes", "hermes-agent"), root):
+    for cand in (crew_card.hermes_root(), root):
         py = crew_card.hermes_python(cand)
         if py:
             return py, cand
@@ -175,7 +179,7 @@ def _cfg_raw_many(profile, keys):
             env = dict(os.environ, HERMES_HOME=resolve_profile_home(profile))
             try:
                 r = subprocess.run([py, "-c", _CFG_READER, root, json.dumps(want)], capture_output=True,
-                                   text=True, timeout=60, env=env)
+                                   text=True, timeout=60, env=env, encoding="utf-8", errors="replace")
                 got = json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode == 0 and r.stdout.strip() else None
             except (OSError, ValueError, subprocess.SubprocessError, IndexError):
                 got = None
@@ -247,7 +251,7 @@ def _write_shim(dst):
     path = os.path.join(dst, PROOFS_SHIM)
     if os.path.islink(path):
         os.unlink(path)      # write_text follows a symlink and would overwrite its target
-    Path(path).write_text(PROOFS_SHIM_TEXT)
+    Path(path).write_bytes(PROOFS_SHIM_TEXT.encode())     # bytes: step_proofs_cron compares them, and write_text turns \n into \r\n on Windows
     os.chmod(path, 0o755)
 
 
@@ -314,12 +318,12 @@ def step_crew_dirs(profile_home, apply):
     return "CHANGED", "created " + ", ".join(need)
 
 
-OWNER_RECORD = os.path.join(os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes"), "crew", "owner.json")
+OWNER_RECORD = os.path.join(os.environ.get("HERMES_HOME") or crew_card.default_home(), "crew", "owner.json")
 
 
 def _owner_record():
     try:
-        with open(OWNER_RECORD) as fh:
+        with open(OWNER_RECORD, encoding="utf-8") as fh:
             data = json.load(fh)
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
@@ -330,7 +334,7 @@ def _owner_record_set(**keys):
     data = _owner_record()
     data.update(keys)
     os.makedirs(os.path.dirname(OWNER_RECORD), exist_ok=True)
-    with open(OWNER_RECORD, "w") as fh:
+    with open(OWNER_RECORD, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=1, sort_keys=True)
 
 
@@ -357,7 +361,7 @@ def step_other_copies(profile_home, prefix, apply):
     released version in every profile"): plugin (scripts included), skills, roles file and the removal of old script
     copies, nothing else - its config, services and ownership are left alone. Only a profile that already has
     plugins/crew is touched; every change is printed. Role profiles are kept current by the profiles step."""
-    base = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
+    base = os.environ.get("HERMES_HOME") or crew_card.default_home()
     roles = {home for _r, _n, home, _t in _role_plans(prefix)}
     homes = [base] + sorted(str(p) for p in (Path(base) / "profiles").glob("*") if p.is_dir())
     stale = []
@@ -454,7 +458,7 @@ def intake_preload_chars():
     and reading that file back is a tool call, which the intake rule ("ask through clarify, no
     research call") forbids. So the cap has to sit above this size."""
     try:
-        body = (SRC_DIR / "skills" / "crew" / "SKILL.md").read_text()
+        body = (SRC_DIR / "skills" / "crew" / "SKILL.md").read_text(encoding="utf-8")
     except OSError:
         return 0
     if body.startswith("---"):
@@ -588,7 +592,7 @@ def _declared_hooks(home):
     indented `command:` line (the form this package writes) or a bare path string.
     """
     try:
-        lines = Path(os.path.join(home, "config.yaml")).read_text().splitlines()
+        lines = Path(os.path.join(home, "config.yaml")).read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
     hooks, event, in_hooks = [], None, False
@@ -617,13 +621,19 @@ def _declared_hooks(home):
     return hooks
 
 
+# Windows cannot express a file mode: chmod 0600 leaves the file reading as 0666 and every existing file reads as
+# executable, so "the consent record is 0600" and "the hook has its exec bit" are meaningless there. Both checks
+# run only where the OS has POSIX modes (the access rules of a Windows profile are its ACLs, not these bits).
+POSIX_MODES = os.name != "nt"
+
+
 def _load_allowlist(home):
     """(entries, finding): the home's approvals, or the one finding explaining why there are none."""
     path = Path(home) / ALLOWLIST_NAME
     if not path.exists():
         return None, "no consent record (%s missing)" % ALLOWLIST_NAME
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return None, "consent record unreadable (%s)" % type(exc).__name__
     entries = data.get("approvals") if isinstance(data, dict) else None
@@ -649,12 +659,13 @@ def permission_problems(home):
     entries, problem = _load_allowlist(home)
     if problem:
         findings.append(problem)
-    try:
-        mode = os.stat(os.path.join(home, ALLOWLIST_NAME)).st_mode & 0o777
-        if mode != 0o600:
-            findings.append("consent record mode %o, want 600" % mode)
-    except OSError:
-        pass
+    if POSIX_MODES:
+        try:
+            mode = os.stat(os.path.join(home, ALLOWLIST_NAME)).st_mode & 0o777
+            if mode != 0o600:
+                findings.append("consent record mode %o, want 600" % mode)
+        except OSError:
+            pass
     approved = {(e.get("event"), e.get("command")): e for e in (entries or []) if isinstance(e, dict)}
     for event, command in pairs:
         entry = approved.get((event, command))
@@ -664,7 +675,7 @@ def permission_problems(home):
         script = _script_path(command)
         if not os.path.exists(script):
             findings.append("hook script missing: %s" % script)
-        elif not os.access(script, os.X_OK):
+        elif POSIX_MODES and not os.access(script, os.X_OK):
             findings.append("hook script not executable: %s" % script)
         now, was = _mtime_iso(command), entry.get("script_mtime_at_approval")
         if now and was and now > was:
@@ -689,7 +700,7 @@ def _conf_lines(conf_path):
     """[(key, value)] for every `key = value` line of a role's settings.conf, installer directives
     included, `{prefix}` resolved. [] when the file is missing."""
     try:
-        text = Path(conf_path).read_text()
+        text = Path(conf_path).read_text(encoding="utf-8")
     except OSError:
         return []
     out = []
@@ -768,7 +779,7 @@ def plugin_script(profile_home, name):
 def _ts_humans():
     """Tailnet logins of people (not this node's own user, not tagged devices): who --publish may let in."""
     try:
-        r = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10, encoding="utf-8", errors="replace")
         data = json.loads(r.stdout) if r.returncode == 0 else {}
     except (OSError, ValueError, subprocess.SubprocessError):
         return []
@@ -818,38 +829,43 @@ def render_graph_unit(profile_home, port=GRAPH_PORT):
 
 
 def step_graph_unit(profile_home, apply, no_service, port=GRAPH_PORT):
+    if sys.platform == "win32":
+        # There is no systemd --user on native Windows: writing a unit file would only leave a dead file
+        # and the enable/restart would silently no-op. Skip it and say how to get the dashboard up instead.
+        return "SKIP", ("graph http: native Windows has no systemd unit - run scripts/crew_graph_serve.py, "
+                        "or autostart it (`schtasks /Create /SC ONLOGON ...`); see WINDOWS.md")
     if no_service:
         return "SKIP", "graph http unit (--no-service)"
     unit = render_graph_unit(profile_home, port)
     unit_path = UNIT_DIR / UNIT_GRAPH_NAME
     if os.path.exists(str(unit_path)) and _read(str(unit_path)) == unit.encode():
         act = subprocess.run(["systemctl", "--user", "is-active", UNIT_GRAPH_NAME],
-                             capture_output=True, text=True).stdout.strip()
+                             capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
         if act == "active":
             return "OK", "graph http unit up to date (active on 127.0.0.1:%d)" % port
         if not apply:
             return "CHANGED", "graph http unit -> start %s" % UNIT_GRAPH_NAME
         subprocess.run(["systemctl", "--user", "enable", "--now", UNIT_GRAPH_NAME],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
         return "CHANGED", "graph http unit started"
     if not apply:
         return "CHANGED", "graph http unit -> %s" % unit_path
     os.makedirs(UNIT_DIR, exist_ok=True)
     tmp = str(unit_path) + ".tmp"
-    with open(tmp, "w") as fh:
+    with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(unit)
     os.replace(tmp, str(unit_path))
-    subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True)
+    subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     # enable, then restart: `enable --now` leaves an already-running server on the old unit (and, on an upgrade,
     # on the old script path the install just removed - 2026-10-03, the 0.6 server kept answering 500)
-    subprocess.run(["systemctl", "--user", "enable", UNIT_GRAPH_NAME], capture_output=True, text=True)
-    subprocess.run(["systemctl", "--user", "restart", UNIT_GRAPH_NAME], capture_output=True, text=True)
+    subprocess.run(["systemctl", "--user", "enable", UNIT_GRAPH_NAME], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    subprocess.run(["systemctl", "--user", "restart", UNIT_GRAPH_NAME], capture_output=True, text=True, encoding="utf-8", errors="replace")
     return "CHANGED", "graph http unit written + daemon-reload + enable + restart"
 
 
 def _ts_name():
     try:
-        r = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10, encoding="utf-8", errors="replace")
         if r.returncode == 0:
             import json as _json
             data = _json.loads(r.stdout)
@@ -1113,7 +1129,7 @@ def step_role_skills(home, tpl, source_home, apply, owned=True):
         path = os.path.join(root, name)
         pass  # preserve
     if marker:
-        Path(os.path.join(home, NO_BUNDLED_SKILLS_MARKER)).write_text(NO_BUNDLED_SKILLS_TEXT)
+        Path(os.path.join(home, NO_BUNDLED_SKILLS_MARKER)).write_text(NO_BUNDLED_SKILLS_TEXT, encoding="utf-8")
     return "CHANGED", "role skills slim: dropped %d entr%s%s" % (
         len(excess), "y" if len(excess) == 1 else "ies", (", added %s" % ", ".join(missing)) if missing else "")
 
@@ -1132,7 +1148,7 @@ def roles_budget():
     """prompt_budget_tokens from the package's roles.json (None when the key is absent)."""
     import json
     try:
-        with open(SRC_DIR / "roles" / "roles.json") as fh:
+        with open(SRC_DIR / "roles" / "roles.json", encoding="utf-8") as fh:
             val = json.load(fh).get("prompt_budget_tokens")
         return int(val) if val else None
     except Exception:
@@ -1243,7 +1259,7 @@ def _apply_settings(profile, conf_path):
 def _shipped_record(profile_home):
     import json
     try:
-        with open(os.path.join(profile_home, SHIPPED_RECORD)) as fh:
+        with open(os.path.join(profile_home, SHIPPED_RECORD), encoding="utf-8") as fh:
             return json.load(fh)
     except Exception:
         return {}
@@ -1252,7 +1268,7 @@ def _shipped_record(profile_home):
 def _plugin_version(path):
     """Version line from a plugin.yaml, so drift between package and profile is visible."""
     try:
-        for line in Path(path).read_text().splitlines():
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
             if line.startswith("version:"):
                 return line.split(":", 1)[1].strip()
     except OSError:
@@ -1306,10 +1322,10 @@ def step_profiles(source_profile, prefix, apply, no_profiles=False):
         exists = os.path.isdir(home)
         soul = os.path.join(tpl, "SOUL.md")
         rec = _shipped_record(home) if exists else {}
-        shipped = Path(soul).read_text() if os.path.exists(soul) else ""
+        shipped = Path(soul).read_text(encoding="utf-8") if os.path.exists(soul) else ""
         cur = None
         if exists and os.path.exists(os.path.join(home, "SOUL.md")):
-            cur = Path(os.path.join(home, "SOUL.md")).read_text()
+            cur = Path(os.path.join(home, "SOUL.md")).read_text(encoding="utf-8")
         # Write SOUL.md when the profile is new, or when the file is still the one we shipped.
         soul_need = (not exists) or (cur != shipped and rec.get("SOUL.md") == _sha(cur or ""))
         settings_need = exists and bool(settings_problems(name, role, tpl))
@@ -1351,16 +1367,16 @@ def step_profiles(source_profile, prefix, apply, no_profiles=False):
         rec = _shipped_record(home)
         soul_src = os.path.join(tpl, "SOUL.md")
         if os.path.exists(soul_src):
-            shipped = Path(soul_src).read_text()
+            shipped = Path(soul_src).read_text(encoding="utf-8")
             dst = os.path.join(home, "SOUL.md")
-            cur = Path(dst).read_text() if os.path.exists(dst) else None
+            cur = Path(dst).read_text(encoding="utf-8") if os.path.exists(dst) else None
             if (not existed) or cur == shipped or rec.get("SOUL.md") == _sha(cur or ""):
-                Path(dst).write_text(shipped)
+                Path(dst).write_text(shipped, encoding="utf-8")
                 rec["SOUL.md"] = _sha(shipped)
         keys = _apply_settings(name, os.path.join(tpl, "settings.conf"))
         rec["settings"] = keys
         rec["provisioned"] = _provision_role_profile(name, home, tpl, resolve_profile_home(source_profile), owned)
-        Path(os.path.join(home, SHIPPED_RECORD)).write_text(json.dumps(rec, indent=2, sort_keys=True))
+        Path(os.path.join(home, SHIPPED_RECORD)).write_text(json.dumps(rec, indent=2, sort_keys=True), encoding="utf-8")
         done.append(name if not existed else "%s (%s)" % (name, ",".join(keys) or "up to date"))
     return "CHANGED", "role profiles -> " + ", ".join(done)
 
@@ -1403,11 +1419,14 @@ def report(profile, profile_home, args):
     print("graph script: %s (%s)" % (graph_path, "present" if os.path.exists(graph_path) else "MISSING"))
     roles_path = os.path.join(profile_home, "roles", "crew", "roles.json")
     print("roles file: %s (%s)" % (roles_path, "present" if os.path.exists(roles_path) else "MISSING"))
-    if args.no_service:
+    if sys.platform == "win32":
+        print("graph http: no systemd unit on native Windows - run scripts/crew_graph_serve.py "
+              "on http://127.0.0.1:%d/ (see WINDOWS.md)" % args.graph_port)
+    elif args.no_service:
         print("graph http: skipped (--no-service)")
     else:
         gact = subprocess.run(["systemctl", "--user", "is-active", UNIT_GRAPH_NAME],
-                              capture_output=True, text=True).stdout.strip()
+                              capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
         name = _ts_name()
         local = "http://127.0.0.1:%d/" % args.graph_port
         print("graph http state: %s (%s)" % (gact or "unknown", local))
@@ -1507,7 +1526,7 @@ def main():
     if args.publish and not args.no_service:
         target = "http://127.0.0.1:%d" % args.graph_port
         pub = subprocess.run(["tailscale", "serve", "--bg", "--https", str(args.https_port), target],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
         print("publish: %s" % ((pub.stdout or pub.stderr or "").strip().splitlines()[-1:] or ["?"])[0])
         name = _ts_name()
         if pub.returncode == 0 and name:      # card links in the owner's messages and the board header point here
