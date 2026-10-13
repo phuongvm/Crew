@@ -1243,15 +1243,26 @@ class DesktopDualModeTests(unittest.TestCase):
     Graph pane (PANES_AREA, SandboxedFrame) registers beside it."""
 
     SDK_STUB = r"""
+export const PALETTE_AREA = 'palette';
 export const PANES_AREA = 'panes';
 export const ROUTES_AREA = 'routes';
 export const SIDEBAR_NAV_AREA = 'sidebar.nav';
 export function SandboxedFrame(){ return null; }
 export function Button(){ return null; }
 export function Codicon(){ return null; }
+export function Select(){ return null; }
+export function SelectContent(){ return null; }
+export function SelectItem(){ return null; }
+export function SelectTrigger(){ return null; }
+export function SelectValue(){ return null; }
 export const host = globalThis.__host || {};
 """
-    REACT_STUB = "export default {useRef(){}, useState(){}, useEffect(){}, Fragment: 'frag'};\n"
+    # Hooks return usable shapes so a component can be called once as a function; every state setter call is
+    # recorded on globalThis.__sets for the test to read.
+    REACT_STUB = ("export default {useRef(v){ return {current: v}; },"
+                  " useState(v){ return [typeof v === 'function' ? v() : v,"
+                  " function(x){ (globalThis.__sets = globalThis.__sets || []).push(x); }]; },"
+                  " useEffect(){}, Fragment: 'frag'};\n")
     JSX_STUB = ("export function jsx(type, props, key){ return {type: type, props: props, key: key}; }\n"
                 "export const jsxs = jsx;\n")
 
@@ -1305,7 +1316,7 @@ console.log(JSON.stringify(regs.map(function(c){
 
     def test_dual_mode_registers_tile_and_pane_together(self):
         regs = {r["id"]: r for r in self._registered()}
-        self.assertEqual({"page", "nav", "crew-flow-graph-pane"}, set(regs))
+        self.assertEqual({"page", "nav", "crew-flow-graph-pane", "pane-toggle"}, set(regs))
         # The tile, unchanged: /crew route rendering CrewPage + the asTile sidebar row.
         self.assertEqual("routes", regs["page"]["area"])
         self.assertEqual({"path": "/crew"}, regs["page"]["data"])
@@ -1321,6 +1332,126 @@ console.log(JSON.stringify(regs.map(function(c){
         self.assertEqual("380px", pane["data"]["width"])
         self.assertEqual("pane", pane["renders"])
         self.assertTrue(pane["rest_passed"])            # the board list goes through ctx.rest, not a raw fetch
+
+    # A ctx whose register() returns a real disposer and whose storage is an in-memory map, so the pane toggle
+    # is driven exactly as Desktop drives it: registrations come and go, the palette row stays.
+    TOGGLE_HARNESS = r"""
+import { host } from './sdk.mjs';
+function harness(stored){
+  const live = new Map(), store = new Map(stored || []), reveals = [];
+  let visible = true;
+  host.paneVisibility = function(id){ return {get: function(){ return visible && live.has(id.split(':')[1]); }}; };
+  host.revealPane = function(id){ reveals.push(id); };
+  const ctx = {
+    rest: function(){ return Promise.resolve({}); },
+    storage: {get: function(k, f){ return store.has(k) ? store.get(k) : f; }, set: function(k, v){ store.set(k, v); },
+              remove: function(k){ store.delete(k); }},
+    register: function(c){ live.set(c.id, c); return function(){ live.delete(c.id); }; },
+    registerMany: function(cs){ cs.forEach(function(c){ live.set(c.id, c); }); return function(){}; }};
+  plugin.register(ctx);
+  return {live: live, store: store, reveals: reveals, setVisible: function(v){ visible = v; },
+          ids: function(){ return Array.from(live.keys()).sort(); },
+          row: function(){ return live.get('pane-toggle').data; }};
+}
+const tick = function(){ return new Promise(function(r){ setTimeout(r, 5); }); };
+"""
+
+    def test_palette_row_toggles_the_pane_without_touching_the_tile(self):
+        out = self._run(self.TOGGLE_HARNESS + r"""
+(async function(){
+  const h = harness();
+  const r = {booted: h.ids(), area: h.live.get('pane-toggle').area, id: h.row().id, label: h.row().label,
+             keywords: h.row().keywords, keep_open: h.row().keepOpen, detail_on: h.row().detail()};
+  h.row().run();                                     // Ctrl+K: off
+  r.after_hide = h.ids(); r.detail_off = h.row().detail(); r.stored_off = h.store.get('flowGraphPaneShown');
+  h.row().run();                                     // Ctrl+K: on again
+  await tick();
+  r.after_show = h.ids(); r.detail_back = h.row().detail(); r.stored_on = h.store.get('flowGraphPaneShown');
+  r.reveals = h.reveals.slice();
+  h.setVisible(false);                               // registered but not on screen (zone minimized / other tab)
+  r.detail_offscreen = h.row().detail();
+  h.row().run();                                     // so the press shows it, it does not hide it
+  await tick();
+  r.offscreen_press = h.ids(); r.reveals_after = h.reveals.length;
+  console.log(JSON.stringify(r));
+})();
+""")
+        self.assertEqual(["crew-flow-graph-pane", "nav", "page", "pane-toggle"], out["booted"])
+        self.assertEqual("palette", out["area"])
+        self.assertEqual("crew.flow-graph-pane.toggle", out["id"])
+        self.assertIn("Crew Flow Graph", out["label"])
+        self.assertIn("crew", out["keywords"])
+        self.assertIs(True, out["keep_open"])
+        self.assertEqual("on", out["detail_on"])
+        # Hidden: the pane registration is gone; the tile, the nav row and the palette row stay (plugin enabled).
+        self.assertEqual(["nav", "page", "pane-toggle"], out["after_hide"])
+        self.assertEqual("off", out["detail_off"])
+        self.assertIs(False, out["stored_off"])
+        # Shown again: re-registered and revealed through the contribution-scoped id.
+        self.assertEqual(["crew-flow-graph-pane", "nav", "page", "pane-toggle"], out["after_show"])
+        self.assertEqual("on", out["detail_back"])
+        self.assertIs(True, out["stored_on"])
+        self.assertEqual(["crew:crew-flow-graph-pane"], out["reveals"])
+        self.assertEqual("off", out["detail_offscreen"])
+        self.assertEqual(["crew-flow-graph-pane", "nav", "page", "pane-toggle"], out["offscreen_press"])
+        self.assertEqual(2, out["reveals_after"])
+
+    def test_hidden_pane_stays_hidden_across_a_reload(self):
+        out = self._run(self.TOGGLE_HARNESS + r"""
+(async function(){
+  const h = harness([['flowGraphPaneShown', false]]);
+  const r = {booted: h.ids(), detail: h.row().detail(), reveals: h.reveals.length};
+  h.row().run();
+  await tick();
+  r.after_show = h.ids();
+  console.log(JSON.stringify(r));
+})();
+""")
+        self.assertEqual(["nav", "page", "pane-toggle"], out["booted"])   # no pane, tile intact, row offers it
+        self.assertEqual("off", out["detail"])
+        self.assertEqual(0, out["reveals"])                                # boot never steals focus
+        self.assertEqual(["crew-flow-graph-pane", "nav", "page", "pane-toggle"], out["after_show"])
+
+    def test_pane_header_hide_button_and_themed_card_select(self):
+        out = self._run(self.TOGGLE_HARNESS + r"""
+import * as SDK from './sdk.mjs';
+function walk(node, fn){
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) { node.forEach(function(n){ walk(n, fn); }); return; }
+  fn(node);
+  if (node.props) walk(node.props.children, fn);
+}
+(async function(){
+  const h = harness();
+  const el = h.live.get('crew-flow-graph-pane').render();
+  const tree = el.type(el.props);                    // one render pass of the shipped pane component
+  const types = [], hides = [], selects = [];
+  walk(tree, function(n){
+    types.push(typeof n.type === 'string' ? n.type : (n.type && n.type.name) || '?');
+    if (n.type === SDK.Button && n.props.onClick === el.props.onHide) hides.push(n.props['aria-label'] || '');
+    if (n.type === SDK.Select) selects.push(n);
+  });
+  globalThis.__sets = [];
+  selects[0].props.onValueChange('t_abc');
+  selects[0].props.onValueChange('../board');
+  const sets = globalThis.__sets.slice();
+  hides.length && el.props.onHide();                 // the header button runs the same hide as Ctrl+K
+  console.log(JSON.stringify({types: types, hides: hides, n_select: selects.length, sets: sets,
+                              after_hide: h.ids(), stored: h.store.get('flowGraphPaneShown'),
+                              on_hide_fn: typeof el.props.onHide}));
+})();
+""")
+        self.assertEqual("function", out["on_hide_fn"])
+        self.assertEqual(["Hide the Crew Flow Graph pane"], out["hides"])
+        self.assertEqual(1, out["n_select"])
+        self.assertNotIn("select", out["types"])           # no native <select>/<option>: its popup ignores the theme
+        self.assertNotIn("option", out["types"])
+        for part in ("SelectTrigger", "SelectValue", "SelectContent"):
+            self.assertIn(part, out["types"])
+        self.assertIn("t_abc", out["sets"])                 # a listed id is selectable
+        self.assertNotIn("../board", out["sets"])           # an id a frame src may not carry is refused
+        self.assertEqual(["nav", "page", "pane-toggle"], out["after_hide"])
+        self.assertIs(False, out["stored"])
 
     def test_pane_is_uncloseable_so_closing_it_never_disables_the_tile(self):
         # Desktop disables a single-pane plugin when that pane is closed. The Flow Graph pane is the

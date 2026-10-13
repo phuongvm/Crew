@@ -11,7 +11,8 @@
  */
 
 import {
-  Button, Codicon, host, PANES_AREA, ROUTES_AREA, SandboxedFrame, SIDEBAR_NAV_AREA
+  Button, Codicon, host, PALETTE_AREA, PANES_AREA, ROUTES_AREA, SandboxedFrame, Select, SelectContent, SelectItem,
+  SelectTrigger, SelectValue, SIDEBAR_NAV_AREA
 } from '@hermes/plugin-sdk'
 import React from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
@@ -429,6 +430,7 @@ function shortCardTitle(title) {
 
 function CrewFlowGraphPane(props) {
   var rest = props ? props.rest : null
+  var onHide = props ? props.onHide : null
   var frameRef = React.useRef(null)
   var cardIdRef = React.useRef('')
   var sigRef = React.useRef('')
@@ -567,28 +569,30 @@ function CrewFlowGraphPane(props) {
         },
         children: [
           jsx(Codicon, { name: 'organization', style: { fontSize: '13px', color: 'var(--primary, #34d399)' } }),
-          jsx('select', {
+          // The SDK's themed Select (portalled menu), not a native <select>: Electron's native popup does not
+          // inherit the closed control's colours, so a transparent/white-text select listed unreadable options.
+          jsx(Select, {
             value: cardId,
-            'aria-label': 'Crew card',
-            title: 'Crew card',
             disabled: !cards.length,
-            onChange: function (e) {
+            onValueChange: function (value) {
+              if (!CARD_ID_RE.test(String(value || ''))) return
               sigRef.current = ''
-              setCardId(e.target.value)
+              setCardId(value)
             },
-            style: {
-              flex: 1,
-              minWidth: 0,
-              height: '22px',
-              fontSize: '11px',
-              background: 'transparent',
-              color: 'var(--foreground, #ffffff)',
-              border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-              borderRadius: '4px'
-            },
-            children: cards.map(function (tile) {
-              return jsx('option', { value: tile.id, children: tile.id + ' · ' + shortCardTitle(tile.title) }, tile.id)
-            })
+            children: [
+              jsx(SelectTrigger, {
+                size: 'xs',
+                'aria-label': 'Crew card',
+                title: 'Crew card',
+                style: { flex: 1, minWidth: 0, height: '22px' },
+                children: jsx(SelectValue, { placeholder: cards.length ? 'Select a card' : 'No cards' })
+              }, 'trigger'),
+              jsx(SelectContent, {
+                children: cards.map(function (tile) {
+                  return jsx(SelectItem, { value: tile.id, children: tile.id + ' · ' + shortCardTitle(tile.title) }, tile.id)
+                })
+              }, 'content')
+            ]
           }),
           jsx(Button, {
             size: 'sm',
@@ -605,7 +609,18 @@ function CrewFlowGraphPane(props) {
             title: 'Open the Crew board tile',
             style: { height: '22px', padding: '0 4px' },
             children: jsx(Codicon, { name: 'link-external', style: { fontSize: '12px' } })
-          })
+          }),
+          typeof onHide === 'function'
+            ? jsx(Button, {
+                size: 'sm',
+                variant: 'ghost',
+                onClick: onHide,
+                title: 'Hide this pane (show it again from Ctrl+K: Toggle Crew Flow Graph pane)',
+                'aria-label': 'Hide the Crew Flow Graph pane',
+                style: { height: '22px', padding: '0 4px' },
+                children: jsx(Codicon, { name: 'eye-closed', style: { fontSize: '12px' } })
+              })
+            : null
         ]
       }),
       jsx('div', {
@@ -646,11 +661,115 @@ function CrewFlowGraphPane(props) {
   })
 }
 
+// ---------------------------------------------------------------- pane show/hide (Ctrl+K and the pane's Hide button)
+// Hiding unregisters the pane contribution only: Desktop drops an unregistered pane out of the grid (its zone
+// folds away) while the tree keeps its spot, so showing it again re-adopts it where it was. The /crew tile,
+// the nav row and the palette row stay registered, so the plugin is never disabled. The choice persists in
+// ctx.storage across launches. Showing is an explicit user action, so it reveals (fronts) the pane; boot never does.
+var PANE_HOST_ID = 'crew:' + PANE_ID
+var PANE_SHOWN_KEY = 'flowGraphPaneShown'
+var PANE_TOGGLE_ID = 'crew.flow-graph-pane.toggle'
+
+function createPaneToggle(ctx, sdkHost) {
+  var dispose = null
+  var storage = ctx ? ctx.storage : null
+
+  function readShown() {
+    try {
+      return !(storage && typeof storage.get === 'function' && storage.get(PANE_SHOWN_KEY, true) === false)
+    } catch (readErr) {
+      return true
+    }
+  }
+
+  function writeShown(shown) {
+    try {
+      if (storage && typeof storage.set === 'function') storage.set(PANE_SHOWN_KEY, shown)
+    } catch (writeErr) {}
+  }
+
+  function paneContribution() {
+    return {
+      // uncloseable: Desktop offers no Close for it, so closing can never take the single-pane plugin path
+      // (setPluginEnabled(false)) that would also remove the /crew tile; Hide below is the close verb.
+      // hideOnly is not used: it trips "Last tab stays" when this is the only tab in its zone.
+      id: PANE_ID,
+      area: PANES_AREA,
+      title: PANE_TITLE,
+      data: { placement: 'right', width: '380px', uncloseable: true },
+      render: function() { return jsx(CrewFlowGraphPane, { rest: ctx.rest, onHide: hide }) }
+    }
+  }
+
+  function mount() {
+    if (dispose) return
+    var d = ctx.register(paneContribution())
+    dispose = typeof d === 'function' ? d : function () {}
+  }
+
+  // On screen, not merely registered: a registered pane in a minimized zone or behind another tab reads off.
+  function isShown() {
+    if (!dispose) return false
+    try {
+      if (sdkHost && typeof sdkHost.paneVisibility === 'function') {
+        var visible = sdkHost.paneVisibility(PANE_HOST_ID)
+        if (visible && typeof visible.get === 'function') return !!visible.get()
+      }
+    } catch (visErr) {}
+    return true
+  }
+
+  function show() {
+    mount()
+    writeShown(true)
+    if (sdkHost && typeof sdkHost.revealPane === 'function') {
+      // Next tick: adoption of a just-registered pane lands first, then the reveal fronts it.
+      setTimeout(function () {
+        try { sdkHost.revealPane(PANE_HOST_ID) } catch (revealErr) {}
+      }, 0)
+    }
+  }
+
+  function hide() {
+    var d = dispose
+    dispose = null
+    writeShown(false)
+    if (d) d()
+  }
+
+  function toggle() {
+    if (isShown()) hide()
+    else show()
+  }
+
+  return {
+    boot: function () { if (readShown()) mount() },
+    hide: hide,
+    show: show,
+    toggle: toggle,
+    isShown: isShown,
+    palette: {
+      id: 'pane-toggle',
+      area: PALETTE_AREA,
+      data: {
+        id: PANE_TOGGLE_ID,
+        label: 'Toggle Crew Flow Graph pane',
+        keywords: ['crew', 'flow', 'graph', 'pane', 'card', 'kanban', 'show', 'hide', 'on', 'off'],
+        detail: function () { return isShown() ? 'on' : 'off' },
+        detailVariant: 'state',
+        keepOpen: true,
+        run: toggle
+      }
+    }
+  }
+}
+
 var plugin = {
   id: 'crew',
   name: 'Crew',
   description: 'Autonomous proof-gated coordination board and live flow graph',
   register: function(ctx) {
+    var paneToggle = createPaneToggle(ctx, host)
     ctx.registerMany([
       {
         id: 'page',
@@ -664,18 +783,10 @@ var plugin = {
         order: 55,
         data: { codicon: 'organization', label: 'Crew', path: '/crew', asTile: true }
       },
-      {
-        // The Flow Graph pane, beside the tile above (Issue #10).
-        // uncloseable: Desktop offers no Close for it, so closing can never take the single-pane
-        // plugin path (setPluginEnabled(false)) that would also remove the /crew tile. hideOnly is
-        // not used: it trips "Last tab stays" when this is the only tab in its zone.
-        id: PANE_ID,
-        area: PANES_AREA,
-        title: PANE_TITLE,
-        data: { placement: 'right', width: '380px', uncloseable: true },
-        render: function() { return jsx(CrewFlowGraphPane, { rest: ctx.rest }) }
-      }
+      paneToggle.palette
     ])
+    // The Flow Graph pane, beside the tile above (Issue #10), unless the user hid it.
+    paneToggle.boot()
   }
 }
 
