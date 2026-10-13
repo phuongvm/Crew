@@ -771,10 +771,23 @@ def apply_decision(ctx, card, decisions, dec):
     return False, "unknown decision"
 
 
+AUDIT_TITLE_PREFIX = "audit follow-up: "
+_AUDIT_TITLE_RE = re.compile(r"^(?:\s*audit follow-up:\s*)+", re.I)
+
+
 def audit_followup_number(body):
-    """How many failed audits this card descends from: its `Audit follow-up N of <card>` constraint, else 0."""
-    m = re.search(r"Audit follow-up (\d+) of t_", crew_card.field(body, "Constraints") or "")
-    return int(m.group(1)) if m else 0
+    """How many failed audits this card descends from: the highest `Audit follow-up N of <card>` constraint, else 0.
+
+    Each follow-up appends its own note to the Constraints it inherited, so a chained card carries every number
+    (`... 1 of t_a ... | ... 2 of t_b ...`). The first match is always 1, which kept the chain under the cap
+    forever: the newest (highest) one is the depth."""
+    nums = re.findall(r"Audit follow-up (\d+) of t_", crew_card.field(body, "Constraints") or "")
+    return max((int(n) for n in nums), default=0)
+
+
+def audit_followup_title(title):
+    """`audit follow-up: <the original title>`, once: a follow-up of a follow-up does not stack the prefix."""
+    return AUDIT_TITLE_PREFIX + (_AUDIT_TITLE_RE.sub("", title or "").strip() or (title or "").strip())
 
 
 def open_audit_followup(card, rc, out, blocked=False):
@@ -788,7 +801,7 @@ def open_audit_followup(card, rc, out, blocked=False):
     note = ("Audit follow-up %d of %s: after the card was completed its proof command %s (rc=%s): %s"
             % (n, card["id"], what, rc, head))
     c["constraints"] = " | ".join(x for x in (c.get("constraints") or "", note) if x)
-    c["title"] = "audit follow-up: %s" % (card.get("title") or c.get("goal") or card["id"])
+    c["title"] = audit_followup_title(card.get("title") or c.get("goal") or card["id"])
     c["coordinator"] = crew_card.field(body, "Coordinator") or ""
     c["budget"] = c.get("budget") or crew_card.default_budget(c["role"])
     c["proof_cmd"] = crew_card.close_proof_command(card["id"])       # the snapshot, never the body line

@@ -2012,6 +2012,20 @@ def rework_fails(card_id):
 PROOF_BLOCKED = 5       # `verdict` exit code: the safety floor refused the proof, nothing ran, no verdict line
 
 
+def proof_cwd(body):
+    """The directory a card's proof runs in: its `Lands at:` path when that is a directory on this machine (a file
+    there runs in its folder), else None (crew_safety.run_proof then picks one). A relative proof such as
+    `pytest tests/x.py` is written against where the work lands, not wherever the verdict tool was started."""
+    lands = (field(body, "Lands at") or "").strip().strip("\"'`")
+    for cand in (lands, lands.split()[0] if lands.split() else ""):
+        cand = os.path.expanduser(cand.strip("\"'`,;"))
+        if cand and os.path.isdir(cand):
+            return os.path.abspath(cand)
+        if cand and os.path.isfile(cand):
+            return os.path.dirname(os.path.abspath(cand))
+    return None
+
+
 def cmd_verdict(args):
     row = card_row(args.card)
     if not row:
@@ -2038,7 +2052,8 @@ def cmd_verdict(args):
         rc = 1
     else:
         t0 = time.time()
-        res = crew_safety.run_proof(cmd, None, args.timeout, crew_safety.proof_mode(args.card, cmd), card=args.card)
+        res = crew_safety.run_proof(cmd, proof_cwd(row[4]), args.timeout, crew_safety.proof_mode(args.card, cmd),
+                                    card=args.card)
         if res.blocked:
             print("proof command: %s" % cmd)
             print("proof BLOCKED by Hermes safety, not run: %s" % res.blocked)

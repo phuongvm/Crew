@@ -906,6 +906,124 @@ class ApplyDecisionTests(unittest.TestCase):
         self.assertEqual("blocked", events("t_1", "crew_decision")[0]["proof_ask"]["kind"])
 
 
+class AuditFollowupChainTests(unittest.TestCase):
+    """A follow-up of a follow-up carries every `Audit follow-up N` note it inherited: the depth is the highest N,
+    the title keeps one prefix, and the chain reaches the cap instead of looping forever."""
+
+    CHAIN = ("Constraints: keep it small | Audit follow-up 1 of t_a: failed (rc=1): x | "
+             "Audit follow-up 2 of t_b: failed (rc=1): y")
+
+    def body(self, constraints):
+        return ("Role: worker\nCoordinator: proof/x\nVerify: proof\nBudget: 200000 tokens\nGOAL: g\nArtifact: a\n"
+                "Lands at: l\nFor: owner\n%s\nDone when: d\nproof command: true\n" % constraints)
+
+    def test_the_depth_is_the_highest_follow_up_number_not_the_first(self):
+        self.assertEqual(0, cc.audit_followup_number(self.body("Constraints: keep it small")))
+        self.assertEqual(1, cc.audit_followup_number(self.body("Constraints: Audit follow-up 1 of t_a: x")))
+        self.assertEqual(2, cc.audit_followup_number(self.body(self.CHAIN)))
+        self.assertEqual(3, cc.audit_followup_number(self.body(
+            self.CHAIN + " | Audit follow-up 3 of t_c: z")))
+
+    def test_the_title_prefix_is_never_stacked(self):
+        self.assertEqual("audit follow-up: [desktop] fix", cc.audit_followup_title("[desktop] fix"))
+        self.assertEqual("audit follow-up: [desktop] fix",
+                         cc.audit_followup_title("audit follow-up: audit follow-up: Audit Follow-up: [desktop] fix"))
+
+    def test_a_chained_follow_up_opens_with_the_next_number_and_one_prefix(self):
+        card = {"id": "t_c", "title": "audit follow-up: audit follow-up: [desktop] fix", "body": self.body(self.CHAIN)}
+        opened = []
+
+        def fake_open(c, dry_run=False, allow_no_proof=False, parents=(), initial_status=None):
+            opened.append(c)
+            return {}
+
+        with mock.patch.object(cc.crew_card, "open_card", fake_open), \
+                mock.patch.object(cc.crew_card, "close_proof_command", lambda cid: "true"), \
+                mock.patch.object(cc.crew_card, "proof_snapshot_mode", lambda cid: ""):
+            cc.open_audit_followup(card, 1, "rc=1\nstill failing")
+        (c,) = opened
+        self.assertEqual("audit follow-up: [desktop] fix", c["title"])
+        self.assertIn("Audit follow-up 3 of t_c", c["constraints"])
+        self.assertEqual(3, cc.audit_followup_number("Constraints: %s\n" % c["constraints"]))
+
+    def test_a_chained_card_at_the_cap_asks_the_owner_instead_of_opening_another_retry(self):
+        build_db()
+        env = mock.patch.dict(os.environ, {"HERMES_KANBAN_DB": _DB})
+        env.start()
+        self.addCleanup(env.stop)
+        if os.path.exists(cc.crew_card.verdict_path("t_a")):
+            os.unlink(cc.crew_card.verdict_path("t_a"))
+        ctx = cc.Ctx(_DB, None, dry=False, decider=None, say=lambda *_: None)
+        body = self.body(self.CHAIN)
+        add_card("t_a", status="done", body=body, block_kind=None)
+        cc.crew_card.record_origin("t_a", env={"origin": "", "session": "s"}, proof_cmd="true")
+        cc.crew_card.record_verdict("t_a", "true", 0, "", 0, by="crew-worker")
+        add_event("t_a", "completed")
+        opened, asked = [], []
+
+        def fake_open(c, dry_run=False, allow_no_proof=False, parents=(), initial_status=None):
+            opened.append(initial_status)
+            add_card("t_f9", status="blocked", body=body, block_kind=None)
+            return {"id": "t_f9"}
+
+        evs = cc.q(ctx, "select id, kind, payload, created_at from task_events where task_id = 't_a' and "
+                        "kind = 'completed' order by id")
+        with mock.patch.object(cc.crew_heal, "heal_card", lambda card, dry: None), \
+                mock.patch.object(cc, "kanban", lambda *a, **k: (0, "")), \
+                mock.patch.object(cc, "run_verdict", return_value=(1, "rc=1\nstill failing")), \
+                mock.patch.object(cc.crew_card, "open_card", fake_open), \
+                mock.patch.object(cc, "apply_ask_owner",
+                                  lambda ctx, card, q, detail="": (asked.append(q) or (True, "asked"))):
+            got = cc.handle_card(ctx, "t_a", evs)
+        self.assertEqual("audit fail: ask_owner", got["action"])
+        self.assertEqual(["blocked"], opened)
+        self.assertTrue(asked)
+
+
+class VerdictCwdTests(unittest.TestCase):
+    """`verdict` runs the card's proof in its `Lands at:` directory, so a relative proof finds the work."""
+
+    def setUp(self):
+        build_db()
+        env = mock.patch.dict(os.environ, {"HERMES_KANBAN_DB": _DB})
+        env.start()
+        self.addCleanup(env.stop)
+        self.lands = tempfile.mkdtemp(prefix="crew-lands-")
+        Path(self.lands, "marker.txt").write_text("here", encoding="utf-8")
+
+    def card(self, lands):
+        body = ("Role: worker\nCoordinator: proof/x\nVerify: proof\nBudget: 200000 tokens\nGOAL: g\nArtifact: a\n"
+                "Lands at: %s\nFor: owner\nDone when: d\nproof command: test -f marker.txt\n" % lands)
+        add_card("t_cwd", status="running", body=body, block_kind=None)
+        cc.crew_card.record_origin("t_cwd", env={"origin": "", "session": "s"}, proof_cmd="test -f marker.txt")
+        vp = cc.crew_card.verdict_path("t_cwd")
+        if os.path.exists(vp):
+            os.unlink(vp)
+        import argparse
+        return argparse.Namespace(card="t_cwd", command=None, timeout=60, no_hand_back=True, by="crew-worker",
+                                  for_event=None)
+
+    def test_proof_cwd_is_the_lands_at_directory_or_none(self):
+        self.assertEqual(os.path.abspath(self.lands), cc.crew_card.proof_cwd("Lands at: %s\n" % self.lands))
+        self.assertEqual(os.path.abspath(self.lands),
+                         cc.crew_card.proof_cwd("Lands at: %s\n" % os.path.join(self.lands, "marker.txt")))
+        self.assertIsNone(cc.crew_card.proof_cwd("Lands at: chat reply\n"))
+        self.assertIsNone(cc.crew_card.proof_cwd("GOAL: g\n"))
+
+    def test_a_relative_proof_runs_from_lands_at_not_the_callers_cwd(self):
+        self.assertNotEqual(os.path.abspath(os.getcwd()), os.path.abspath(self.lands))
+        with mock.patch.dict(os.environ, {"HERMES_KANBAN_DB": _DB}):
+            rc = cc.crew_card.cmd_verdict(self.card(self.lands))
+        line = cc.crew_card.all_verdicts("t_cwd")[-1]
+        self.assertEqual((0, "PASS", "test -f marker.txt"), (rc, line["verdict"], line["command"]))
+
+    def test_without_lands_at_on_disk_the_relative_proof_does_not_find_the_work(self):
+        with mock.patch.dict(os.environ, {"HERMES_KANBAN_DB": _DB}):
+            rc = cc.crew_card.cmd_verdict(self.card("somewhere/that/does/not/exist"))
+        self.assertEqual(1, rc)
+        self.assertEqual("FAIL", cc.crew_card.all_verdicts("t_cwd")[-1]["verdict"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

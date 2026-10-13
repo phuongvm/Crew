@@ -666,21 +666,14 @@ var plugin = {
       },
       {
         // The Flow Graph pane, beside the tile above (Issue #10).
-        // Having a companion pane in PANES_AREA ensures closeTreePane dismisses this pane
-        // (collapsing the zone) instead of disabling the entire plugin and removing the /crew tile.
-        // hideOnly is omitted so closing doesn't trigger isLastShownInGroup ("Last tab stays").
+        // uncloseable: Desktop offers no Close for it, so closing can never take the single-pane
+        // plugin path (setPluginEnabled(false)) that would also remove the /crew tile. hideOnly is
+        // not used: it trips "Last tab stays" when this is the only tab in its zone.
         id: PANE_ID,
         area: PANES_AREA,
         title: PANE_TITLE,
-        data: { placement: 'right', width: '380px' },
+        data: { placement: 'right', width: '380px', uncloseable: true },
         render: function() { return jsx(CrewFlowGraphPane, { rest: ctx.rest }) }
-      },
-      {
-        id: 'crew-pane-companion',
-        area: PANES_AREA,
-        title: 'Crew Companion',
-        data: { placement: 'floating' },
-        render: function() { return null }
       }
     ])
   }
