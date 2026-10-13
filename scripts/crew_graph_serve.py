@@ -714,7 +714,8 @@ class Handler(BaseHTTPRequestHandler):
                 body = "ok %s cards=%s live=%s\n" % (board_title_text(board.get("board_name") or board.get("board")),
                                                      board.get("cards"), board.get("live"))
             except Exception as exc:
-                body = "ok board (no data: %s)\n" % exc
+                sys.stderr.write("crew health: board data failed: %r\n" % (exc,))
+                body = "ok board (no data; the reason is in the crew log)\n"
             return self._send(200, body, "text/plain; charset=utf-8")
         show_all = "all=1" in (urlparse(self.path).query or "")
         nonce = secrets.token_urlsafe(16)

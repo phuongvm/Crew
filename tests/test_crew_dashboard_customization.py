@@ -278,6 +278,14 @@ class CrewDashboardCustomizationTests(RealBoardCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.text.startswith("ok crew board cards="))
 
+    def test_healthz_never_puts_the_exception_text_in_the_answer(self):
+        crew = plugin_api._crew()
+        with patch.object(crew, "board_data", side_effect=RuntimeError("secret-path /home/x/kanban.db locked")):
+            resp = self.client.get("/api/plugins/crew/healthz")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.text.startswith("ok crew board (no data"))
+        self.assertNotIn("secret-path", resp.text)
+
 
     # Board names the owner has used; none of them may be baked into the title code paths.
     HARDCODED_NAMES = ("Custom Crew", "Crew Board", "crew board")
