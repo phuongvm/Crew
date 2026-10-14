@@ -427,3 +427,113 @@ class ScriptHashTests(SafetyCase):
         self.assertEqual(0, self.run_it().rc)
         self.assertEqual("", C.check_decision({"decision": "revise_script", "why": "x", "delegate": True}))
         self.assertIn("why", C.check_decision({"decision": "revise_script"}))
+
+
+class PowerShellTests(SafetyCase):
+    """A bare PowerShell cmdlet in a proof: flagged at intake, routed to PowerShell when it runs on Windows."""
+
+    def test_bare_powershell_cmdlets_are_found_only_in_command_position(self):
+        found = {
+            "Test-Path foo": "Test-Path",
+            "test -f x && Get-ChildItem -Recurse O:/x": "Get-ChildItem",
+            "cd /x; Get-Content a | Select-String b": "Get-Content",
+            "FOO=1 Test-Path x": "Test-Path",
+            "if Test-Path x; then echo y; fi": "Test-Path",
+            "echo $(Get-Date)": "Get-Date",
+            "test-path foo": "test-path",                 # PowerShell reads the common cmdlets in any case
+        }
+        for cmd, cmdlet in found.items():
+            self.assertEqual(cmdlet, crew_safety.detect_bare_powershell(cmd), cmd)
+        for cmd in ("test -f x", "echo Test-Path", "git log | grep Get-Item", 'python -c "print(\'Test-Path\')"',
+                    "start-stop-daemon --help", "update-alternatives --list", "grep 'Get-Content' f",
+                    'pwsh.exe -NoProfile -Command "Test-Path \'x\'"', "powershell -c Test-Path x",
+                    '"C:/Program Files/PowerShell/7/pwsh.exe" -Command Test-Path x', ""):
+            self.assertEqual("", crew_safety.detect_bare_powershell(cmd), cmd)
+
+    def test_bare_powershell_is_flagged_in_safe_mode_with_the_fix(self):
+        ok, why = crew_safety.check_proof('Test-Path "some/file.txt"', "safe")
+        self.assertFalse(ok)
+        self.assertEqual(crew_safety.POWERSHELL_LINT % "Test-Path", why)
+        self.assertIn("pwsh.exe -NoProfile -Command", why)
+        self.assertEqual("flagged: " + crew_safety.POWERSHELL_LINT % "Test-Path", crew_safety.proof_check("Test-Path x"))
+        self.assertEqual((True, ""), crew_safety.check_proof("Test-Path x", "brave"))     # a lint, not a floor
+        self.assertEqual((True, ""), crew_safety.check_proof("Test-Path x", crew_safety.APPROVED))
+
+    def test_wrapped_powershell_passes_preflight_and_hermes_floors_still_come_first(self):
+        wrapped = 'pwsh.exe -NoProfile -Command "Test-Path \'some/file.txt\'"'
+        self.assertEqual("", crew_safety.detect_bare_powershell(wrapped))
+        # the lint never fires on a wrapper; what safe mode says about `-Command` itself is Hermes's own floor
+        self.assertNotIn("bare PowerShell", crew_safety.check_proof(wrapped, "safe")[1])
+        with mock.patch.object(crew_safety, "_floors", return_value=(True, "")):
+            self.assertEqual("ok", crew_safety.proof_check(wrapped))
+        self.assertEqual("ok", crew_safety.proof_check("test -f some/file.txt"))
+        ok, why = crew_safety.check_proof("Remove-Item -Recurse -Force build", "safe")
+        self.assertFalse(ok)
+        self.assertIn("flagged by Hermes as dangerous", why)                         # Hermes's words, not the lint
+        self.assertFalse(crew_safety.check_proof("Remove-Item -Recurse -Force build", "brave")[1].startswith("bare"))
+
+    def routed_argv(self, cmd, is_windows=True):
+        seen = []
+
+        def fake_run(argv, **kw):
+            seen.append((argv, kw))
+            return mock.Mock(returncode=0, stdout="True\n", stderr="")
+        with mock.patch.object(crew_safety, "IS_WINDOWS", is_windows), \
+                mock.patch.object(crew_safety, "git_bash", return_value="C:/Git/bin/bash.exe"), \
+                mock.patch.object(crew_safety, "_powershell", return_value="C:/PS/pwsh.exe"), \
+                mock.patch.object(crew_safety.subprocess, "run", side_effect=fake_run):
+            res = crew_safety.run_proof(cmd, self.home, 20, "safe")
+        self.assertEqual("", res.blocked)
+        return seen[0]
+
+    def test_bare_powershell_runs_through_pwsh_on_windows_and_posix_stays_in_git_bash(self):
+        argv, kw = self.routed_argv('Test-Path "O:/workspaces/AGENTS.md"')
+        self.assertEqual(["C:/PS/pwsh.exe", "-NoProfile", "-NonInteractive", "-Command"], argv[:4])
+        self.assertIn('\nTest-Path "O:/workspaces/AGENTS.md"\n', argv[4])                # the proof verbatim
+        self.assertFalse(kw["shell"])
+        argv, kw = self.routed_argv('test -f "O:/workspaces/AGENTS.md"')
+        self.assertEqual(["C:/Git/bin/bash.exe", "-c", 'test -f "O:/workspaces/AGENTS.md"'], argv)
+        argv, kw = self.routed_argv("Test-Path x", is_windows=False)                  # never rerouted off Windows
+        self.assertEqual(("Test-Path x", True), (argv, kw["shell"]))
+
+    def test_bare_powershell_falls_back_to_windows_powershell(self):
+        which = {"pwsh": None, "powershell": "C:/WINDOWS/powershell.exe"}
+        with mock.patch.object(crew_safety.shutil, "which", side_effect=which.get):
+            self.assertEqual("C:/WINDOWS/powershell.exe", crew_safety._powershell())
+        with mock.patch.object(crew_safety.shutil, "which", return_value=None):
+            self.assertEqual("pwsh.exe", crew_safety._powershell())
+
+    def test_the_result_carries_output_as_an_alias_of_out(self):
+        res = crew_safety.Result(0, "True\n", "")
+        self.assertEqual(("True\n", (0, "True\n", "")), (res.output, tuple(res)))
+
+
+@unittest.skipUnless(os.name == "nt" and (shutil.which("pwsh") or shutil.which("powershell")),
+                     "needs Windows with PowerShell")
+class PowerShellRuntimeTests(SafetyCase):
+    """The routed proof really runs, with bash's exit status rules (the last statement decides)."""
+
+    def setUp(self):
+        super().setUp()
+        self.file = os.path.join(self.home, "present.txt").replace(os.sep, "/")
+        with open(self.file, "w", encoding="utf-8") as fh:
+            fh.write("x\n")
+
+    def run_ps(self, cmd):
+        return crew_safety.run_proof(cmd, self.home, 60, "safe")
+
+    def test_bare_powershell_test_path_passes_and_fails_like_a_proof(self):
+        res = self.run_ps('Test-Path "%s"' % self.file)
+        self.assertEqual((0, ""), (res.rc, res.blocked))
+        self.assertIn("True", res.output)
+        missing = self.run_ps('Test-Path "%s/missing.txt"' % self.home)
+        self.assertEqual(1, missing.rc)                                   # PowerShell alone would exit 0 here
+        self.assertIn("False", missing.output)
+
+    def test_bare_powershell_exit_codes_and_errors_reach_the_verdict(self):
+        res = self.run_ps("Write-Output hi; exit 3")
+        self.assertEqual((3, "hi"), (res.rc, res.out.strip()))
+        self.assertEqual(1, self.run_ps('Get-ChildItem "%s/nope"' % self.home).rc)
+        self.assertEqual(0, self.run_ps('Get-Content "%s"' % self.file).rc)
+        self.assertNotEqual(127, self.run_ps("Get-Location").rc)
+        self.assertIn("present.txt", self.run_ps('Get-Item "%s"' % self.file).out)   # objects are rendered as text

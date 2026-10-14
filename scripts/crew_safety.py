@@ -82,7 +82,15 @@ def _find_hermes_sources():
 
 HERMES_SRC = _find_hermes_sources()
 
-Result = namedtuple("Result", "rc out blocked")
+class Result(namedtuple("Result", "rc out blocked")):
+    """rc, out (stdout + stderr) and blocked (the refusal reason, '' when it ran); `output` names the same text."""
+    __slots__ = ()
+
+    @property
+    def output(self):
+        return self.out
+
+
 SCRIPT_CHANGED = "proof script changed since it first ran: "     # the prefix crew_coordinator.proof_blocked_ask keys on
 # An absolute script path in a proof command. Relative paths (and ones with spaces) are not bound: they depend on
 # the cwd, and the intake writes absolute paths (`<folder>/.crew/verify.py`).
@@ -280,10 +288,99 @@ def cmd_hash(cmd):
     return hashlib.sha256(str(cmd or "").strip().encode()).hexdigest()
 
 
-def check_proof(cmd, mode="safe"):
-    """(ok, reason): may this proof command run unattended in `mode`? `reason` is Hermes's own words when not.
-    Mode "approved" (the owner said yes to this exact command) skips the flagged/tirith checks like brave,
-    never the hardline and deny floors."""
+# A proof is bash text, but a card written on Windows often carries PowerShell (`Test-Path x`), which Git Bash
+# answers with exit 127: a false FAIL. Only a cmdlet in command position counts (the first word of a command, outside
+# quotes), so `pwsh -Command "Test-Path x"`, `echo Test-Path` and `python -c "...'Test-Path'..."` stay bash.
+POWERSHELL_BARE_CMDLET_RX = re.compile(
+    r"^(?:(?i:Test-Path|Get-ChildItem|Get-Content|Set-Content|Add-Content|Select-String|Set-Location|New-Item"
+    r"|Remove-Item|Get-Process|Start-Process|Stop-Process|Get-Item|Copy-Item|Move-Item|Write-Output|Write-Host"
+    r"|Get-FileHash|Invoke-WebRequest|Invoke-RestMethod|Resolve-Path|Join-Path)"
+    # any other cmdlet in its canonical case: an approved verb, a capitalised noun. Case matters here, so POSIX
+    # tools that happen to look alike (start-stop-daemon, update-alternatives, add-apt-repository) never match.
+    r"|(?:Get|Set|Test|New|Remove|Add|Clear|Copy|Move|Rename|Select|Start|Stop|Invoke|Write|Read|Out|Join"
+    r"|Resolve|Split|Measure|Compare|Import|Export|ConvertTo|ConvertFrom|Format|Wait|Push|Pop|Expand|Compress"
+    r"|Update|Enable|Disable|Install|Uninstall|Register|Unregister|Find|Show|Restart)-[A-Z][A-Za-z0-9]*)$")
+POWERSHELL_WRAPPER_RX = re.compile(r"^(?:.*[/\\])?(?:powershell|pwsh)(?:\.exe)?$", re.IGNORECASE)
+POWERSHELL_LINT = ("bare PowerShell cmdlet '%s' without pwsh wrapper (Git Bash on Windows will fail with command "
+                   "not found). Use POSIX (e.g. 'test -f') or wrap as 'pwsh.exe -NoProfile -Command \"...\"'")
+_SHELL_LEAD_WORDS = {"!", "if", "then", "else", "elif", "do", "while", "until", "time", "exec", "{", "("}
+
+
+def _command_words(cmd):
+    """The first word of every command in a bash command line, quote-aware: a separator (; & | newline, an
+    opening ( or `$(`) starts a new command; text inside '...' or "..." is never a command word."""
+    words, cur, quote, at_start = [], [], "", True
+    text = str(cmd or "")
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\" and quote == '"' and i + 1 < len(text):
+                i += 1
+            elif ch == quote:
+                quote = ""
+            i += 1
+            continue
+        if ch in "'\"":
+            quote, at_start = ch, False
+            cur = []
+        elif ch == "\\" and i + 1 < len(text):
+            cur.append(text[i + 1])
+            i += 1
+        elif ch in ";&|\n()`" or (ch == "$" and text[i + 1:i + 2] == "("):
+            if cur and at_start:
+                words.append("".join(cur))
+            cur, at_start = [], True
+        elif ch.isspace():
+            if cur and at_start:
+                word = "".join(cur)
+                if word in _SHELL_LEAD_WORDS or re.match(r"^[A-Za-z_]\w*=", word):
+                    cur = []                         # a keyword or VAR=value: the command word is the next one
+                else:
+                    words.append(word)
+                    cur, at_start = [], False
+            else:
+                cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    if cur and at_start:
+        words.append("".join(cur))
+    return words
+
+
+def detect_bare_powershell(cmd):
+    """The first PowerShell cmdlet a proof runs as a command of its own (not through pwsh/powershell), '' when none."""
+    for word in _command_words(cmd):
+        if POWERSHELL_WRAPPER_RX.match(word):
+            continue
+        if POWERSHELL_BARE_CMDLET_RX.match(word):
+            return word
+    return ""
+
+
+def _powershell():
+    """The PowerShell a routed proof runs under: PowerShell 7, then Windows PowerShell 5.1, then pwsh.exe."""
+    return shutil.which("pwsh") or shutil.which("powershell") or "pwsh.exe"
+
+
+# What runs under -Command: the proof verbatim in a dot-sourced block, with bash's exit status rules. PowerShell
+# alone exits 0 for `Test-Path missing` (the cmdlet succeeded, it printed False), so a proof that checks a file
+# would pass without the file. Here the last statement decides, like bash: an explicit `exit N` is kept, a failed
+# last statement exits with the native exit code (or 1), and a last output of $false exits 1. Out-String -Stream
+# renders objects as the console would (Get-Location, Get-Item), since a redirected pwsh prints nothing for them.
+_PS_WRAPPER = (
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n"
+    "if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }\n"
+    "$global:LASTEXITCODE = 0; $global:__crewOk = $true; $global:__crewLast = $null\n"
+    ". {\n%s\n$global:__crewOk = $?\n} | ForEach-Object { $global:__crewLast = $_; $_ } | Out-String -Stream\n"
+    "if (-not $global:__crewOk) { if ($global:LASTEXITCODE) { exit $global:LASTEXITCODE }; exit 1 }\n"
+    "if ($global:__crewLast -is [bool] -and -not $global:__crewLast) { exit 1 }\n"
+    "exit 0")
+
+
+def _floors(cmd, mode):
+    """Hermes's floors for `mode`: hardline and approvals.deny always, flagged and tirith in safe mode."""
     try:
         _hermes()
         from tools.approval_detection import detect_dangerous_command, detect_hardline_command
@@ -309,6 +406,20 @@ def check_proof(cmd, mode="safe"):
     except Exception as exc:  # noqa: BLE001 - a detector that crashes has not cleared the command
         return False, "Hermes's safety check failed (%s: %s), so the proof does not run" % (type(exc).__name__, exc)
     return True, ""
+
+
+def check_proof(cmd, mode="safe"):
+    """(ok, reason): may this proof command run unattended in `mode`? `reason` is Hermes's own words when not.
+    Mode "approved" (the owner said yes to this exact command) skips the flagged/tirith checks like brave,
+    never the hardline and deny floors. Safe mode also lints a bare PowerShell cmdlet (the intake's proof-check
+    shows it as `flagged:`, so the card is opened with POSIX or a pwsh wrapper); run_proof itself does not refuse
+    one, it routes it to PowerShell on Windows."""
+    ok, why = _floors(cmd, mode)
+    if ok and mode == "safe":
+        cmdlet = detect_bare_powershell(cmd)
+        if cmdlet:
+            return False, POWERSHELL_LINT % cmdlet
+    return ok, why
 
 
 def proof_check(cmd):
@@ -428,8 +539,10 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
     """The one runner of a proof command. Result(rc, output, blocked): `blocked` is the reason the safety floor
     (or, with `card`, the card's recorded script hashes) refused it (nothing ran, rc is BLOCKED_RC); rc 124 is a
     timeout, 127 a command that could not start. Every unattended proof comes through here, so the script binding
-    lives here and not in one caller."""
-    ok, why = check_proof(cmd, mode)
+    lives here and not in one caller. On Windows a proof that runs a bare PowerShell cmdlet (detect_bare_powershell)
+    goes to PowerShell instead of Git Bash, which would only answer 127; every other proof runs in bash as before.
+    The PowerShell lint in check_proof is the intake's preflight, not a floor: here only Hermes's floors refuse."""
+    ok, why = _floors(cmd, mode)
     if ok and card:
         why = script_change(card, cmd, record=True)
         ok = not why
@@ -472,7 +585,11 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
                         cwd = r
                         break
     argv = cmd
-    if IS_WINDOWS:
+    stdin = None
+    if IS_WINDOWS and detect_bare_powershell(cmd):
+        argv = [_powershell(), "-NoProfile", "-NonInteractive", "-Command", _PS_WRAPPER % cmd]
+        stdin = subprocess.DEVNULL                   # -NonInteractive: a prompt fails instead of waiting for nobody
+    elif IS_WINDOWS:
         # A proof is bash. cmd.exe reads `echo hi; exit 3`, `sleep` and `rm` differently, and a safety check that
         # judged the bash text would then guard something other than what runs.
         bash = git_bash()
@@ -482,7 +599,7 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
         argv = [bash, "-c", cmd]
     try:
         done = subprocess.run(argv, shell=not IS_WINDOWS, capture_output=True, text=True, timeout=timeout, cwd=cwd,
-                              env=proof_env(), encoding="utf-8", errors="replace")
+                              env=proof_env(), encoding="utf-8", errors="replace", stdin=stdin)
         return Result(done.returncode, (done.stdout or "") + (done.stderr or ""), "")
     except subprocess.TimeoutExpired:
         return Result(124, "proof command timed out after %ss" % timeout, "")
