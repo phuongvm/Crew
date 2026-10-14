@@ -307,30 +307,53 @@ _SHELL_LEAD_WORDS = {"!", "if", "then", "else", "elif", "do", "while", "until", 
 
 
 def _command_words(cmd):
-    """The first word of every command in a bash command line, quote-aware: a separator (; & | newline, an
-    opening ( or `$(`) starts a new command; text inside '...' or "..." is never a command word."""
+    """First words of bash commands, ignoring literal quotes and comments. `$()` has its own quote context,
+    even inside double quotes; closing it restores the surrounding word rather than starting a command."""
     words, cur, quote, at_start = [], [], "", True
+    contexts = []
+    in_word = False
     text = str(cmd or "")
     i = 0
     while i < len(text):
         ch = text[i]
-        if quote:
-            if ch == "\\" and quote == '"' and i + 1 < len(text):
-                i += 1
-            elif ch == quote:
+        if quote == "'":
+            if ch == quote:
                 quote = ""
-            i += 1
-            continue
-        if ch in "'\"":
-            quote, at_start = ch, False
-            cur = []
         elif ch == "\\" and i + 1 < len(text):
-            cur.append(text[i + 1])
+            # In double quotes bash only escapes these characters; an escaped newline is not a word.
+            if not quote or text[i + 1] in '$`"\\\n':
+                if text[i + 1] != "\n":
+                    cur.append(text[i + 1])
+                    in_word = True
+                i += 1
+        elif text[i:i + 2] == "$(":
+            contexts.append((cur, quote, at_start, True))
+            cur, quote, at_start, in_word = [], "", True, False
             i += 1
-        elif ch in ";&|\n()`" or (ch == "$" and text[i + 1:i + 2] == "("):
+        elif quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote, at_start, in_word = ch, False, True
+            cur = []
+        elif ch == "#" and not in_word:
+            # Only an unquoted # at the start of a word opens a comment; word# and ""# are literal.
+            end = text.find("\n", i)
+            i = len(text) if end == -1 else end
+            continue
+        elif ch == "(":
             if cur and at_start:
                 words.append("".join(cur))
-            cur, at_start = [], True
+            contexts.append(([], "", False, False))
+            cur, at_start, in_word = [], True, False
+        elif ch == ")" and contexts:
+            if cur and at_start:
+                words.append("".join(cur))
+            cur, quote, at_start, in_word = contexts.pop()
+        elif ch in ";&|\n)`":
+            if cur and at_start:
+                words.append("".join(cur))
+            cur, at_start, in_word = [], True, False
         elif ch.isspace():
             if cur and at_start:
                 word = "".join(cur)
@@ -341,8 +364,10 @@ def _command_words(cmd):
                     cur, at_start = [], False
             else:
                 cur = []
+            in_word = False
         else:
             cur.append(ch)
+            in_word = True
         i += 1
     if cur and at_start:
         words.append("".join(cur))

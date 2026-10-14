@@ -450,6 +450,42 @@ class PowerShellTests(SafetyCase):
                     '"C:/Program Files/PowerShell/7/pwsh.exe" -Command Test-Path x', ""):
             self.assertEqual("", crew_safety.detect_bare_powershell(cmd), cmd)
 
+    def test_double_quoted_substitutions_are_executable_contexts(self):
+        commands = (
+            'echo "$(Get-Date)"',
+            'echo "prefix $(echo "$(Get-Date)") suffix"',
+            'echo "$(echo literal) $(Get-Date)"',
+            'echo "$(echo \')\'; Get-Date)"',
+            'echo "$( (Get-Date) )"',
+            'echo "$(echo ok # ) ignored\nGet-Date)"',
+        )
+        for cmd in commands:
+            with self.subTest(cmd=cmd):
+                self.assertEqual("Get-Date", crew_safety.detect_bare_powershell(cmd))
+                self.assertIn("bare PowerShell", crew_safety.proof_check(cmd))
+                argv, _ = self.routed_argv(cmd)
+                self.assertEqual("C:/PS/pwsh.exe", argv[0])
+        for cmd in ("echo '$(Get-Date)'", r'echo "\$(Get-Date)"',
+                    'echo "$(echo ok); Get-Date"', 'echo "$(echo \'Get-Date\')"'):
+            with self.subTest(literal=cmd):
+                self.assertEqual("", crew_safety.detect_bare_powershell(cmd))
+
+    def test_shell_comments_end_at_newline_not_at_separators(self):
+        for cmd in ('echo ok # ; Get-Date', '# Get-Date | Test-Path x',
+                    'echo ok; # $(Get-Date)\nprintf ok',
+                    'echo "# ; Get-Date"', "echo '# ; Get-Date'",
+                    'echo ok # \\ ignored\n# Get-Date'):
+            with self.subTest(cmd=cmd):
+                self.assertEqual("", crew_safety.detect_bare_powershell(cmd))
+                self.assertNotIn("bare PowerShell", crew_safety.proof_check(cmd))
+                argv, _ = self.routed_argv(cmd)
+                self.assertEqual(["C:/Git/bin/bash.exe", "-c", cmd], argv)
+        for cmd in ('# ignored\nGet-Date', 'echo ok # ignored\nGet-Date',
+                    'echo "#"; Get-Date', r'echo \#; Get-Date',
+                    'echo word#; Get-Date', 'echo ""#; Get-Date'):
+            with self.subTest(cmd=cmd):
+                self.assertEqual("Get-Date", crew_safety.detect_bare_powershell(cmd))
+
     def test_bare_powershell_is_flagged_in_safe_mode_with_the_fix(self):
         ok, why = crew_safety.check_proof('Test-Path "some/file.txt"', "safe")
         self.assertFalse(ok)
@@ -521,6 +557,25 @@ class PowerShellRuntimeTests(SafetyCase):
 
     def run_ps(self, cmd):
         return crew_safety.run_proof(cmd, self.home, 60, "safe")
+
+    def test_double_quoted_substitution_really_runs_in_powershell(self):
+        res = self.run_ps('echo "$(Get-Date -Format yyyy)"')
+        self.assertEqual((0, ""), (res.rc, res.blocked))
+        self.assertRegex(res.output.strip(), r"^\d{4}$")
+        res = self.run_ps('echo "$(Get-Content \'%s\')"; exit 7' % self.file)
+        self.assertEqual((7, "x", ""), (res.rc, res.output.strip(), res.blocked))
+
+    def test_posix_comments_and_literal_substitutions_stay_in_bash(self):
+        commands = (
+            ('printf ok # ; Get-Date', 0, 'ok'),
+            ('# Get-Date\nprintf ok', 0, 'ok'),
+            ('printf ok # Get-Date\nexit 4', 4, 'ok'),
+            ("printf '%s' '$(Get-Date)'", 0, '$(Get-Date)'),
+            ('echo "\\$(Get-Date)"', 0, '$(Get-Date)\n'),
+        )
+        for cmd, rc, output in commands:
+            with self.subTest(cmd=cmd):
+                self.assertEqual((rc, output, ""), tuple(self.run_ps(cmd)))
 
     def test_bare_powershell_test_path_passes_and_fails_like_a_proof(self):
         res = self.run_ps('Test-Path "%s"' % self.file)
