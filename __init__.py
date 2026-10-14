@@ -1215,7 +1215,7 @@ def _review_guard(tool_name, args):
                 "message": "card %s is `Verify: closeout`: it is one part of a split and has no proof of its own. "
                            "kanban_complete it with the artifact paths; the close-out card runs the split card's "
                            "proof once every part is done." % card}
-    if mode == "independent":
+    if mode in ("independent", "agent", "dual"):
         if _crew_role() == "verifier":
             return {"action": "block",
                     "message": "card %s: the verifier never requests review: it would become the card's "

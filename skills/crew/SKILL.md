@@ -56,7 +56,26 @@ You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesyste
 - Scaffold the change via `openspec-propose` or `openspec_change_create`.
 - Produce the 4 change artifacts: `proposal.md`, `specs/<change-id>/spec.md`, `design.md`, and `tasks.md`.
 - Every task in `tasks.md` MUST specify a verifiable, reproducible `Proof: <command>` returning exit code 0.
-- **STOP AT THE PHASE APPROVAL GATE**: Present the change proposal and task breakdown to the Commander. Do NOT create Kanban cards or dispatch workers until the Commander explicitly approves!
+- **Independent Proposal Review**: Dispatch an independent review card to `@reviewer` (`openspec-verifier`) to audit the artifacts before execution.
+- **STOP AT THE PHASE APPROVAL GATE**: Present the change proposal, review findings, and task breakdown to the Commander. Do NOT create Kanban cards or dispatch workers until the Commander explicitly approves!
+
+#### Step 3b — Phase 2b: Remediation & Re-Review Loop (When Reviewer Rejects)
+- If the proposal or implementation is rejected by Reviewer (`verdict: REJECTED`):
+- **STRICT PROHIBITION**: The Coordinator is **STRICTLY FORBIDDEN** from editing artifacts or source code directly in the chat session via `write_file`/`patch`, and **STRICTLY FORBIDDEN** from self-reviewing in chat!
+- The Coordinator MUST immediately dispatch an **Automated Closed-Loop Remediation Pipeline** on Kanban in Turn 1:
+  1. **Card 1 (Remediation by @coder)**:
+     - Assignee: `@coder` (skills: `["crew-role-worker"]`).
+     - Goal: Remediate artifacts/code addressing all findings from reviewer.
+     - Verify: `proof`.
+     - Proof command: Automated validation script (e.g. `openspec validate <change> --strict && test -s design.md`).
+  2. **Card 2 (Independent Re-Review by @reviewer)**:
+     - Assignee: `@reviewer` (skills: `["completed-handoff-review", "openspec-verifier"]`).
+     - Parents: `[Card 1 id]` (starts in `todo (gated)`).
+     - Goal: Independently verify complete remediation of all reviewer findings.
+     - Artifact: `reviews/findings-reviewer-v<N>.md`.
+     - Verify: `agent`.
+     - Proof command: `test -s "reviews/findings-reviewer-v<N>.md"`.
+- Card 2 auto-promotes to `ready` when Card 1 finishes, eliminating the need for manual Commander re-intake.
 
 #### Step 4 — Phase 3: Apply & Kanban Fan-Out
 - Only AFTER Commander approval, decompose the change tasks into Kanban cards.
@@ -126,9 +145,9 @@ Crew's own values (budgets, the proof safety mode) are in the `<crew-facts>` blo
 | Inputs | paths, URLs or short quoted text the owner gave (specs, docs, examples); optional | the owner (section 3b); leave the line out when there are none |
 | Constraints | what must not change, off-limit tools or data, deadline | you fill "none stated" unless the ask or a risk you see needs the owner |
 | Budget | tokens for the card | you fill the role's default from the `<crew-facts>` block |
-| Role | worker (code, config, infra, web) or content (posts, reports, video, pages, social) | you fill |
-| Verify | `proof` or `independent` | you fill `proof` for a command-only proof that covers every clause of Done when, `independent` for a script proof (the plugin sets it anyway) |
-| Route | `auto`, `<model>/<provider>`, or `none` | you fill `auto` |
+| Role | worker (@coder: code/config/infra/investigation), verifier (@reviewer: review/audit/verification), or content (@designer: reports/pages) | you fill |
+| Verify | `proof` (script-only exit 0), `agent` (@reviewer semantic verdict), or `dual` (coder implementation chained with reviewer re-review) | you fill |
+| Route | `auto` (inherit profile default model/provider; never override unless explicitly commanded) | you fill `auto` |
 
 ## 3. Missing or ambiguous -> ask only what the result needs, open nothing
 

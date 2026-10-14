@@ -476,7 +476,7 @@ REQUIRED = [("goal", "GOAL"), ("artifact", "Artifact"), ("lands", "Lands at"),
             ("audience", "For"), ("done_when", "Done when"), ("proof_cmd", "proof command")]
 
 
-VERIFY_MODES = ("proof", "independent")
+VERIFY_MODES = ("proof", "independent", "agent", "dual")
 PROOF_MODES = crew_safety.PROOF_MODES
 
 
@@ -597,10 +597,10 @@ def contract_gaps(c, allow_no_proof=False):
             continue
         if not str(c.get(key) or "").strip():
             gaps.append(label)
-    if str(c.get("role") or "").strip().lower() not in WRITER_ROLES:
-        gaps.append("role (worker or content)")
+    if str(c.get("role") or "").strip().lower() not in WRITER_ROLES + ("verifier", "reviewer"):
+        gaps.append("role (worker, content, or verifier)")
     if str(c.get("verify") or "").strip().lower() not in ("",) + VERIFY_MODES + (CLOSEOUT_MODE,):
-        gaps.append("Verify (proof or independent)")
+        gaps.append("Verify (proof, independent, agent, or dual)")
     if len(str(c.get("inputs") or "")) > INPUTS_MAX:
         gaps.append("Inputs (pasted text over %d characters: ask the owner for a file path instead)" % INPUTS_MAX)
     return gaps
@@ -759,7 +759,7 @@ def default_verify(c):
 
 
 def render_body(c):
-    verifier = profile_prefix() + "verifier"
+    verifier = role_profile("verifier")
     origin = origin_id(c.get("origin"))
     mode = default_verify(c)
     lines = [
@@ -1441,7 +1441,7 @@ def prepare_contract(c, allow_no_proof=False):
 def card_skills(assignee, role):
     """The role skill to force-load, or [] when it resolves nowhere (a forced skill that resolves
     nowhere makes the worker refuse to start): installed in the assignee's home or reachable from this one."""
-    skill = "crew-role-%s" % role
+    skill = "crew-verifier" if role in ("verifier", "reviewer") else "crew-role-%s" % role
     return [skill] if skill_in_home(profile_home_of(assignee), skill) or skill_available(skill) else []
 
 
@@ -1890,7 +1890,7 @@ def closer_profiles(body=""):
     before it existed) keeps the old rule: every crew role."""
     coord = {profile_prefix() + "coordinator", role_profile("coordinator")}
     mode = verify_mode(body)
-    if mode == "independent":
+    if mode in ("independent", "agent", "dual"):
         return {profile_prefix() + "verifier", role_profile("verifier")} | coord
     if mode == "proof":
         role = (field(body, "Role") or "").strip().lower()
