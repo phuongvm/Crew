@@ -712,8 +712,6 @@ def get_avatars(avatar_path: str, request: Request):
 
 @router.get("/healthz")
 def get_healthz(request: Request):
-    if os.environ.get("CREW_DAEMON_AUTOSPAWN", "1") != "0":
-        _ensure_daemon_running()
     return _render(request, _health)
 
 

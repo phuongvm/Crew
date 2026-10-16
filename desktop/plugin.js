@@ -154,13 +154,26 @@ function CrewPage() {
         if (isMounted) setAuthError(AUTH_REQUIRED_MESSAGE)
         return
       }
-      // Local backend (or no connection info): the daemon directly when it is up; otherwise the
-      // local backend's crew proxy, which starts the daemon on demand.
+      // Local backend (or no connection info): resolve authenticated Gateway/Dashboard proxy first;
+      // otherwise fall back to the local daemon if running.
+      if (base) {
+        if (conn && conn.token) {
+          return applyUrl(base + '/api/plugins/crew/board?token=' + encodeURIComponent(conn.token))
+        }
+        if (window.hermesDesktop && window.hermesDesktop.api) {
+          try {
+            var ticketResp = await window.hermesDesktop.api({ path: '/api/auth/ws-ticket', method: 'POST' })
+            if (ticketResp && ticketResp.ticket) {
+              return applyUrl(base + '/api/plugins/crew/board?ticket=' + encodeURIComponent(ticketResp.ticket))
+            }
+          } catch (ticketErr) {}
+        }
+      }
       if (await probeLocalDaemon(1500)) {
         return applyUrl(LOCAL_BOARD_URL)
       }
-      if (base && conn && conn.token) {
-        return applyUrl(base + '/api/plugins/crew/board?token=' + encodeURIComponent(conn.token))
+      if (base) {
+        return applyUrl(base + '/api/plugins/crew/board')
       }
       applyUrl(LOCAL_BOARD_URL)
     }
