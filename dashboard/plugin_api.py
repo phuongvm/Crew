@@ -439,6 +439,61 @@ def _rewrite_html(raw_html: str, request: Request, csp: str | None) -> str:
             nonce_attr = f' nonce="{html.escape(m.group(1), quote=True)}"'
     head += _theme_style(request)
     head += f'<script id="crew-parent-bridge"{nonce_attr}>{_BRIDGE_JS}</script>'
+
+    token_param = request.query_params.get("token") or request.query_params.get("ticket")
+    if token_param:
+        auth_token = ""
+        try:
+            from hermes_cli.web_server import _SESSION_TOKEN
+            auth_token = _SESSION_TOKEN
+        except Exception:
+            auth_token = token_param or ""
+
+        if auth_token:
+            auth_script = f"""<script id="crew-auth-sync"{nonce_attr}>
+(function() {{
+  var token = {json.dumps(auth_token)};
+  if (!token) return;
+  function appendToken(url) {{
+    if (typeof url !== 'string' || url.indexOf('token=') !== -1) return url;
+    if (url.indexOf('board.json') !== -1 || url.indexOf('card/') !== -1 || url.indexOf('/card/') !== -1 || url.indexOf('ack/') !== -1 || url.indexOf('/ack/') !== -1 || url.indexOf('board') !== -1 || url.indexOf('avatars/') !== -1) {{
+      var parts = url.split('#');
+      var base = parts[0];
+      var hash = parts.length > 1 ? ('#' + parts.slice(1).join('#')) : '';
+      var sep = base.indexOf('?') === -1 ? '?' : '&';
+      return base + sep + 'token=' + encodeURIComponent(token) + hash;
+    }}
+    return url;
+  }}
+  window.__appendToken = appendToken;
+  if (!window.__crewFace) {{
+    window.__crewFace = function(p) {{ return appendToken(p); }};
+  }}
+  if (window.fetch) {{
+    var origFetch = window.fetch;
+    window.fetch = function(url, init) {{
+      var u = (url && url.url) ? url.url : url;
+      return origFetch.call(this, appendToken(u), init);
+    }};
+  }}
+  if (window.XMLHttpRequest) {{
+    var origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {{
+      return origOpen.call(this, method, appendToken(url), async, user, password);
+    }};
+  }}
+  document.addEventListener('click', function(e) {{
+    var a = e.target && e.target.closest ? e.target.closest('a') : null;
+    if (a && a.href && a.href.indexOf('token=') === -1) {{
+      if (a.href.indexOf('/card/') !== -1 || a.href.indexOf('/board') !== -1 || a.href.indexOf('board') !== -1) {{
+        a.href = appendToken(a.href);
+      }}
+    }}
+  }}, true);
+}})();
+</script>"""
+            head += auth_script
+
     return raw_html.replace("<head>", head, 1)
 
 
@@ -619,7 +674,27 @@ def _render(request: Request, make, embed: str | None = None) -> Response:
 
         if is_html:
             content = _rewrite_html(content.decode("utf-8", errors="replace"), request, csp).encode("utf-8")
-        return Response(content=content, status_code=status, headers=res_headers, media_type=content_type)
+        res = Response(content=content, status_code=status, headers=res_headers, media_type=content_type)
+        token = request.query_params.get("token") or request.query_params.get("ticket")
+        if token:
+            cookie_val = ""
+            try:
+                from hermes_cli.web_server import _SESSION_TOKEN
+                cookie_val = _SESSION_TOKEN
+            except Exception:
+                cookie_val = token
+            if cookie_val:
+                raw_proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+                is_https = str(raw_proto).strip().lower() == "https"
+                res.set_cookie(
+                    key="hermes_session",
+                    value=cookie_val,
+                    path="/api/plugins/crew/",
+                    samesite="none" if is_https else "lax",
+                    secure=is_https,
+                    httponly=True,
+                )
+        return res
     except Exception:
         _log.exception("crew dashboard: building %s failed", request.url.path)
         if embed == "text":

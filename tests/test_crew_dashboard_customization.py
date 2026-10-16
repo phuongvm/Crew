@@ -1204,6 +1204,14 @@ class HermesTokenAuthTests(RealBoardCase):
         self.assertIn('id="crew-parent-bridge"', resp.text)
         self.assertNotIn(self.token, resp.text)
 
+    def test_query_token_bootstraps_cookie_and_injects_auth_script(self):
+        resp = self.client.get(f"/api/plugins/crew/board?token={self.token}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('id="crew-auth-sync"', resp.text)
+        self.assertIn(self.token, resp.text)
+        cookie = resp.cookies.get("hermes_session")
+        self.assertEqual(cookie, self.token)
+
 
 class InProcessAckTests(RealBoardCase):
     """/ack on a temp board and a temp ack file (CREW_ACK_FILE): never the owner's."""
