@@ -84,6 +84,11 @@ class VerifyMode(str, Enum):
         return tuple(m.value for m in cls)
 
 
+class ContractGaps(list):
+    """Structured collection of detected contract validation gaps."""
+    pass
+
+
 class ProofMode(str, Enum):
     """Unattended proof execution safety mode."""
     SAFE = "safe"
@@ -256,11 +261,20 @@ class ContractCard:
         """Instantiate from JSON string."""
         return cls.from_dict(json.loads(json_str))
 
+    @classmethod
+    def from_markdown(cls, body: str) -> ContractCard:
+        """Parse a Markdown card body string into a ContractCard instance."""
+        return parse_markdown_card(body)
+
+    def to_markdown(self, python_exec: str = "python3", script_path: str = "crew_card.py") -> str:
+        """Alias for render() maintaining API symmetry with to_dict and to_json."""
+        return self.render(python_exec=python_exec, script_path=script_path)
+
     def validate_gaps(
         self,
         allow_no_proof: bool = False,
         proof_taken_checker: Optional[Callable[[str], str]] = None,
-    ) -> List[str]:
+    ) -> ContractGaps:
         """Run zero-defect gap validation."""
         return validate_contract(self.to_dict(), allow_no_proof=allow_no_proof, proof_taken_checker=proof_taken_checker)
 
@@ -431,7 +445,7 @@ def validate_contract(
     c: Union[ContractCard, Dict[str, Any]],
     allow_no_proof: bool = False,
     proof_taken_checker: Optional[Callable[[str], str]] = None,
-) -> List[str]:
+) -> ContractGaps:
     """Evaluates contract gaps in exact canonical order."""
     if isinstance(c, ContractCard):
         data = c.to_dict()
@@ -476,7 +490,7 @@ def validate_contract(
     if len(inputs_val) > INPUTS_MAX:
         gaps.append("Inputs (pasted text over %d characters: ask the owner for a file path instead)" % INPUTS_MAX)
 
-    return gaps
+    return ContractGaps(gaps)
 
 
 def prepare_contract_model(
