@@ -21,6 +21,15 @@ provides_tools:
   - crew_diagnose
   - crew_verdict
   - crew_status
+  - crew_event_subscribe
+  - crew_stop_card
+  - crew_review_handoff
+  - crew_request_changes
+  - crew_plan_split
+  - crew_worktree_create
+  - crew_worktree_cleanup
+  - crew_flow_graph
+  - crew_lesson_record
 provides_hooks:
   - pre_tool_call
   - post_tool_call

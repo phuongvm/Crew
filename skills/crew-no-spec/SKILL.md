@@ -98,7 +98,7 @@ Draft the contract card, invoke the native `kanban_create` tool, and launch the 
 ```python
 terminal(
     background=True,
-    notify=True,
+    notify_on_complete=True,
     command='python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" watch --card <id>',
 )
 ```

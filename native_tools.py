@@ -10,9 +10,10 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import re
 import sys
 import types
-from typing import Any
+from typing import Any, Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.join(HERE, "scripts")
@@ -199,6 +200,42 @@ CREW_STATUS_SCHEMA = {
     }
 }
 
+CREW_EVENT_SUBSCRIBE_SCHEMA = {
+    "name": "crew_event_subscribe",
+    "description": (
+        "Subscribe an HTTP/REST webhook URL to receive real-time Crew card lifecycle events "
+        "(card_created, card_claimed, card_blocked, card_review, card_completed), or manage existing subscriptions."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["subscribe", "unsubscribe", "list", "clear"],
+                "description": "Subscription action: 'subscribe' (default), 'unsubscribe', 'list', or 'clear'."
+            },
+            "url": {
+                "type": "string",
+                "description": "Webhook endpoint URL (required for subscribe and unsubscribe)."
+            },
+            "events": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Event kinds to subscribe to (e.g. ['card_created', 'card_completed'], or ['*'] for all). Defaults to ['*']."
+            },
+            "headers": {
+                "type": "object",
+                "description": "Optional HTTP headers to include with webhook POST requests (e.g. auth tokens)."
+            },
+            "format": {
+                "type": "string",
+                "enum": ["text", "json"],
+                "description": "Output format: 'text' or 'json'. Defaults to 'text'."
+            }
+        }
+    }
+}
+
 
 # ---------------------------------------------------------------- handlers
 
@@ -258,6 +295,23 @@ def handle_crew_card_create(args: dict, **kwargs: Any) -> dict[str, Any]:
             parents=parents,
             initial_status=initial_status,
         )
+        if isinstance(res, dict) and not dry_run:
+            cid = res.get("id") or res.get("task_id")
+            if cid:
+                try:
+                    try:
+                        from .runtime_events import emit_card_event, CARD_CREATED
+                    except ImportError:
+                        from runtime_events import emit_card_event, CARD_CREATED
+                    emit_card_event(
+                        CARD_CREATED,
+                        card_id=cid,
+                        status=str(initial_status or "running"),
+                        title=title,
+                        role=role,
+                    )
+                except Exception:
+                    pass
         return {"status": "ok", "card": res}
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
@@ -342,6 +396,21 @@ def handle_crew_verdict(args: dict, **kwargs: Any) -> dict[str, Any]:
             rc = card_mod.cmd_verdict(verdict_args)
         captured = stdout_buf.getvalue()
         verdict_str = "PASS" if rc == 0 else "FAIL"
+        try:
+            try:
+                from .runtime_events import emit_card_event, CARD_UPDATED
+            except ImportError:
+                from runtime_events import emit_card_event, CARD_UPDATED
+            emit_card_event(
+                CARD_UPDATED,
+                card_id=card_id,
+                status="verified" if rc == 0 else "verification_failed",
+                verdict=verdict_str,
+                exit_code=rc,
+                by=by,
+            )
+        except Exception:
+            pass
         return {
             "status": "ok",
             "verdict": verdict_str,
@@ -392,6 +461,70 @@ def handle_crew_status(args: dict, **kwargs: Any) -> Any:
         return {"status": "error", "error": err} if fmt == "json" else f"error: {err}"
 
 
+def handle_crew_event_subscribe(args: dict, **kwargs: Any) -> Any:
+    """Handler for crew_event_subscribe."""
+    if not isinstance(args, dict):
+        args = {}
+    action = str(args.get("action") or "subscribe").strip().lower()
+    fmt = str(args.get("format") or "text").strip().lower()
+    url = str(args.get("url") or "").strip()
+    events = args.get("events")
+    headers = args.get("headers")
+
+    try:
+        try:
+            from .runtime_events import get_webhook_manager
+        except ImportError:
+            from runtime_events import get_webhook_manager
+
+        mgr = get_webhook_manager()
+
+        if action == "subscribe":
+            if not url:
+                err = "url is required for action='subscribe'"
+                return {"status": "error", "error": err} if fmt == "json" else f"error: {err}"
+
+            res = mgr.register(url=url, events=events, headers=headers)
+            if fmt == "json":
+                return res
+            ev_str = ", ".join(res["events"])
+            return f"Subscribed {url} to events: [{ev_str}] (active webhooks: {res['active_webhooks']})"
+
+        elif action == "unsubscribe":
+            if not url:
+                err = "url is required for action='unsubscribe'"
+                return {"status": "error", "error": err} if fmt == "json" else f"error: {err}"
+            ok = mgr.unregister(url)
+            if fmt == "json":
+                return {"status": "ok" if ok else "not_found", "unregistered": ok, "url": url}
+            return f"Unsubscribed {url}" if ok else f"Webhook {url} not found"
+
+        elif action == "list":
+            items = mgr.list_all()
+            if fmt == "json":
+                return {"status": "ok", "count": len(items), "webhooks": items}
+            if not items:
+                return "No active webhook subscriptions"
+            lines = [f"Active webhooks ({len(items)}):"]
+            for item in items:
+                lines.append(f"  - {item['url']} -> {item['events']}")
+            return "\n".join(lines)
+
+        elif action == "clear":
+            cleared = mgr.clear()
+            if fmt == "json":
+                return {"status": "ok", "cleared": cleared}
+            return f"Cleared {cleared} webhook subscription(s)"
+
+        else:
+            err = f"unknown action {action!r}"
+            return {"status": "error", "error": err} if fmt == "json" else f"error: {err}"
+
+    except Exception as exc:
+        err = str(exc)
+        return {"status": "error", "error": err} if fmt == "json" else f"error: {err}"
+
+
 # ---------------------------------------------------------------- registration
 
 
@@ -400,20 +533,701 @@ CREW_NATIVE_TOOLS = [
     ("crew_diagnose", CREW_DIAGNOSE_SCHEMA, handle_crew_diagnose),
     ("crew_verdict", CREW_VERDICT_SCHEMA, handle_crew_verdict),
     ("crew_status", CREW_STATUS_SCHEMA, handle_crew_status),
+    ("crew_event_subscribe", CREW_EVENT_SUBSCRIBE_SCHEMA, handle_crew_event_subscribe),
 ]
 
 
-def register_native_tools(ctx: Any) -> None:
-    """Register Crew native tools with Hermes plugin context."""
-    for name, schema, handler in CREW_NATIVE_TOOLS:
+# ================================================================ extended tools
+# OpenSpec change `crew-extended-tools`: 8 tools across Core, Pipeline, Workspace and Intelligence ops.
+# Every handler returns a dict with `status` ("ok" | "error" | "refused" | "dry_run"); none raises.
+
+
+def _load(name: str) -> Any:
+    """Import a sibling script module from scripts/ by name, or None when it cannot load."""
+    try:
+        return __import__(name)
+    except Exception:
+        return None
+
+
+def _contracts() -> Any:
+    try:
+        from . import contracts as mod  # type: ignore[attr-defined]
+    except ImportError:
+        import contracts as mod  # type: ignore[no-redef]
+    return mod
+
+
+def _emit(kind_name: str, card_id: str, status: str, **extra: Any) -> None:
+    """Best-effort runtime event: a bus failure never fails the tool."""
+    try:
+        try:
+            from . import runtime_events as rev  # type: ignore[attr-defined]
+        except ImportError:
+            import runtime_events as rev  # type: ignore[no-redef]
+        rev.emit_card_event(getattr(rev, kind_name), card_id=card_id, status=status, **extra)
+    except Exception:
+        pass
+
+
+def _err(msg: str, **extra: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {"status": "error", "error": msg}
+    out.update(extra)
+    return out
+
+
+def _args(args: Any) -> dict:
+    return args if isinstance(args, dict) else {}
+
+
+def _card_id_arg(args: dict) -> str:
+    return str(args.get("card_id") or "").strip()
+
+
+# ---------------------------------------------------------------- schemas (extended)
+
+CREW_STOP_CARD_SCHEMA = {
+    "name": "crew_stop_card",
+    "description": (
+        "Core ops: stop ONE crew card without destroying it - kill its own worker process, close the sessions it "
+        "left open, and park the card for the owner (resume with /crew-unstuck). `archive=true` drops it instead."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "card_id": {"type": "string", "description": "The card to stop (e.g. 't_ab12cd34'). Required."},
+            "archive": {"type": "boolean", "description": "Archive the card instead of parking it. Default false."},
+            "dry_run": {"type": "boolean", "description": "Report what would be stopped without acting. Default false."},
+        },
+        "required": ["card_id"],
+    },
+}
+
+CREW_REVIEW_HANDOFF_SCHEMA = {
+    "name": "crew_review_handoff",
+    "description": (
+        "Pipeline ops: hand an independent-verification crew card to its verifier's review step "
+        "(model pin swapped for the review pick, card moved to `review`), or preview the prior-run hand-off "
+        "context a retried worker receives. `Verify: proof` and `closeout` cards are refused."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "card_id": {"type": "string", "description": "The card to hand off. Required."},
+            "action": {"type": "string", "enum": ["handoff", "preview"],
+                       "description": "'handoff' (default) moves the card to review; 'preview' returns the hand-off text only."},
+            "summary": {"type": "string", "description": "What was implemented and how it was verified (required for handoff)."},
+            "reviewer": {"type": "string", "description": "Reviewer profile. Defaults to the crew verifier profile."},
+        },
+        "required": ["card_id"],
+    },
+}
+
+CREW_REQUEST_CHANGES_SCHEMA = {
+    "name": "crew_request_changes",
+    "description": (
+        "Pipeline ops: reviewer verdict - return a card in an active review run to its implementer with the "
+        "concrete changes required. Refused when the card is not in a review run."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "card_id": {"type": "string", "description": "The card under review. Required."},
+            "reason": {"type": "string", "description": "The exact fix the implementer must make (min 10 characters). Required."},
+        },
+        "required": ["card_id", "reason"],
+    },
+}
+
+CREW_PLAN_SPLIT_SCHEMA = {
+    "name": "crew_plan_split",
+    "description": (
+        "Pipeline ops: split one goal into parallel child cards (one writer per artifact, each with its own proof "
+        "command) under a parent contract card and a coordinator close-out card. Dry run by default."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "Plan title."},
+            "goal": {"type": "string", "description": "The overall goal the children deliver together."},
+            "done_when": {"type": "string", "description": "Plan-level definition of done."},
+            "children": {
+                "type": "array",
+                "description": "Child card contracts (title, role, goal, artifact, lands, audience, done_when, proof_cmd, ...).",
+                "items": {"type": "object"},
+            },
+            "dry_run": {"type": "boolean", "description": "Validate and preview without writing cards. Default true."},
+        },
+        "required": ["goal", "children"],
+    },
+}
+
+CREW_WORKTREE_CREATE_SCHEMA = {
+    "name": "crew_worktree_create",
+    "description": (
+        "Workspace ops: create a dedicated git worktree `<worktrees_root>/<name>` on a new branch, never switching "
+        "the branch of the production checkout (Zero-Checkout invariant). Protected branches are refused."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "repo": {"type": "string", "description": "Path to the source repository (the production checkout). Required."},
+            "name": {"type": "string", "description": "Worktree folder name, one path segment [A-Za-z0-9._-]. Required."},
+            "branch": {"type": "string", "description": "New branch to create in the worktree. Required."},
+            "base": {"type": "string", "description": "Commit-ish to branch from. Defaults to HEAD."},
+            "worktrees_root": {"type": "string",
+                               "description": "Parent folder of worktrees. Defaults to $CREW_WORKTREES_ROOT, else the "
+                                              "nearest ancestor `.worktrees` folder of the repo, else <repo parent>/.worktrees."},
+            "dry_run": {"type": "boolean", "description": "Return the planned git command without running it."},
+        },
+        "required": ["repo", "name", "branch"],
+    },
+}
+
+CREW_WORKTREE_CLEANUP_SCHEMA = {
+    "name": "crew_worktree_cleanup",
+    "description": (
+        "Workspace ops: remove a dedicated git worktree `<worktrees_root>/<name>` registered on the repo and prune "
+        "its metadata. Refuses the main worktree, unregistered paths and dirty worktrees (unless force)."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "repo": {"type": "string", "description": "Path to the source repository. Required."},
+            "name": {"type": "string", "description": "Worktree folder name under the worktrees root. Required."},
+            "worktrees_root": {"type": "string", "description": "Parent folder of worktrees (same default as crew_worktree_create)."},
+            "delete_branch": {"type": "boolean", "description": "Also delete the worktree's branch (safe delete unless force)."},
+            "force": {"type": "boolean", "description": "Remove even with uncommitted changes; force-delete the branch."},
+            "dry_run": {"type": "boolean", "description": "Report what would be removed without acting."},
+        },
+        "required": ["repo", "name"],
+    },
+}
+
+CREW_FLOW_GRAPH_SCHEMA = {
+    "name": "crew_flow_graph",
+    "description": (
+        "Intelligence ops: render a card's process flow (brief, coordinator card, runs, verifier, close-out, "
+        "children) as a Mermaid flowchart or structured JSON. Read-only."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "card_id": {"type": "string", "description": "Card id, or 'latest' for the most recent card. Defaults to 'latest'."},
+            "direction": {"type": "string", "enum": ["TD", "TB", "LR", "RL", "BT"], "description": "Mermaid direction. Default TD."},
+            "format": {"type": "string", "enum": ["mermaid", "json"], "description": "Output: 'mermaid' (default) or 'json'."},
+        },
+    },
+}
+
+CREW_LESSON_RECORD_SCHEMA = {
+    "name": "crew_lesson_record",
+    "description": (
+        "Intelligence ops: record a one-or-two-line lesson for a crew role (injected into that role's future turns), "
+        "or show the lessons that apply to a role. Agents may not write `all` lessons."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["add", "show"], "description": "'add' (default) or 'show'."},
+            "role": {"type": "string", "description": "worker, content, verifier, coordinator or all. Required."},
+            "text": {"type": "string", "description": "The lesson (max 400 characters). Required for add."},
+        },
+        "required": ["role"],
+    },
+}
+
+
+# ---------------------------------------------------------------- 1. Core ops
+
+
+def handle_crew_stop_card(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_stop_card: park (or archive) one crew card via crew_stop.stop_card."""
+    args = _args(args)
+    card_id = _card_id_arg(args)
+    if not card_id:
+        return _err("card_id is required")
+    archive = bool(args.get("archive", False))
+    dry_run = bool(args.get("dry_run", False))
+    card_mod = _card_tool()
+    stop_mod = _load("crew_stop")
+    if card_mod is None or stop_mod is None:
+        return _err("crew_stop module could not be loaded")
+    try:
+        db = card_mod.kanban_db()
+        if not db:
+            return _err("no board to read: kanban database missing")
+        # crew_stop binds its board at import time; point it at the board resolved now, for this call only
+        prev_db, stop_mod.KANBAN_DB = stop_mod.KANBAN_DB, db
+        try:
+            cards = stop_mod.q("select id, status, assignee, title, body from tasks where id = ?", (card_id,))
+            if not cards:
+                return _err("no such card: %s" % card_id)
+            card = dict(cards[0])
+            if not stop_mod.is_crew_card(card):
+                return {"status": "refused", "card_id": card_id,
+                        "error": "card %s is not a crew card (no Coordinator:/Role: line); it is never touched"
+                                 % card_id}
+            lines, ok, facts = stop_mod.stop_card(card, dry=dry_run, archive=archive)
+        finally:
+            stop_mod.KANBAN_DB = prev_db
+        if ok and not dry_run:
+            _emit("CARD_ABANDONED" if archive else "CARD_BLOCKED", card_id,
+                  "archived" if archive else str(facts.get("after", ["?"])[0]), how=facts.get("how"))
+        return {
+            "status": "dry_run" if dry_run else ("ok" if ok else "error"),
+            "card_id": card_id,
+            "stopped": bool(ok),
+            "archived": bool(archive and ok and not dry_run),
+            "facts": facts,
+            "report": "\n".join(lines),
+        }
+    except Exception as exc:
+        return _err(str(exc), card_id=card_id)
+
+
+# ---------------------------------------------------------------- 2. Pipeline ops
+
+
+def handle_crew_review_handoff(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_review_handoff: verifier handoff for independent cards, or hand-off preview."""
+    args = _args(args)
+    card_id = _card_id_arg(args)
+    if not card_id:
+        return _err("card_id is required")
+    action = str(args.get("action") or "handoff").strip().lower()
+    card_mod = _card_tool()
+    if card_mod is None:
+        return _err("crew_card module could not be loaded")
+    try:
+        if action == "preview":
+            ho = _load("crew_handoff")
+            if ho is None:
+                return _err("crew_handoff module could not be loaded")
+            db = card_mod.kanban_db()
+            if not db:
+                return _err("no board to read: kanban database missing")
+            prev_db, ho.KANBAN_DB = ho.KANBAN_DB, db
+            try:
+                text = ho.handoff_text(card_id)
+            finally:
+                ho.KANBAN_DB = prev_db
+            return {"status": "ok", "card_id": card_id, "action": "preview", "has_prior_runs": bool(text),
+                    "handoff": text}
+        if action != "handoff":
+            return _err("unknown action %r: use handoff or preview" % action)
+        summary = str(args.get("summary") or "").strip()
+        if not summary:
+            return _err("summary is required for action='handoff'")
+        row = card_mod.card_row(card_id)
+        if not row:
+            return _err("no such card: %s" % card_id)
+        mode = card_mod.verify_mode(row[4])
+        if mode == "proof":
+            return {"status": "refused", "card_id": card_id, "verify": mode,
+                    "error": "card %s is `Verify: proof`: no verifier session runs on it; run crew_verdict and "
+                             "complete it with the raw proof output" % card_id}
+        if mode == "closeout":
+            return {"status": "refused", "card_id": card_id, "verify": mode,
+                    "error": "card %s is `Verify: closeout` (one part of a split): complete it directly" % card_id}
+        if mode not in ("independent", "agent", "dual"):
+            return {"status": "refused", "card_id": card_id, "verify": mode or None,
+                    "error": "card %s has no independent `Verify:` line; there is no verifier to hand it to" % card_id}
+        reviewer = str(args.get("reviewer") or "").strip() or card_mod.role_profile("verifier")
+        try:
+            card_mod.repin_for_review(card_id)
+        except Exception:
+            pass  # a pin that could not be swapped must not stop the review (same rule as the plugin guard)
+        ok, why = card_mod.lift_into_review(card_id, reviewer, summary[:400])
+        if ok:
+            _emit("CARD_REVIEW", card_id, "review", reviewer=reviewer)
+        return {"status": "ok" if ok else "error", "card_id": card_id, "verify": mode, "reviewer": reviewer,
+                "moved_to_review": bool(ok), "detail": str(why)[-200:]}
+    except Exception as exc:
+        return _err(str(exc), card_id=card_id)
+
+
+def handle_crew_request_changes(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_request_changes: kernel request_changes on an active review run."""
+    args = _args(args)
+    card_id = _card_id_arg(args)
+    reason = " ".join(str(args.get("reason") or "").split())
+    gaps = _contracts().change_request_gaps(card_id, reason)
+    if gaps:
+        return _err("; ".join(gaps), gaps=list(gaps))
+    card_mod = _card_tool()
+    if card_mod is None:
+        return _err("crew_card module could not be loaded")
+    try:
+        kb, conn = card_mod.kb_conn()
+        try:
+            ok, who = kb.request_changes(conn, card_id, reason=reason)
+            status = None
+            task = kb.get_task(conn, card_id)
+            if task is not None:
+                status = task.status
+        finally:
+            conn.close()
+    except Exception as exc:
+        return _err(str(exc), card_id=card_id)
+    if not ok:
+        return {"status": "refused", "card_id": card_id, "error": str(who or "request-changes refused")}
+    _emit("CARD_UPDATED", card_id, "changes_requested", implementer=who, reason=reason[:200])
+    return {"status": "ok", "card_id": card_id, "returned_to": who, "card_status": status, "reason": reason}
+
+
+def handle_crew_plan_split(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_plan_split: validated crew_card.run_plan (dry run by default).
+
+    The close-out proof of an owner-confirmed split is crew code only (run_plan's `closeout_proof`); a tool caller
+    can never set it, so every child of a tool split proves itself."""
+    args = _args(args)
+    spec_mod = _contracts().PlanSplitSpec
+    spec = spec_mod.from_dict(args)
+    gaps = spec.validate_gaps()
+    if gaps:
+        return _err("plan refused: " + "; ".join(gaps), gaps=list(gaps))
+    dry_run = bool(args.get("dry_run", True))
+    card_mod = _card_tool()
+    if card_mod is None:
+        return _err("crew_card module could not be loaded")
+    try:
+        res = card_mod.run_plan(spec.to_dict(), dry_run=dry_run)
+    except Exception as exc:
+        return _err(str(exc))
+    if not dry_run:
+        for child in res.get("children") or []:
+            cid = child.get("id") if isinstance(child, dict) else None
+            if cid:
+                _emit("CARD_CREATED", cid, "todo", title=child.get("title"), role=child.get("role"),
+                      parent=(res.get("parent") or {}).get("id"))
+    return {"status": "dry_run" if dry_run else "ok", "child_count": len(res.get("children") or []), "plan": res}
+
+
+# ---------------------------------------------------------------- 3. Workspace ops
+
+
+def _norm(path: str) -> str:
+    return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+
+
+def _git(git_mod: Any, repo: str, argv: list[str], timeout: int = 120) -> Any:
+    return git_mod.run_git(["git", "-C", repo] + argv, repo=repo, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+
+
+def _toplevel(git_mod: Any, repo: str) -> str:
+    res = _git(git_mod, repo, ["rev-parse", "--show-toplevel"], timeout=30)
+    if res.returncode != 0:
+        raise ValueError("not a git repository: %s (%s)" % (repo, (res.stderr or "").strip()[-200:]))
+    return os.path.normpath((res.stdout or "").strip())
+
+
+def worktrees_root_for(repo_top: str, explicit: Optional[str] = None) -> str:
+    """Where dedicated worktrees live: explicit > $CREW_WORKTREES_ROOT > nearest ancestor `.worktrees` > sibling."""
+    for cand in (explicit, os.environ.get("CREW_WORKTREES_ROOT")):
+        if cand and str(cand).strip():
+            return os.path.normpath(os.path.abspath(str(cand).strip()))
+    cur = os.path.dirname(os.path.abspath(repo_top))
+    while True:
+        cand = os.path.join(cur, ".worktrees")
+        if os.path.isdir(cand):
+            return os.path.normpath(cand)
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(repo_top)), ".worktrees"))
+
+
+def parse_worktree_porcelain(text: str) -> list[dict[str, Any]]:
+    """`git worktree list --porcelain` -> [{path, head, branch, bare, detached}], main worktree first."""
+    out: list[dict[str, Any]] = []
+    cur: dict[str, Any] = {}
+    for line in (text or "").splitlines() + [""]:
+        line = line.rstrip("\r")
+        if not line:
+            if cur:
+                out.append(cur)
+                cur = {}
+            continue
+        key, _, val = line.partition(" ")
+        if key == "worktree":
+            cur = {"path": os.path.normpath(val), "head": "", "branch": "", "bare": False, "detached": False}
+        elif key == "HEAD":
+            cur["head"] = val
+        elif key == "branch":
+            cur["branch"] = val[len("refs/heads/"):] if val.startswith("refs/heads/") else val
+        elif key in ("bare", "detached"):
+            cur[key] = True
+    return out
+
+
+def handle_crew_worktree_create(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_worktree_create: `git worktree add <root>/<name> -b <branch> <base>`; never a checkout."""
+    args = _args(args)
+    c = _contracts()
+    repo = str(args.get("repo") or "").strip()
+    name = str(args.get("name") or "").strip()
+    branch = str(args.get("branch") or "").strip()
+    base = str(args.get("base") or "HEAD").strip() or "HEAD"
+    if not repo:
+        return _err("repo is required")
+    if not c.is_valid_worktree_name(name):
+        return _err("name %r is not one safe path segment [A-Za-z0-9._-] (max 64)" % name)
+    gaps = c.branch_name_gaps(branch)
+    if gaps:
+        return {"status": "refused", "error": "; ".join(gaps), "gaps": list(gaps)}
+    if base.startswith("-"):
+        return _err("base %r may not start with '-'" % base)
+    git_mod = _load("git_safe")
+    if git_mod is None:
+        return _err("git_safe module could not be loaded")
+    try:
+        top = _toplevel(git_mod, repo)
+        root = worktrees_root_for(top, args.get("worktrees_root"))
+        path = os.path.join(root, name)
+        if _norm(path) == _norm(top) or _norm(top).startswith(_norm(path) + os.sep):
+            return {"status": "refused", "error": "worktree path %s would overlap the repository" % path}
+        if os.path.exists(path):
+            return {"status": "refused", "error": "worktree path already exists: %s" % path, "path": path}
+        exists = _git(git_mod, top, ["rev-parse", "--verify", "--quiet", "refs/heads/" + branch], timeout=30)
+        if exists.returncode == 0:
+            return {"status": "refused", "error": "branch %r already exists in %s" % (branch, top), "branch": branch}
+        argv = ["worktree", "add", path, "-b", branch, base]
+        if bool(args.get("dry_run", False)):
+            return {"status": "dry_run", "repo": top, "path": path, "branch": branch, "base": base,
+                    "argv": ["git", "-C", top] + argv}
+        os.makedirs(root, exist_ok=True)
+        res = _git(git_mod, top, argv)
+        if res.returncode != 0:
+            return _err("git worktree add failed: %s" % ((res.stderr or res.stdout or "").strip()[-300:]),
+                        path=path)
+        head = _git(git_mod, path, ["rev-parse", "HEAD"], timeout=30)
+        return {"status": "ok", "repo": top, "path": path, "branch": branch, "base": base,
+                "head": (head.stdout or "").strip()}
+    except Exception as exc:
+        return _err(str(exc))
+
+
+def handle_crew_worktree_cleanup(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_worktree_cleanup: guarded `git worktree remove` + prune (+ optional branch delete)."""
+    args = _args(args)
+    c = _contracts()
+    repo = str(args.get("repo") or "").strip()
+    name = str(args.get("name") or "").strip()
+    force = bool(args.get("force", False))
+    delete_branch = bool(args.get("delete_branch", False))
+    dry_run = bool(args.get("dry_run", False))
+    if not repo:
+        return _err("repo is required")
+    if not c.is_valid_worktree_name(name):
+        return _err("name %r is not one safe path segment [A-Za-z0-9._-] (max 64)" % name)
+    git_mod = _load("git_safe")
+    if git_mod is None:
+        return _err("git_safe module could not be loaded")
+    try:
+        top = _toplevel(git_mod, repo)
+        root = worktrees_root_for(top, args.get("worktrees_root"))
+        path = os.path.join(root, name)
+        listing = _git(git_mod, top, ["worktree", "list", "--porcelain"], timeout=30)
+        if listing.returncode != 0:
+            return _err("git worktree list failed: %s" % (listing.stderr or "").strip()[-200:])
+        trees = parse_worktree_porcelain(listing.stdout or "")
+        if trees and _norm(trees[0]["path"]) == _norm(path):
+            return {"status": "refused", "error": "refusing to remove the main worktree %s" % path}
+        match = next((t for t in trees[1:] if _norm(t["path"]) == _norm(path)), None)
+        if match is None:
+            return {"status": "refused", "path": path,
+                    "error": "%s is not a registered worktree of %s" % (path, top)}
+        branch = match.get("branch") or ""
+        dirty = ""
+        if os.path.isdir(path):
+            st = _git(git_mod, path, ["status", "--porcelain"], timeout=60)
+            dirty = (st.stdout or "").strip() if st.returncode == 0 else ""
+        if dirty and not force:
+            return {"status": "refused", "path": path, "dirty": dirty.splitlines()[:20],
+                    "error": "worktree has uncommitted changes; commit them or pass force=true"}
+        if delete_branch and branch in c.PROTECTED_BRANCHES:
+            return {"status": "refused", "error": "refusing to delete protected branch %r" % branch}
+        plan = [["worktree", "remove"] + (["--force"] if force else []) + [path], ["worktree", "prune"]]
+        if delete_branch and branch:
+            plan.append(["branch", "-D" if force else "-d", branch])
+        if dry_run:
+            return {"status": "dry_run", "repo": top, "path": path, "branch": branch,
+                    "argv": [["git", "-C", top] + a for a in plan]}
+        steps = []
+        for a in plan:
+            res = _git(git_mod, top, a)
+            steps.append({"argv": a, "rc": res.returncode, "out": ((res.stdout or "") + (res.stderr or "")).strip()[-300:]})
+            if res.returncode != 0:
+                return _err("git %s failed: %s" % (" ".join(a[:2]), steps[-1]["out"]), path=path, steps=steps)
+        return {"status": "ok", "repo": top, "path": path, "removed": not os.path.exists(path),
+                "branch": branch, "branch_deleted": bool(delete_branch and branch), "steps": steps}
+    except Exception as exc:
+        return _err(str(exc))
+
+
+# ---------------------------------------------------------------- 4. Intelligence ops
+
+_MERMAID_STATUS_STYLE = {
+    "done": "fill:#1f6f3f,stroke:#3fb950,color:#ffffff",
+    "running": "fill:#1f4f8f,stroke:#58a6ff,color:#ffffff",
+    "blocked": "fill:#8f1f1f,stroke:#f85149,color:#ffffff",
+    "failed": "fill:#8f1f1f,stroke:#f85149,color:#ffffff",
+    "review": "fill:#6f4f1f,stroke:#d29922,color:#ffffff",
+    "pending": "fill:#3a3a3a,stroke:#8b949e,color:#ffffff",
+}
+
+
+def _mermaid_text(value: Any, limit: int = 60) -> str:
+    text = " ".join(str(value if value is not None else "").split())
+    if len(text) > limit:
+        text = text[: limit - 1] + "\u2026"
+    return (text.replace("&", "#amp;").replace('"', "#quot;").replace("<", "#lt;").replace(">", "#gt;")
+            .replace("[", "#91;").replace("]", "#93;").replace("|", "#124;"))
+
+
+def _status_class(status: Any) -> str:
+    cls = re.sub(r"[^a-z0-9_]", "_", str(status or "pending").lower()) or "pending"
+    return "st_" + cls
+
+
+def graph_to_mermaid(graph: dict, direction: str = "TD") -> str:
+    """Render a crew_graph.build_graph() graph (nodes + edges) as a Mermaid flowchart. Deterministic."""
+    direction = direction if direction in _contracts().MERMAID_DIRECTIONS else "TD"
+    nodes = list(graph.get("nodes") or [])
+    ids: dict[str, str] = {}
+    lines = ["flowchart %s" % direction]
+    classes: dict[str, str] = {}
+    for i, n in enumerate(nodes):
+        mid = "n%d" % i
+        ids[str(n.get("id"))] = mid
+        kind = n.get("kind") or "node"
+        label = n.get("title") or n.get("label") or n.get("id")
+        status = str(n.get("status") or "pending")
+        text = "%s: %s<br/>%s" % (_mermaid_text(kind, 20), _mermaid_text(label), _mermaid_text(status, 20))
+        cls = _status_class(status)
+        classes[cls] = status.lower()
+        lines.append('    %s["%s"]:::%s' % (mid, text, cls))
+    for e in graph.get("edges") or []:
+        a, b = ids.get(str(e.get("from"))), ids.get(str(e.get("to")))
+        if a and b:
+            lines.append("    %s --> %s" % (a, b))
+    for cls, status in sorted(classes.items()):
+        style = _MERMAID_STATUS_STYLE.get(status, _MERMAID_STATUS_STYLE["pending"])
+        lines.append("    classDef %s %s" % (cls, style))
+    return "\n".join(lines)
+
+
+def handle_crew_flow_graph(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_flow_graph: crew_graph.build_graph -> Mermaid or slim JSON."""
+    args = _args(args)
+    card_ref = _card_id_arg(args) or "latest"
+    direction = str(args.get("direction") or "TD").strip().upper()
+    fmt = str(args.get("format") or "mermaid").strip().lower()
+    if fmt not in ("mermaid", "json"):
+        return _err("unknown format %r: use mermaid or json" % fmt)
+    if direction not in _contracts().MERMAID_DIRECTIONS:
+        return _err("unknown direction %r: use one of %s" % (direction, ", ".join(_contracts().MERMAID_DIRECTIONS)))
+    graph_mod = _load("crew_graph")
+    if graph_mod is None:
+        return _err("crew_graph module could not be loaded")
+    try:
+        graph, error = graph_mod.build_graph(card_ref)
+    except Exception as exc:
+        return _err(str(exc), card_id=card_ref)
+    if error or not graph:
+        return _err(error or "no graph for %s" % card_ref, card_id=card_ref)
+    out: dict[str, Any] = {
+        "status": "ok",
+        "card_id": graph.get("card_id"),
+        "card_title": graph.get("card_title"),
+        "card_status": graph.get("card_status"),
+        "node_count": len(graph.get("nodes") or []),
+        "edge_count": len(graph.get("edges") or []),
+        "format": fmt,
+    }
+    if fmt == "mermaid":
+        out["mermaid"] = graph_to_mermaid(graph, direction)
+    else:
+        out["nodes"] = [{k: n.get(k) for k in ("id", "kind", "label", "status", "role", "title")}
+                        for n in graph.get("nodes") or []]
+        out["edges"] = [{"from": e.get("from"), "to": e.get("to")} for e in graph.get("edges") or []]
+    return out
+
+
+def handle_crew_lesson_record(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_lesson_record: crew_lessons.add / for_role."""
+    args = _args(args)
+    action = str(args.get("action") or "add").strip().lower()
+    role = str(args.get("role") or "").strip().lower()
+    lessons = _load("crew_lessons")
+    if lessons is None:
+        return _err("crew_lessons module could not be loaded")
+    if action == "show":
+        if role not in _contracts().LESSON_ROLES:
+            return _err("unknown role %r (use: %s)" % (role, ", ".join(_contracts().LESSON_ROLES)))
+        texts = lessons.for_role(role) if role != "all" else [e[2] for e in lessons.entries() if "all" in e[1]]
+        return {"status": "ok", "role": role, "count": len(texts), "lessons": texts}
+    if action != "add":
+        return _err("unknown action %r: use add or show" % action)
+    text = " ".join(str(args.get("text") or "").split())
+    gaps = _contracts().lesson_gaps(role, text)
+    if gaps:
+        return _err("; ".join(gaps), gaps=list(gaps))
+    try:
+        result = lessons.add(role, text)
+    except ValueError as exc:
+        return {"status": "refused", "role": role, "error": str(exc)}
+    except Exception as exc:
+        return _err(str(exc))
+    return {"status": "ok", "result": result, "role": role, "text": text, "path": lessons.path()}
+
+
+CREW_EXTENDED_TOOLS = [
+    ("crew_stop_card", CREW_STOP_CARD_SCHEMA, handle_crew_stop_card),
+    ("crew_review_handoff", CREW_REVIEW_HANDOFF_SCHEMA, handle_crew_review_handoff),
+    ("crew_request_changes", CREW_REQUEST_CHANGES_SCHEMA, handle_crew_request_changes),
+    ("crew_plan_split", CREW_PLAN_SPLIT_SCHEMA, handle_crew_plan_split),
+    ("crew_worktree_create", CREW_WORKTREE_CREATE_SCHEMA, handle_crew_worktree_create),
+    ("crew_worktree_cleanup", CREW_WORKTREE_CLEANUP_SCHEMA, handle_crew_worktree_cleanup),
+    ("crew_flow_graph", CREW_FLOW_GRAPH_SCHEMA, handle_crew_flow_graph),
+    ("crew_lesson_record", CREW_LESSON_RECORD_SCHEMA, handle_crew_lesson_record),
+]
+
+
+def _string_response_adapter(fn: Any) -> Any:
+    """Adapts tool handler output to guarantee Hermes str result contract."""
+    import json
+    def wrapped(*args: Any, **kwargs: Any) -> str:
+        res = fn(*args, **kwargs)
+        if isinstance(res, str):
+            return res
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    return wrapped
+
+
+def _register(ctx: Any, tools: list) -> None:
+    for name, schema, handler in tools:
         try:
             ctx.register_tool(
                 name=name,
                 toolset="crew",
                 schema=schema,
-                handler=handler,
+                handler=_string_response_adapter(handler),
                 description=schema.get("description", ""),
             )
         except Exception:
             # Registration failure of an individual tool must not crash plugin init
             pass
+
+
+def register_native_tools(ctx: Any) -> None:
+    """Register the 5 core Crew native tools with Hermes plugin context."""
+    _register(ctx, CREW_NATIVE_TOOLS)
+
+
+def register_extended_tools(ctx: Any) -> None:
+    """Register the 8 extended Crew native tools (OpenSpec change crew-extended-tools)."""
+    _register(ctx, CREW_EXTENDED_TOOLS)

@@ -267,3 +267,105 @@ def handle_kanban_lifecycle_event(
 
     kind, status = mapping[event_name]
     return emit_card_event(kind=kind, card_id=task_id, status=status, bus=bus, payload=dict(fields))
+
+
+@dataclass
+class WebhookSubscription:
+    """Represents an active webhook subscription."""
+    url: str
+    events: List[str]
+    headers: Dict[str, str] = field(default_factory=dict)
+    created_at: float = field(default_factory=time.time)
+    unsub_handles: List[Callable[[], None]] = field(default_factory=list, repr=False)
+
+
+class WebhookManager:
+    """Manages active webhook subscriptions dispatching via RESTNotifier."""
+
+    def __init__(self, bus: Optional[EventBus] = None):
+        self._bus = bus or _DEFAULT_BUS
+        self._lock = threading.RLock()
+        self._webhooks: Dict[str, WebhookSubscription] = {}
+
+    def register(
+        self,
+        url: str,
+        events: Optional[List[str]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: float = 2.0,
+        opener: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Register a webhook endpoint URL to receive events."""
+        url = url.strip()
+        if not url:
+            raise ValueError("URL cannot be empty")
+        ev_list = [e.strip() for e in (events or ["*"]) if e.strip()]
+        if not ev_list:
+            ev_list = ["*"]
+
+        with self._lock:
+            if url in self._webhooks:
+                self.unregister(url)
+
+            notifier = RESTNotifier(endpoints=[url], timeout=timeout, headers=headers, opener=opener)
+            handles: List[Callable[[], None]] = []
+            for ev in ev_list:
+                unsub = self._bus.subscribe(ev, notifier.handle_event)
+                handles.append(unsub)
+
+            sub = WebhookSubscription(
+                url=url,
+                events=ev_list,
+                headers=dict(headers or {}),
+                unsub_handles=handles,
+            )
+            self._webhooks[url] = sub
+            return {
+                "status": "ok",
+                "url": url,
+                "events": ev_list,
+                "active_webhooks": len(self._webhooks),
+            }
+
+    def unregister(self, url: str) -> bool:
+        """Unregister a webhook endpoint URL."""
+        url = url.strip()
+        with self._lock:
+            sub = self._webhooks.pop(url, None)
+            if sub:
+                for h in sub.unsub_handles:
+                    try:
+                        h()
+                    except Exception:
+                        pass
+                return True
+            return False
+
+    def list_all(self) -> List[Dict[str, Any]]:
+        """Return all active webhook subscriptions."""
+        with self._lock:
+            return [
+                {
+                    "url": sub.url,
+                    "events": list(sub.events),
+                    "created_at": sub.created_at,
+                }
+                for sub in self._webhooks.values()
+            ]
+
+    def clear(self) -> int:
+        """Clear all active webhook subscriptions."""
+        with self._lock:
+            count = len(self._webhooks)
+            for url in list(self._webhooks.keys()):
+                self.unregister(url)
+            return count
+
+
+_DEFAULT_WEBHOOK_MANAGER = WebhookManager()
+
+
+def get_webhook_manager() -> WebhookManager:
+    """Return the global default WebhookManager instance."""
+    return _DEFAULT_WEBHOOK_MANAGER
+

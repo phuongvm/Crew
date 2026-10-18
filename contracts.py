@@ -831,3 +831,132 @@ def get_role_specification(role_name: str) -> Optional[RoleSpecification]:
     if not r:
         return None
     return ROLE_SPECIFICATIONS.get(r.value)
+
+
+# -----------------------------------------------------------------------------
+# Extended Tool Contracts (crew-extended-tools)
+# -----------------------------------------------------------------------------
+# Typed, deterministic validators shared by the extended native tools
+# (crew_stop_card, crew_review_handoff, crew_request_changes, crew_plan_split,
+# crew_worktree_create, crew_worktree_cleanup, crew_flow_graph, crew_lesson_record).
+
+CARD_ID_RX = re.compile(r"^t_[A-Za-z0-9]{4,32}$")
+WORKTREE_NAME_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+BRANCH_SEGMENT_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+PROTECTED_BRANCHES: Tuple[str, ...] = ("main", "master", "HEAD")
+LESSON_ROLES: Tuple[str, ...] = ("worker", "content", "verifier", "coordinator", "all")
+LESSON_TEXT_MAX = 400
+CHANGE_REASON_MIN = 10
+MERMAID_DIRECTIONS: Tuple[str, ...] = ("TD", "TB", "LR", "RL", "BT")
+
+
+def is_valid_card_id(card_id: Optional[str]) -> bool:
+    """True for a Kanban task id shaped like `t_<hex>`."""
+    return bool(CARD_ID_RX.match(str(card_id or "").strip()))
+
+
+def is_valid_worktree_name(name: Optional[str]) -> bool:
+    """A worktree folder name: one path segment, no traversal, no separators, max 64 chars."""
+    val = str(name or "").strip()
+    return bool(WORKTREE_NAME_RX.match(val)) and ".." not in val
+
+
+def branch_name_gaps(branch: Optional[str]) -> ContractGaps:
+    """Why a branch name is refused (empty when it is acceptable).
+
+    Mirrors the parts of `git check-ref-format --branch` a tool caller can get wrong, and refuses the
+    protected primary branches: the Zero-Checkout invariant keeps branch work off `main`."""
+    gaps: List[str] = []
+    val = str(branch or "").strip()
+    if not val:
+        return ContractGaps(["branch is required"])
+    if val in PROTECTED_BRANCHES:
+        gaps.append("branch %r is a protected primary branch" % val)
+    if val.startswith(("-", "/")) or val.endswith(("/", ".", ".lock")):
+        gaps.append("branch %r has an invalid start or end" % val)
+    if ".." in val or "//" in val or "@{" in val:
+        gaps.append("branch %r contains '..', '//' or '@{'" % val)
+    for seg in val.split("/"):
+        if seg and not BRANCH_SEGMENT_RX.match(seg):
+            gaps.append("branch segment %r has characters outside [A-Za-z0-9._-]" % seg)
+            break
+    return ContractGaps(gaps)
+
+
+def lesson_gaps(role: Optional[str], text: Optional[str]) -> ContractGaps:
+    """Why a lesson record is refused (empty when it is acceptable)."""
+    gaps: List[str] = []
+    roles = [r for r in re.split(r"[,\s]+", str(role or "").lower()) if r]
+    if not roles:
+        gaps.append("role is required (%s)" % ", ".join(LESSON_ROLES))
+    for r in roles:
+        if r not in LESSON_ROLES:
+            gaps.append("unknown role %r (use: %s)" % (r, ", ".join(LESSON_ROLES)))
+    clean = " ".join(str(text or "").split())
+    if not clean:
+        gaps.append("text is required")
+    elif len(clean) > LESSON_TEXT_MAX:
+        gaps.append("text over %d characters (got %d)" % (LESSON_TEXT_MAX, len(clean)))
+    return ContractGaps(gaps)
+
+
+def change_request_gaps(card_id: Optional[str], reason: Optional[str]) -> ContractGaps:
+    """Why a request-changes verdict is refused: a card id and a concrete, non-trivial reason."""
+    gaps: List[str] = []
+    if not str(card_id or "").strip():
+        gaps.append("card_id is required")
+    clean = " ".join(str(reason or "").split())
+    if len(clean) < CHANGE_REASON_MIN:
+        gaps.append("reason must name the concrete fix (at least %d characters)" % CHANGE_REASON_MIN)
+    return ContractGaps(gaps)
+
+
+@dataclasses.dataclass
+class PlanSplitSpec:
+    """A split of one goal into parallel child cards plus a coordinator close-out (each child proves itself)."""
+    title: str = ""
+    goal: str = ""
+    done_when: str = ""
+    coordinator: str = ""
+    children: List[Dict[str, Any]] = dataclasses.field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PlanSplitSpec":
+        valid = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in dict(data or {}).items() if k in valid and v is not None}
+        if "children" in filtered:
+            filtered["children"] = [dict(ch) for ch in (filtered["children"] or []) if isinstance(ch, dict)]
+        return cls(**filtered)
+
+    def validate_gaps(self) -> ContractGaps:
+        """Gaps in canonical order: goal, children present, one writer per artifact, child contracts."""
+        gaps: List[str] = []
+        if not (self.goal or self.title).strip():
+            gaps.append("goal or title is required")
+        if not self.children:
+            gaps.append("children: a split needs at least one child card")
+            return ContractGaps(gaps)
+        arts = [str(ch.get("artifact") or "").strip().lower() for ch in self.children]
+        dup = sorted(set(a for a in arts if a and arts.count(a) > 1))
+        if dup:
+            gaps.append("two writers on one artifact: %s" % ", ".join(dup))
+        for i, ch in enumerate(self.children, 1):
+            child = dict(ch)
+            # A split's close-out proof is owner-confirmed crew code, never model input: every child of a
+            # tool-requested split carries and runs its own proof command.
+            if str(child.get("verify") or "").strip().lower() == VerifyMode.CLOSEOUT.value:
+                gaps.append("child %d: Verify closeout is reserved for an owner-confirmed split" % i)
+                continue
+            child_gaps = validate_contract(child, allow_no_proof=False)
+            if child_gaps:
+                gaps.append("child %d missing: %s" % (i, ", ".join(child_gaps)))
+        return ContractGaps(gaps)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "title": self.title,
+            "goal": self.goal,
+            "done_when": self.done_when,
+            "coordinator": self.coordinator,
+            "children": [dict(ch) for ch in self.children],
+        }

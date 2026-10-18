@@ -3,9 +3,15 @@
 import email.message
 import json
 import logging
+import sys
 import urllib.error
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 from unittest import TestCase, mock
+
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 from runtime_events import (
     CARD_ABANDONED,
@@ -18,8 +24,11 @@ from runtime_events import (
     Event,
     EventBus,
     RESTNotifier,
+    WebhookManager,
+    WebhookSubscription,
     emit_card_event,
     get_event_bus,
+    get_webhook_manager,
     handle_kanban_lifecycle_event,
 )
 
@@ -306,3 +315,58 @@ class EndToEndEventDrivenWorkflowTest(TestCase):
             (CARD_COMPLETED, "done", 4),
         ]
         self.assertEqual(timeline, expected)
+
+
+class WebhookManagerTests(TestCase):
+    def setUp(self):
+        self.bus = EventBus()
+        self.mgr = WebhookManager(bus=self.bus)
+
+    def test_register_and_list(self):
+        res = self.mgr.register("http://example.com/webhook", events=["card_created"])
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["url"], "http://example.com/webhook")
+        self.assertEqual(res["events"], ["card_created"])
+        self.assertEqual(res["active_webhooks"], 1)
+
+        all_subs = self.mgr.list_all()
+        self.assertEqual(len(all_subs), 1)
+        self.assertEqual(all_subs[0]["url"], "http://example.com/webhook")
+
+    def test_unregister(self):
+        self.mgr.register("http://example.com/webhook")
+        self.assertTrue(self.mgr.unregister("http://example.com/webhook"))
+        self.assertFalse(self.mgr.unregister("http://example.com/webhook"))
+        self.assertEqual(len(self.mgr.list_all()), 0)
+
+    def test_clear(self):
+        self.mgr.register("http://example.com/w1")
+        self.mgr.register("http://example.com/w2")
+        self.assertEqual(self.mgr.clear(), 2)
+        self.assertEqual(len(self.mgr.list_all()), 0)
+
+    def test_webhook_dispatches_on_bus_event(self):
+        called_with = []
+
+        def mock_opener(req, timeout=2.0):
+            called_with.append(json.loads(req.data.decode("utf-8")))
+            resp = mock.MagicMock()
+            resp.status = 200
+            return resp
+
+        self.mgr.register(
+            "http://example.com/webhook",
+            events=["card_completed"],
+            opener=mock_opener,
+        )
+
+        # Emit irrelevant event
+        emit_card_event(CARD_CREATED, "c1", bus=self.bus)
+        self.assertEqual(len(called_with), 0)
+
+        # Emit subscribed event
+        emit_card_event(CARD_COMPLETED, "c1", status="done", bus=self.bus, summary="Done")
+        self.assertEqual(len(called_with), 1)
+        self.assertEqual(called_with[0]["card_id"], "c1")
+        self.assertEqual(called_with[0]["kind"], CARD_COMPLETED)
+

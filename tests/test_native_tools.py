@@ -79,7 +79,7 @@ class MockPluginContext:
 
 class ToolSchemasTests(unittest.TestCase):
     def test_schema_names_and_structure(self):
-        expected_names = {"crew_card_create", "crew_diagnose", "crew_verdict", "crew_status"}
+        expected_names = {"crew_card_create", "crew_diagnose", "crew_verdict", "crew_status", "crew_event_subscribe"}
         registered_names = {name for name, _, _ in CREW_NATIVE_TOOLS}
         self.assertEqual(expected_names, registered_names)
 
@@ -118,14 +118,23 @@ class ToolSchemasTests(unittest.TestCase):
         self.assertIn("limit", props)
         self.assertIn("format", props)
 
+    def test_event_subscribe_schema_fields(self):
+        props = native_tools.CREW_EVENT_SUBSCRIBE_SCHEMA["parameters"]["properties"]
+        self.assertIn("action", props)
+        self.assertIn("url", props)
+        self.assertIn("events", props)
+        self.assertIn("headers", props)
+        self.assertIn("format", props)
+        self.assertEqual(["subscribe", "unsubscribe", "list", "clear"], props["action"]["enum"])
+
 
 class ToolRegistrationTests(unittest.TestCase):
     def test_register_native_tools(self):
         ctx = MockPluginContext()
         register_native_tools(ctx)
-        self.assertEqual(4, len(ctx.tools))
+        self.assertEqual(5, len(ctx.tools))
         names = {t["name"] for t in ctx.tools}
-        self.assertEqual({"crew_card_create", "crew_diagnose", "crew_verdict", "crew_status"}, names)
+        self.assertEqual({"crew_card_create", "crew_diagnose", "crew_verdict", "crew_status", "crew_event_subscribe"}, names)
         for t in ctx.tools:
             self.assertEqual("crew", t["toolset"])
             self.assertTrue(callable(t["handler"]))
@@ -144,8 +153,16 @@ class ToolRegistrationTests(unittest.TestCase):
         self.assertIn("crew_diagnose", tool_names)
         self.assertIn("crew_verdict", tool_names)
         self.assertIn("crew_status", tool_names)
+        self.assertIn("crew_event_subscribe", tool_names)
         self.assertTrue(len(ctx.commands) >= 5)
         self.assertTrue(len(ctx.hooks) >= 8)
+
+    def test_registered_handlers_satisfy_hermes_string_contract(self):
+        ctx = MockPluginContext()
+        register_native_tools(ctx)
+        for t in ctx.tools:
+            out = t["handler"]({"title": "Test", "role": "worker", "dry_run": True, "allow_no_proof": True})
+            self.assertIsInstance(out, str, f"Tool {t['name']} handler must return str")
 
 
 class CrewCardCreateHandlerTests(unittest.TestCase):
@@ -311,6 +328,75 @@ class CrewStatusHandlerTests(unittest.TestCase):
         res = handle_crew_status({"format": "json"})
         self.assertEqual("error", res["status"])
         self.assertIn("No kanban database found", res["error"])
+
+
+class CrewEventSubscribeHandlerTests(unittest.TestCase):
+    def setUp(self):
+        try:
+            from runtime_events import get_webhook_manager
+            get_webhook_manager().clear()
+        except ImportError:
+            pass
+
+    def tearDown(self):
+        try:
+            from runtime_events import get_webhook_manager
+            get_webhook_manager().clear()
+        except ImportError:
+            pass
+
+    def test_event_subscribe_requires_url(self):
+        res = native_tools.handle_crew_event_subscribe({"action": "subscribe", "format": "json"})
+        self.assertEqual("error", res["status"])
+        self.assertIn("url is required", res["error"])
+
+    def test_event_subscribe_and_list(self):
+        res = native_tools.handle_crew_event_subscribe({
+            "action": "subscribe",
+            "url": "http://127.0.0.1:9999/webhook",
+            "events": ["card_created", "card_completed"],
+            "format": "json",
+        })
+        self.assertEqual("ok", res["status"])
+        self.assertEqual("http://127.0.0.1:9999/webhook", res["url"])
+        self.assertEqual(["card_created", "card_completed"], res["events"])
+
+        lst = native_tools.handle_crew_event_subscribe({"action": "list", "format": "json"})
+        self.assertEqual("ok", lst["status"])
+        self.assertEqual(1, lst["count"])
+        self.assertEqual("http://127.0.0.1:9999/webhook", lst["webhooks"][0]["url"])
+
+    def test_event_subscribe_and_unsubscribe(self):
+        native_tools.handle_crew_event_subscribe({
+            "action": "subscribe",
+            "url": "http://127.0.0.1:9999/webhook",
+            "format": "json",
+        })
+        unsub = native_tools.handle_crew_event_subscribe({
+            "action": "unsubscribe",
+            "url": "http://127.0.0.1:9999/webhook",
+            "format": "json",
+        })
+        self.assertEqual("ok", unsub["status"])
+        self.assertTrue(unsub["unregistered"])
+
+        lst = native_tools.handle_crew_event_subscribe({"action": "list", "format": "json"})
+        self.assertEqual(0, lst["count"])
+
+    def test_event_subscribe_clear(self):
+        native_tools.handle_crew_event_subscribe({
+            "action": "subscribe",
+            "url": "http://127.0.0.1:9999/webhook1",
+            "format": "json",
+        })
+        native_tools.handle_crew_event_subscribe({
+            "action": "subscribe",
+            "url": "http://127.0.0.1:9999/webhook2",
+            "format": "json",
+        })
+        clr = native_tools.handle_crew_event_subscribe({"action": "clear", "format": "json"})
+        self.assertEqual("ok", clr["status"])
+        self.assertEqual(2, clr["cleared"])
 
 
 if __name__ == "__main__":

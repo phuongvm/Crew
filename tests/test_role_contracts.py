@@ -29,6 +29,7 @@ from contracts import (
     DEFAULT_BUDGET,
     INPUTS_MAX,
     ContractCard,
+    ContractGaps,
     ProofMode,
     Role,
     RoleSpecification,
@@ -109,6 +110,31 @@ class ContractCardModelTests(unittest.TestCase):
         self.assertIn('"artifact": "report.pdf"', json_str)
         c_restored = ContractCard.from_json(json_str)
         self.assertEqual(c, c_restored)
+
+    def test_from_markdown_and_to_markdown(self):
+        body = """Role: worker
+GOAL: Write secure parser
+Artifact: parser.py
+Lands at: O:/workspaces
+For: Commander
+Done when: Tests pass
+proof command: pytest tests
+Proof mode: safe
+"""
+        card = ContractCard.from_markdown(body)
+        self.assertEqual(card.role, "worker")
+        self.assertEqual(card.goal, "Write secure parser")
+        self.assertEqual(card.artifact, "parser.py")
+        md = card.to_markdown()
+        self.assertIn("Role: worker", md)
+        self.assertIn("GOAL: Write secure parser", md)
+
+    def test_contract_gaps_type(self):
+        card = ContractCard()
+        gaps = card.validate_gaps()
+        self.assertIsInstance(gaps, ContractGaps)
+        self.assertIsInstance(gaps, list)
+        self.assertIn("GOAL", gaps)
 
 
 class TolerantMarkdownParserTests(unittest.TestCase):
