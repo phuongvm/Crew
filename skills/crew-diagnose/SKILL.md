@@ -1,6 +1,6 @@
 ---
 name: crew-diagnose
-description: "Crew read-only pass: /crew-diagnose [state] - every card sitting in that state with its id and reason, then how each would resume. Plans only, it touches nothing."
+description: "Use when /crew-diagnose [state]. Read-only card diagnosis."
 version: 0.9.12
 ---
 
@@ -17,14 +17,20 @@ owner picks from your plan and starts the acting pass himself.
 
 ## 1. The list comes from one command - the reader
 
+Execute the diagnostic reader cleanly:
+
+    python "$HERMES_HOME/plugins/crew/scripts/crew_diagnose.py" [--state STATE]
+
+Or fallback via the launcher when interpreter path resolution is required:
+
     sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" crew_diagnose.py [--state STATE]
 
 The state is whatever the owner named after the slash: `blocked`, `triage`, `todo`, `ready`,
 `running`, `done`, `archived`. With no state named, it is `blocked`. Never widen the state the owner
 named because the list came back short, and never guess one he did not name.
 
-That reader call is the only tool call in this turn. No `kanban_list`, no `kanban_show`, no session
-store, no grep, no terminal command to "just check one card", no file write.
+That reader call is the only execution tool call in this turn. No board mutations, no session
+store writes, no grep across projects, no terminal command to "just check one card", no file write.
 
 Every id, state, assignee, kind, wait and reason in your answer is copied from the reader's output. A
 card the reader did not return is left out; a reason is never retyped from memory, never shortened

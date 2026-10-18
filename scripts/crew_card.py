@@ -35,7 +35,11 @@ from pathlib import Path
 HERE_SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 if HERE_SCRIPTS not in sys.path:
     sys.path.insert(0, HERE_SCRIPTS)
+PARENT_DIR = os.path.dirname(HERE_SCRIPTS)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
 import crew_safety  # noqa: E402 - the one runner of a proof command, and the mode it runs in
+import contracts  # noqa: E402
 
 WRITER_ROLES = ("worker", "content")
 DEFAULT_PREFIX = "crew-"
@@ -435,13 +439,14 @@ def card_pin(card_id):
 
 
 def field(body, key):
-    m = re.search(r"^\s*%s:\s*(.+)$" % re.escape(key), body or "", re.M | re.I)
-    return m.group(1).strip() if m else None
+    rx = r"^\s*(?:[-*]\s+)?(?:\#{1,6}\s+)?(?:\*\*|\*|__|_)?\s*%s\s*(?:\*\*|\*|__|_)?\s*:\s*(?:\*\*|\*|__|_)?\s*(.+)$" % re.escape(key)
+    m = re.search(rx, body or "", re.M | re.I)
+    return m.group(1).rstrip("*_ \t").strip() if m else None
 
 
 def is_crew_body(body):
     """A crew card carries a Coordinator: or Role: line in its body (render_body writes both)."""
-    return bool(re.search(r"^\s*(Coordinator|Role):", body or "", re.M | re.I))
+    return bool(re.search(r"^\s*(?:[-*]\s+)?(?:\#{1,6}\s+)?(?:\*\*|\*|__|_)?\s*(Coordinator|Role)\s*(?:\*\*|\*|__|_)?\s*:", body or "", re.M | re.I))
 
 
 # A card opened without a proof carries this prose where the command belongs (render_body below).
@@ -753,8 +758,9 @@ def parse_contract(body):
 
 
 CONTRACT_KEY_RX = re.compile(
-    r"^\s*(Role|Coordinator|Verifier|Verify|Budget|Origin|Route|GOAL|Artifact|Lands at|For|Constraints|Inputs|Units|"
-    r"Done when|proof command|Proof mode|Proof approved|Proof script)\s*:", re.I)
+    r"^\s*(?:[-*]\s+)?(?:\#{1,6}\s+)?(?:\*\*|\*|__|_)?\s*"
+    r"(Role|Coordinator|Verifier|Verify|Budget|Origin|Route|GOAL|Artifact|Lands at|For|Constraints|Inputs|Units|"
+    r"Done when|proof command|Proof mode|Proof approved|Proof script)\s*(?:\*\*|\*|__|_)?\s*:", re.I)
 
 
 def unparsed_lines(body):

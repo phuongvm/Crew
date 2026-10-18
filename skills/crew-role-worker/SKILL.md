@@ -9,7 +9,7 @@ version: 0.9.12
 Loaded on a crew card whose role is worker. You are the only writer on this card.
 
 ## Do
-1. Read the card: GOAL, `Done when`, the `Verify:` line and the `proof command`.
+1. Read the card: GOAL, `Done when`, the `Verify:` line and the `proof command` (structured per `contracts.py`).
    Zero-Checkout invariant: production checkouts that host live services (`O:/workspaces`,
    `O:/workspaces/oss/crew`, `O:/workspaces/oss/hermes-agent`, `O:/workspaces/oss/hermes-nerve`) stay on their
    primary branch (`main`). Any branch work (feature, fix, upstream PR, merge reconciliation) happens in a

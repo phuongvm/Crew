@@ -106,11 +106,11 @@ class ContractGapsTests(unittest.TestCase):
 
     def test_every_missing_field_is_reported_in_contract_order_with_the_role_last(self):
         self.assertEqual(["GOAL", "Artifact", "Lands at", "For", "Done when", "proof command",
-                          "role (worker or content)"], crew_card.contract_gaps({}))
+                          "role (worker, content, or verifier)"], crew_card.contract_gaps({}))
 
     def test_only_the_role_gap_remains_when_the_role_is_the_only_problem(self):
-        self.assertEqual(["role (worker or content)"],
-                         crew_card.contract_gaps(dict(self.COMPLETE, role="verifier")))
+        self.assertEqual(["role (worker, content, or verifier)"],
+                         crew_card.contract_gaps(dict(self.COMPLETE, role="unknown")))
 
     def test_empty_and_whitespace_values_count_as_missing(self):
         card = dict(self.COMPLETE, goal="   ", artifact="", lands=None, audience="\t")
@@ -123,7 +123,7 @@ class ContractGapsTests(unittest.TestCase):
 
     def test_allow_no_proof_does_not_excuse_anything_else(self):
         self.assertEqual(["Artifact", "Lands at", "For", "Done when",
-                          "role (worker or content)"],
+                          "role (worker, content, or verifier)"],
                          crew_card.contract_gaps({"proof_cmd": "p", "goal": "g"}, allow_no_proof=True))
 
     def test_the_role_gate_accepts_the_forms_open_card_accepts(self):
@@ -133,8 +133,9 @@ class ContractGapsTests(unittest.TestCase):
         self.assertEqual([], crew_card.contract_gaps(dict(self.COMPLETE, role="Worker")))
         self.assertEqual([], crew_card.contract_gaps(dict(self.COMPLETE, role=" worker ")))
         self.assertEqual([], crew_card.contract_gaps(dict(self.COMPLETE, role="CONTENT")))
-        self.assertEqual(["role (worker or content)"],
-                         crew_card.contract_gaps(dict(self.COMPLETE, role="verifier")))
+        self.assertEqual([], crew_card.contract_gaps(dict(self.COMPLETE, role="verifier")))
+        self.assertEqual(["role (worker, content, or verifier)"],
+                         crew_card.contract_gaps(dict(self.COMPLETE, role="unknown")))
 
 
 class OriginIdTests(unittest.TestCase):
@@ -795,7 +796,7 @@ class VerdictLineTests(CardTestCase):
         c = {"goal": "g", "artifact": "a", "lands": "l", "audience": "o", "done_when": "d", "proof_cmd": "true",
              "role": "worker"}
         self.assertEqual([], crew_card.contract_gaps(c))
-        self.assertEqual(["Verify (proof or independent)"], crew_card.contract_gaps(dict(c, verify="maybe")))
+        self.assertEqual(["Verify (proof, independent, agent, or dual)"], crew_card.contract_gaps(dict(c, verify="maybe")))
         self.assertEqual("proof", crew_card.default_verify(c))                          # a proof command: the writer proves it
         self.assertEqual("independent", crew_card.default_verify(dict(c, proof_cmd="")))  # none: a verifier must judge
         self.assertEqual("independent", crew_card.default_verify(dict(c, verify="independent")))
@@ -807,7 +808,8 @@ class VerdictLineTests(CardTestCase):
         self.assertEqual("proof", crew_card.verify_mode(proof))
         self.assertIn("kanban_request_review is refused", proof)
         self.assertEqual("independent", crew_card.verify_mode(indep))
-        self.assertIn('kanban_request_review(summary=..., reviewer="crew-verifier")', indep)
+        verifier = crew_card.role_profile("verifier")
+        self.assertIn('kanban_request_review(summary=..., reviewer="%s")' % verifier, indep)
         self.assertEqual("independent", crew_card.parse_contract(indep)["verify"])      # the round trip keeps it
 
     def test_the_snapshot_is_the_proof_command_the_card_opened_with_not_the_body_line(self):

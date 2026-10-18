@@ -1,12 +1,12 @@
 ---
 name: crew-verifier
-description: "Verification pass for a crew card with `Verify: independent`. Runs the proof itself, never trusts the writer."
+description: "Use when verifying an independent card. Proof-first review."
 version: 0.9.12
 ---
 
 # Crew verifier pass
 
-Used only on a card whose `Verify:` line is `independent`. A `Verify: proof` card never reaches you: its
+Used on a card whose `Verify:` line is `independent` or `dual` (governed by `contracts.py`). A `Verify: proof` card never reaches you: its
 writer proves it and the coordinator audits it. You judge; you never fix.
 
 ## Do, in this order, then stop
@@ -21,9 +21,11 @@ A. The card's proof command runs a script in a `.crew/` folder (`sh "$HERMES_HOM
    A card carrying `Proof script: verifier to revise - <reason>` is a coordinator-authorized revision: rewrite the
    existing script as the reason says, again from the contract, then continue. Any other change to a script that has
    already run is refused (exit 5, "proof script changed since it first ran").
-0. Record the card's own proof through the tool, not in prose:
+0. Record the card's own proof through the tool cleanly, not in prose:
 
-       sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" crew_card.py verdict --card <card id>
+       python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" verdict --card <card id>
+
+   *(Fallback via launcher if required: `sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" crew_card.py verdict --card <card id>`)*
 
    It runs the proof command the card was opened with (editing the line on the card changes nothing), stores the
    raw output, the exit code and the PASS/FAIL line (with `by` and `run_id`) in
@@ -32,14 +34,14 @@ A. The card's proof command runs a script in a `.crew/` folder (`sh "$HERMES_HOM
    `needs_input` and the printed reason, then end your turn). No verdict file means no verdict, whatever your
    summary says.
 1. Exactly ONE extra check the proof command does not cover (writing the script is not a check): read the artifact
-   back, count the items, open the page, compare a number with its source. When the card has `Inputs`, the result
-   is judged against them as well as against `Done when`, and this check is the one that compares the two. Run it with your own terminal tool (read-only; Hermes's approvals
+   back with native read-only tools (`read_file`, `search_files`), count the items, open the page, compare a number with its source. When the card has `Inputs`, the result
+   is judged against them as well as against `Done when`, and this check is the one that compares the two. Run it with your own read-only tool (Hermes's approvals
    apply to it) and quote its raw output in your verdict. `verdict --command` is refused: the verdict tool runs
    only the card's owner-confirmed proof command.
 
-   Units listed in the card body are marked with `crew_card.py progress --card <id> --unit "<unit>" --pass|--fail
-   --evidence "<raw line>" --by verifier`, only from your own run.
-2. Verdict: PASS - `kanban_complete` with the raw output; FAIL - `kanban_request_changes` naming the exact
+   Units listed in the card body are marked cleanly with:
+   `python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" progress --card <id> --unit "<unit>" --pass|--fail --evidence "<raw line>" --by verifier`, only from your own run.
+2. Verdict: PASS - invoke native `kanban_complete` with the raw output; FAIL - invoke native `kanban_request_changes` naming the exact
    missing item. Then end the turn.
 
 Worktree boundary gate (Zero-Checkout, before any PASS on a code card): the production checkouts
@@ -59,7 +61,8 @@ This gate is not your one extra check.
 - Accept "done", "works" or a rewritten proof command as a pass. If the proof cannot be run, say so and hand
   the card back.
 
-- Edit a skill file (crew's skills are shipped and overwritten on update). A lesson worth keeping: `sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" crew_card.py lesson --role <role> --text "..."`.
+- Edit a skill file (crew's skills are shipped and overwritten on update). A lesson worth keeping:
+  `python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" lesson --role <role> --text "..."` (or launcher fallback).
 
 ## Stop rules
 

@@ -1,7 +1,7 @@
 ---
 name: crew-no-spec
-description: "Crew Fast-Track intake: /crew-no-spec <ask> - opens a direct Kanban card without OpenSpec artifacts."
-version: 0.9.0
+description: "Use when /crew-no-spec <ask>. Fast-track direct card intake."
+version: 0.9.12
 ---
 
 # /crew-no-spec - fast-track coordinator intake
@@ -44,7 +44,7 @@ Select the verification mode based on whether the result is deterministic or cog
 
 ### Mode C: Dual Closed-Loop Chained Pipeline (`Verify: dual`)
 - **Use when**: Code implementation, critical bugfixes, or remediation of reviewer rejections that require BOTH automated test passing AND independent cognitive review by `@reviewer`.
-- **MANDATORY AUTOMATED CHAINING**: Coordinator MUST create TWO linked cards in Turn 1:
+- **MANDATORY AUTOMATED CHAINING**: Coordinator MUST create TWO linked cards in Turn 1 using the native `kanban_create` tool:
   1. **Card 1 (Worker Implementation/Remediation)**:
      ```python
      kanban_create(
@@ -91,17 +91,18 @@ Proof mode: safe
      ```
   Card 2 starts in `todo (gated)` and automatically promotes to `ready` when Card 1 completes. The Commander never needs to manually trigger a second session for review!
 
-## 4. Open the Card and Launch Watcher
+## 4. Open the Card and Launch Watcher (Tool-First)
 
-Show the drafted task in one short block, call `kanban_create` in the same turn, start the watcher:
+Draft the contract card, invoke the native `kanban_create` tool, and launch the background watcher cleanly:
 
 ```python
 terminal(
     background=True,
-    notify_on_complete=True,
-    command='sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" crew_card.py watch --card <id>',
+    notify=True,
+    command='python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" watch --card <id>',
 )
 ```
+*(Fallback via launcher if direct python resolution is required: `sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" crew_card.py watch --card <id>`)*
 
 And reply with EXACTLY these lines:
 ```text
