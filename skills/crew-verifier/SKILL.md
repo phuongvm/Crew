@@ -1,7 +1,7 @@
 ---
 name: crew-verifier
 description: "Use when verifying an independent card. Proof-first review."
-version: 0.9.12
+version: 0.9.13
 ---
 
 # Crew verifier pass
@@ -23,24 +23,22 @@ A. The card's proof command runs a script in a `.crew/` folder (`sh "$HERMES_HOM
    already run is refused (exit 5, "proof script changed since it first ran").
 0. Record the card's own proof through the tool cleanly, not in prose:
 
-       python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" verdict --card <card id>
-
-   *(Fallback via launcher if required: `sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" crew_card.py verdict --card <card id>`)*
+       crew_verdict(card="<card id>")
 
    It runs the proof command the card was opened with (editing the line on the card changes nothing), stores the
    raw output, the exit code and the PASS/FAIL line (with `by` and `run_id`) in
-   `$HERMES_HOME/crew/verdicts/<card>.jsonl`, and exits 0 PASS, 1 FAIL, 3 second FAIL (the card is then already
-   handed back; end your turn), 5 blocked by Hermes safety (nothing ran, no line: `kanban_block` with kind
-   `needs_input` and the printed reason, then end your turn). No verdict file means no verdict, whatever your
+   `$HERMES_HOME/crew/verdicts/<card>.jsonl`, and returns `"verdict"`: `PASS`, `FAIL`, a second FAIL with `handed_back` set (the card is then already
+   handed back; end your turn), or `BLOCKED` by Hermes safety (nothing ran, no line: `kanban_block` with kind
+   `needs_input` and the `blocked` reason, then end your turn). No verdict file means no verdict, whatever your
    summary says.
 1. Exactly ONE extra check the proof command does not cover (writing the script is not a check): read the artifact
    back with native read-only tools (`read_file`, `search_files`), count the items, open the page, compare a number with its source. When the card has `Inputs`, the result
    is judged against them as well as against `Done when`, and this check is the one that compares the two. Run it with your own read-only tool (Hermes's approvals
-   apply to it) and quote its raw output in your verdict. `verdict --command` is refused: the verdict tool runs
+   apply to it) and quote its raw output in your verdict. `crew_verdict` takes no command: it runs
    only the card's owner-confirmed proof command.
 
-   Units listed in the card body are marked cleanly with:
-   `python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" progress --card <id> --unit "<unit>" --pass|--fail --evidence "<raw line>" --by verifier`, only from your own run.
+   Units listed in the card body are marked with `crew_progress(card=<id>, unit="<unit>", result="pass"|"fail",
+   evidence="<raw line>")`, only from your own run.
 2. Verdict: PASS - invoke native `kanban_complete` with the raw output; FAIL - invoke native `kanban_request_changes` naming the exact
    missing item. Then end the turn.
 
@@ -61,8 +59,7 @@ This gate is not your one extra check.
 - Accept "done", "works" or a rewritten proof command as a pass. If the proof cannot be run, say so and hand
   the card back.
 
-- Edit a skill file (crew's skills are shipped and overwritten on update). A lesson worth keeping:
-  `python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" lesson --role <role> --text "..."` (or launcher fallback).
+- Edit a skill file (crew's skills are shipped and overwritten on update). A lesson worth keeping: `crew_lesson(role=<role>, text="...")`.
 
 ## Stop rules
 
