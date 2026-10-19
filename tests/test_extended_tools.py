@@ -95,6 +95,10 @@ EXTENDED = {
     "crew_worktree_create", "crew_worktree_cleanup", "crew_flow_graph", "crew_lesson_record",
 }
 CORE = {"crew_card_create", "crew_diagnose", "crew_verdict", "crew_status", "crew_event_subscribe"}
+# Upstream crew 0.9.13 scripts/crew_tools.py registers six tools; crew_verdict and crew_diagnose overlap CORE,
+# the other four are only there. register() exposes CORE | EXTENDED | SCRIPT_ONLY = 17 distinct tools.
+SCRIPT_ONLY = {"crew_progress", "crew_proof_check", "crew_lesson", "crew_plan"}
+ALL_TOOLS = CORE | EXTENDED | SCRIPT_ONLY
 
 PROOF_BODY = ("Role: worker\nCoordinator: owner/s\nVerify: proof\nBudget: 200000 tokens\n\nGOAL: g\nDone when: d\n\n"
               "proof command: true\n")
@@ -176,18 +180,33 @@ class RegistrationTests(unittest.TestCase):
             self.assertIn(json.loads(out)["status"], ("error", "refused", "ok", "dry_run"))
 
     def test_plugin_register_exposes_all_thirteen_tools(self):
+        # Name kept for proof-command selection (-k); the set is now 17: 13 native + 4 from scripts/crew_tools.py.
         import importlib.util
         spec = importlib.util.spec_from_file_location("crew_plugin_ext", str(REPO / "__init__.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         ctx = Ctx()
         mod.register(ctx)
-        self.assertEqual(CORE | EXTENDED, {t["name"] for t in ctx.tools})
+        names = [t["name"] for t in ctx.tools]
+        self.assertEqual(17, len(ALL_TOOLS))
+        self.assertEqual(ALL_TOOLS, set(names))
+        self.assertEqual(sorted(set(names)), sorted(names), "a tool was registered twice")
+        self.assertEqual({"crew"}, {t["toolset"] for t in ctx.tools})
 
     def test_manifest_declares_every_tool(self):
         text = (REPO / "plugin.yaml").read_text(encoding="utf-8")
-        for name in CORE | EXTENDED:
-            self.assertIn("  - %s" % name, text)
+        declared = set()
+        in_tools = False
+        for line in text.splitlines():
+            if line.startswith("provides_tools:"):
+                in_tools = True
+                continue
+            if in_tools:
+                if line.startswith("  - "):
+                    declared.add(line[4:].strip())
+                elif line.strip() and not line.startswith(" "):
+                    break
+        self.assertEqual(ALL_TOOLS, declared)
 
 
 # ============================================================ contracts
