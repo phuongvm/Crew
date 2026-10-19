@@ -37,9 +37,15 @@ Loaded on a crew card whose role is worker. You are the only writer on this card
      after you finish.
    - `Verify: independent` - call `crew_review_handoff(card_id="<card id>", summary="<summary>")` (or `kanban_request_review`)
      with the artifact paths. Never `kanban_complete`; the verifier writes the `.crew/` script and completes.
-   - `Verify: dual` - on PASS of `crew_verdict`, call `crew_review_handoff(card_id="<card id>", summary="<summary>")`
-     with artifact paths and proof output. Never `kanban_complete`; the verifier independently checks and completes.
-   - `Verify: agent` - call `crew_review_handoff(card_id="<card id>", summary="<summary>")`.
+   - `Verify: dual` - Dual verification requires BOTH automated test passing AND independent reviewer audit:
+     1. Run `crew_verdict(card_id="<card id>")` to verify the opening automated proof command passes (exit code 0).
+     2. On PASS: You are **STRICTLY FORBIDDEN** from calling `kanban_complete` (self-completion bypasses the mandatory review gate). Call `crew_review_handoff(card_id="<card id>", summary="<summary>")` (or `kanban_request_review`) with the artifact paths and raw proof output to transfer the card to the review column for `@reviewer`.
+     3. On FAIL: Fix the defect and re-run `crew_verdict(card_id="<card id>")`. Two failed verifications stop you: call `kanban_block` and end the turn.
+     4. Note on Chained Two-Card Pipelines: If the coordinator deployed a chained pipeline where you are assigned Card 1 with `Verify: proof` and Card 2 is an independent review with `Verify: agent`, call `kanban_complete` on Card 1 after `crew_verdict(card_id="<card id>")` PASS; that completion automatically promotes Card 2 for `@reviewer`.
+   - `Verify: agent` - Cognitive evaluation or review task:
+     1. When a worker card is configured with `Verify: agent` (e.g. producing an evaluation, investigation report, or pre-review artifact), produce the deliverable artifact.
+     2. Run `crew_verdict(card_id="<card id>")` to confirm the artifact exists and meets the proof command criteria (e.g. `test -s <artifact>`).
+     3. Finish by calling `crew_review_handoff(card_id="<card id>", summary="<summary>")` (or `kanban_request_review`) with the artifact paths and summary to transition the card to `@reviewer`. Never self-complete with `kanban_complete` when independent review is required.
    - `Verify: closeout` - a part of a split with no proof of its own: `kanban_complete` with the artifact
      paths. The close-out card runs the split card's proof once every part is done.
 5. A FAIL: fix the work and run the tool again. Two FAILs stop you: call `kanban_block` and end.

@@ -6,11 +6,16 @@ version: 0.9.13
 
 # Crew verifier pass
 
-Used on a card whose `Verify:` line is `independent`, `dual`, or `agent` (governed by `contracts.py`). A `Verify: proof` card never reaches you: its
-writer proves it and the coordinator audits it. You judge; you never fix.
+Used on a card whose `Verify:` line is `independent`, `dual`, or `agent` (governed by `contracts.py`). You judge; you never fix.
 
-- When `Verify: agent`: Standalone cognitive review or evaluation task assigned directly to `@reviewer`. You author the findings artifact (e.g. `reviews/findings-*.md`), execute its verification proof command via `crew_verdict(card_id="<card id>")`, perform your extra check, and call `kanban_complete` on PASS (or `crew_request_changes` if reviewing an active worker card).
-- When `Verify: independent` or `dual`: Claim the card from the review column (handed off via `crew_review_handoff(card_id="<card id>", summary="<summary>")`), author `.crew/` script if independent, run `crew_verdict(card_id="<card id>")`, perform extra check, and call `kanban_complete` on PASS or `crew_request_changes(card_id="<card id>", reason="<reason>")` on FAIL.
+## Verification Taxonomy Overview
+- Modes that NEVER reach the verifier:
+  - `Verify: proof`: The writer proves it via `crew_verdict(card_id="<card id>")` and completes via `kanban_complete`. The coordinator audits.
+  - `Verify: closeout`: Split plan child task; completed directly by the writer. Close-out card aggregates parent proof.
+- Modes handled by the verifier:
+  - `Verify: agent`: Standalone cognitive review or evaluation task assigned directly to `@reviewer`. You author the findings artifact (e.g. `reviews/findings-*.md`), execute its verification proof command via `crew_verdict(card_id="<card id>")`, perform your extra check, and call `kanban_complete` on PASS (or `crew_request_changes(card_id="<card id>", reason="<reason>")` if reviewing an active worker card).
+  - `Verify: independent`: Claim the card from the review column (handed off via `crew_review_handoff(card_id="<card id>", summary="<summary>")`), author `.crew/` script from contract criteria, run `crew_verdict(card_id="<card id>")`, perform extra check, and call `kanban_complete` on PASS or `crew_request_changes(card_id="<card id>", reason="<reason>")` on FAIL.
+  - `Verify: dual`: Claim the card from the review column (handed off via `crew_review_handoff(card_id="<card id>", summary="<summary>")` after worker's `crew_verdict(card_id="<card id>")` PASS). Run `crew_verdict(card_id="<card id>")` to independently verify the proof command, perform ONE extra substantive check (inspecting code, diff, and edge cases against `Inputs`), and call `kanban_complete` on PASS or `crew_request_changes(card_id="<card id>", reason="<reason>")` on FAIL.
 
 ## Do, in this order, then stop
 

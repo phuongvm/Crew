@@ -186,16 +186,47 @@ coordinator's audit check the result against `Inputs` as well as `Done when`.
 
 The answers turn opens the card at once: at most one or two quick read-only checks for a fact you still
 lack (a path exists), then the card. No new research after the answers - the worker does the work.
-Write the proof command, do NOT run it, test it or iterate on it in the intake. There are two kinds:
+Write the proof command, do NOT run it, test it or iterate on it in the intake.
 
-- Command-only proof: one short plain command (`test -f <file> && grep -q "..." <file>`, `curl -sf ...`). You write
-  it, the owner confirms it, the card stays `Verify: proof` (the writer runs it, the coordinator audits).
-- Script proof: `python "<landing folder>/.crew/<YYYYMMDD-HHMMSS>-<slug>/verify.py"`, absolute path: a folder of its
-  own under `.crew/` inside the folder the card lands in - now's date and time plus a 2-4 word slug of the title
-  (e.g. `.crew/20261003-143201-healthcare-landing/verify.py`), so two cards in one folder never share a script
-  (the plugin refuses a script another open card uses). Use it when the proof needs several checks. Write `Verify: independent` (the plugin sets it
-  anyway). The script does not exist yet: the VERIFIER writes it from `Done when`, the writer never does, and the
-  owner confirms the command, not the file. Never put a script's text in the card.
+### 4.1 Verification Taxonomy: Explicit Guidance for Choosing Verification Modes
+
+Select the verification mode based on whether the result is deterministic mechanical, verifier-authored, cognitive review, dual-stage, or a split subtask:
+
+| Mode | Verification Nature | When to Choose | Who Proves / Who Reviews | Terminal Action & Completion Protocol |
+|---|---|---|---|---|
+| `proof` | Deterministic automated shell command (exit code 0) | Mechanical code, unit tests, syntax, file presence | Worker proves via `crew_verdict`; coordinator audits | Worker calls `kanban_complete`. No verifier session; `crew_review_handoff` is refused. |
+| `independent` | Verifier-authored script (`.crew/<folder>/verify.py`) | Independent checks, multi-clause contracts | Verifier writes script, runs `crew_verdict`, 1 extra check | Worker calls `crew_review_handoff`. Verifier calls `kanban_complete` on PASS, `crew_request_changes` on FAIL. |
+| `agent` | Standalone cognitive review or evaluation | Spec audits, PR review, findings document | Verifier (`@reviewer`) evaluates artifact vs criteria | Verifier runs `crew_verdict` on findings artifact and calls `kanban_complete`. |
+| `dual` | Automated tests PASS + independent reviewer audit | Critical code, runtime fixes, reviewer remediation | Worker runs `crew_verdict` PASS; verifier performs 2nd check | Worker calls `crew_review_handoff`. Verifier calls `kanban_complete` on PASS, `crew_request_changes` on FAIL. |
+| `closeout` | Subtask part of a plan split with no proof of its own | Multi-part split plan child task | Worker completes split subtask | Worker calls `kanban_complete` directly. Aggregator/closeout card runs parent proof. |
+
+#### Mode 1: Automated Script-Verified Task (`Verify: proof`)
+- **Use when**: Deterministic mechanical tasks whose correctness is 100% evaluated by automated commands (unit tests, compilation, linters, file presence, or build outputs).
+- **Proof command**: One short plain command (`python -m unittest tests/test_foo.py`, `test -f <file> && grep -q "..." <file>`, `curl -sf ...`). You write it, the owner confirms it, the card stays `Verify: proof`.
+- **Workflow**: Worker proves via `crew_verdict(card_id="<id>")`; upon PASS, worker calls `kanban_complete` with artifact paths and raw proof output. No verifier session runs; `crew_review_handoff` is refused. The coordinator audits the proof once more after completion.
+
+#### Mode 2: Independent Verifier Task (`Verify: independent`)
+- **Use when**: Implementation or deliverables requiring independent verification checks authored by `@reviewer` rather than the writer, or multi-clause contracts where tests must be decoupled from the implementer.
+- **Proof command**: `python "<landing folder>/.crew/<YYYYMMDD-HHMMSS>-<slug>/verify.py"`, absolute path: a folder of its own under `.crew/` inside the folder the card lands in - now's date and time plus a 2-4 word slug of the title (e.g. `.crew/20261003-143201-healthcare-landing/verify.py`), so two cards in one folder never share a script. Write `Verify: independent` (the plugin sets it anyway). The script does not exist yet: the VERIFIER writes it from `Done when` and `Inputs` (standard library only), the writer never does, and the owner confirms the command, not the file. Never put a script's text in the card.
+- **Workflow**: Worker finishes work and calls `crew_review_handoff(card_id="<id>", summary="<summary>")`. The verifier writes the `.crew/` script from `Done when` and `Inputs`, runs `crew_verdict(card_id="<id>")`, performs exactly ONE extra read-only check, and calls `kanban_complete` on PASS or `crew_request_changes(card_id="<id>", reason="<reason>")` on FAIL.
+
+#### Mode 3: Standalone Cognitive Review Task (`Verify: agent`)
+- **Use when**: Standalone evaluation, architecture audit, OpenSpec proposal review, pull request review, or security assessment assigned directly to `@reviewer`.
+- **Artifact**: `reviews/findings-*.md` containing an explicit, unambiguous verdict (`APPROVED` or `REJECTED`).
+- **Proof command**: `test -s <review_artifact_path>` (verifies the review findings document exists and is non-empty).
+- **Workflow**: The verifier analyzes the target against criteria and inputs, writes the findings artifact, executes its proof via `crew_verdict(card_id="<id>")`, conducts one extra check, and calls `kanban_complete` on PASS. (If reviewing an active worker card that handed off, the verifier uses `crew_request_changes(card_id="<id>", reason="<reason>")` on rejection).
+
+#### Mode 4: Dual Closed-Loop Chained Pipeline (`Verify: dual`)
+- **Use when**: Code implementation, critical bugfixes, runtime troubleshooting, configuration/script fixes, or remediation of reviewer rejections that require BOTH automated test passing AND independent cognitive review by `@reviewer`.
+- **Proof command**: Automated test command (`pytest tests/...`, `python -m unittest ...`).
+- **Workflow Options**:
+  - **Single-Card Dual**: The worker implements the fix, runs `crew_verdict(card_id="<id>")` to prove automated tests pass (rc=0), and calls `crew_review_handoff(card_id="<id>", summary="<summary>")` (never `kanban_complete`). The verifier claims the card in review, re-runs `crew_verdict(card_id="<id>")`, performs one extra substantive check, and calls `kanban_complete` on PASS or `crew_request_changes(card_id="<id>", reason="<reason>")` on FAIL.
+  - **Two-Card Chained Pipeline**: Coordinator creates Card 1 (worker implementation with `Verify: proof`) and Card 2 (independent review with `Verify: agent`, `parents=[card_1_id]`). Card 1 completes via `kanban_complete` upon test pass, which automatically releases Card 2 for `@reviewer`.
+
+#### Mode 5: Plan Split Close-Out Part (`Verify: closeout`)
+- **Use when**: Child subtask produced by `crew_plan_split` or `crew_plan` that represents an intermediate step with no independent proof command of its own.
+- **Proof command**: Omitted or inherited parent proof.
+- **Workflow**: Worker completes subtask and calls `kanban_complete` directly with the artifact paths (`crew_review_handoff` is refused). The parent close-out card runs the overarching split card's proof once all parts are done.
 
 Absolute paths, always, never a long one-liner full of nested quotes. Show the drafted task in one short block (title, role,
 goal, artifact, lands at, for, done when, proof, budget, route), then the safety choice (below), then call

@@ -1,0 +1,905 @@
+[
+  {
+    "path": "__init__.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 85421,
+    "sha256": "fa7b087a99b6b030e13af35ecedf33e7356827a15a7ea1be1e54eefc32ad14a7"
+  },
+  {
+    "path": "contracts.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 40329,
+    "sha256": "74efb6a867073b7493b19e91196584818f5f8f001a5929caaafac2af74fbb6f0"
+  },
+  {
+    "path": "dashboard/plugin_api.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 38860,
+    "sha256": "2b7570b9c022e91d4d2832c918a4aae36bd118f5e25970483c4e4a251963cdcc"
+  },
+  {
+    "path": "fixtures/__init__.py",
+    "tracked": false,
+    "category": "implementation",
+    "size_bytes": 24,
+    "sha256": "16cfcdbb8a95326f952cf79c37155e047e984e52e0e996a57b79ad42bf916b05"
+  },
+  {
+    "path": "fixtures/worker/__init__.py",
+    "tracked": false,
+    "category": "implementation",
+    "size_bytes": 31,
+    "sha256": "036633146d94310ead10b71470f12370ccae1d7ee48b42814e39f987506ad57e"
+  },
+  {
+    "path": "fixtures/worker/greeting.py",
+    "tracked": false,
+    "category": "implementation",
+    "size_bytes": 139,
+    "sha256": "4a385a48932d8e9fe4898c03ddfe0ec97cd75667aeb72d7ce547d5d4994cf107"
+  },
+  {
+    "path": "install.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 79829,
+    "sha256": "e406e4bbedbfa687b4aa83c79d831885e5ad1efbc0f042a81d7a4c88a9f12f14"
+  },
+  {
+    "path": "native_tools.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 55198,
+    "sha256": "04a9e9eea08f906c17c8e15e3e024ce8ec3521400fbc1696a050774aeeeb677d"
+  },
+  {
+    "path": "runtime_events.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 12396,
+    "sha256": "433208c78721006662c758c22c75eb3299eb27a349c4cab4871eb6fc5d304e90"
+  },
+  {
+    "path": "scripts/crew_attention_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 20414,
+    "sha256": "440ba92604ccf16ea1ef13c52b3ad8bda553d5e37e7bfdea5327f31bd221e384"
+  },
+  {
+    "path": "scripts/crew_brief_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 8407,
+    "sha256": "0cdd8e30386a3af76b9e99c4a4e7ca9d3cd10280ee7d484d999127ce4cdeb1ee"
+  },
+  {
+    "path": "scripts/crew_card.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 144486,
+    "sha256": "2b360f394faa3979a180b5737ad5d8808b21b8d17853f45fafc0ef522db84bf1"
+  },
+  {
+    "path": "scripts/crew_card_page_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 5894,
+    "sha256": "f94329f833e5799d1fdba3b0177079aabd7c4472b161b5e1e932e47184c5c600"
+  },
+  {
+    "path": "scripts/crew_child_link_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 8239,
+    "sha256": "e99ee6aa448d1b27a369497591af0ddcc74cfe0b6af86a53e7378c69c07a6370"
+  },
+  {
+    "path": "scripts/crew_coordinator.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 62079,
+    "sha256": "52c4859cbf4d30812c5a25f47708d0e7b098b1d873f0bc09402e661017e7807a"
+  },
+  {
+    "path": "scripts/crew_coordinator_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 24189,
+    "sha256": "e07f7fa52635074002c2271f49bc460a1e93649c3f23996a9999fb0cb44f9748"
+  },
+  {
+    "path": "scripts/crew_dashboard_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 17585,
+    "sha256": "60f218faa9499c09d80c1add343e530ff4e0e680da4c07dc9de610ec9d5d49bd"
+  },
+  {
+    "path": "scripts/crew_diagnose.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 7926,
+    "sha256": "0c13c58be903d98d7c9f8c5fae8b46d3783e570e1796d42e3ddc86ee42edec43"
+  },
+  {
+    "path": "scripts/crew_diagnose_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 11047,
+    "sha256": "d4640a247e9d86082b3db4717c551fa12747a2fade01b4023641e4cead5992eb"
+  },
+  {
+    "path": "scripts/crew_entry_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 14285,
+    "sha256": "4fce84939ab00dcce82b8b9dd83dfa7d2629992d380c5a1b3d1058e1e9ff4966"
+  },
+  {
+    "path": "scripts/crew_graph.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 109456,
+    "sha256": "2008f34f95a3f8b7383db60493fd06cfbaefd3c4d7fa0085dbab9abb3e2b7954"
+  },
+  {
+    "path": "scripts/crew_graph_flow_check.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 10883,
+    "sha256": "d78e6132335220e55572242a8d9c10111951d33f59a3f32da4e5a6ead055e2e3"
+  },
+  {
+    "path": "scripts/crew_graph_serve.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 36568,
+    "sha256": "213a3897dc9a5f0902a4429146c7ef22237ff3d381d12b5a3a4abdaadd694d27"
+  },
+  {
+    "path": "scripts/crew_guard_quadrants.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 7828,
+    "sha256": "ab945b66dec444e4ee8ea7c9e3aea67fbce3e8cd1fd1a395dd0a777c7ae8338e"
+  },
+  {
+    "path": "scripts/crew_handoff.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 5809,
+    "sha256": "139581d53bf241a2efb0a30c277791c4f590519d1afd888429bcf387d291c2ef"
+  },
+  {
+    "path": "scripts/crew_handoff_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 9677,
+    "sha256": "447e9e7e61790183a608cdc5a7985c257ee32e30b84371fcf7baa8a8db9f86e8"
+  },
+  {
+    "path": "scripts/crew_heal.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 12626,
+    "sha256": "ee3996279f6d1af847f4eea12ce7a84745fe2ce12b5cdf236aad7997be4fa30d"
+  },
+  {
+    "path": "scripts/crew_heal_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 7896,
+    "sha256": "ca1d0134639be2b249f1b54a7c65b1658ffd04a0ae7aa84e8c619159a7d1c1e3"
+  },
+  {
+    "path": "scripts/crew_intake_create_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 8342,
+    "sha256": "469c61226c775a223f4572ef2e4a87b9c7dfc39f82df5a01dfbb8650c318334f"
+  },
+  {
+    "path": "scripts/crew_intake_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 6796,
+    "sha256": "89cc9eb11b8525fa299a65797844f9ea71fce2ac1ab5bc1878da5a5d13740724"
+  },
+  {
+    "path": "scripts/crew_lessons.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 6052,
+    "sha256": "2377ee3903c876dd769908eac3349532d287f3b1ec8db5cae8f69bb1fe982ac6"
+  },
+  {
+    "path": "scripts/crew_notify.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 21428,
+    "sha256": "079377597c1745e43610e861ca2d5fde5725f89a0aa36539a73d50dfd88b5e9a"
+  },
+  {
+    "path": "scripts/crew_notify_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 5715,
+    "sha256": "890aab471d534fdc226124f378db805da3b66d5fffdf7c7300143aed94a73986"
+  },
+  {
+    "path": "scripts/crew_option_commands_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 10561,
+    "sha256": "9e741f66f831a16a04b105c1eb91707368dafc1ed0e4d6e378dabf35c20343df"
+  },
+  {
+    "path": "scripts/crew_origin_loop_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 8394,
+    "sha256": "34f39b5ef694734dac5c4e200b07a60388d050f3bf95ddca03f84a1733eccf9c"
+  },
+  {
+    "path": "scripts/crew_origin_open_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 3835,
+    "sha256": "f4ce652527c60e64217f87d97dc10d54c2b360babfdc0f04e32998889a7faea9"
+  },
+  {
+    "path": "scripts/crew_panel_click_check.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 5478,
+    "sha256": "4eda1b8e3b2731b2290577dbad23725a20519dd8353b7fee81f6d397ab01be75"
+  },
+  {
+    "path": "scripts/crew_panel_steps_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 24403,
+    "sha256": "87d28993d036ee64b37a33b399b5f9dd5714f07a1e95eaa85bf9569e19d462c7"
+  },
+  {
+    "path": "scripts/crew_parity_check.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 5273,
+    "sha256": "81310e1e6712ac32b67c99745a578fecd6918fe0c423788406394275b0f0c980"
+  },
+  {
+    "path": "scripts/crew_permissions_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 12384,
+    "sha256": "5dfbcb1321fe0dacc450fec7be0756f7966f9f50cc5ca98dea0e824c8b14247c"
+  },
+  {
+    "path": "scripts/crew_probe_skip_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 6460,
+    "sha256": "f4f6f4ac569d87b94ecf26f6345f7d08cec2e163ef7190dd3e15bae27cfb23f3"
+  },
+  {
+    "path": "scripts/crew_proc.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 4790,
+    "sha256": "1201df611f97b16bb7b32ba50f99215015a00c92992a2281af2afd7196f59f45"
+  },
+  {
+    "path": "scripts/crew_proof_board.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 10988,
+    "sha256": "d229abdc1826f15ec675729255b3b7965ff8c1c0c772e55df96b65662f7133a1"
+  },
+  {
+    "path": "scripts/crew_proofs.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 13516,
+    "sha256": "63cb3cc6fe73656ca596af4a3b21ca9950a1caca5cc6aa95ee3667f3df9825ec"
+  },
+  {
+    "path": "scripts/crew_quota_wall_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 9942,
+    "sha256": "ce11392093feb55d2978b307308bb8f1bd297e733e6e267a32aea9b9e74ede81"
+  },
+  {
+    "path": "scripts/crew_result.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 5494,
+    "sha256": "c09cef2da235d0077d4d6ff909564eab116d8d482f7c0205e29cdb4d8d28d69e"
+  },
+  {
+    "path": "scripts/crew_role_platforms_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 11662,
+    "sha256": "d08d2a61f118e836c64f879e631218fd4e023edad1e7b44881d18c92335714d2"
+  },
+  {
+    "path": "scripts/crew_route_pick.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 10110,
+    "sha256": "1b4fad43096847f4cc8be7b64c4e0c2bf03c6d9ff15f0118196cb8866d7ac237"
+  },
+  {
+    "path": "scripts/crew_route_pin_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 14154,
+    "sha256": "1dad13e085f4aabcd570e6a0d9d26f98502dc946110d2883a7c9df1095021f9c"
+  },
+  {
+    "path": "scripts/crew_route_trail_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 11231,
+    "sha256": "2f22428c4cebdf1ca5dc332c0216677664aa8230605b6e2e2f270e000f83a7f8"
+  },
+  {
+    "path": "scripts/crew_safety.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 30620,
+    "sha256": "961780666c32d570d40a262386fbc6833776e0f733b2a248e3f2707c61cf9a4c"
+  },
+  {
+    "path": "scripts/crew_signature_gate.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 7466,
+    "sha256": "90ea1688ba594df9ba957b7a26db8f006bbb27419a77cf1780d1f985de8d7105"
+  },
+  {
+    "path": "scripts/crew_situation_box_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 15081,
+    "sha256": "4d1f733d6d5396a554dc5158630894a716a301c371d5ac7aaff26c8cc708d88b"
+  },
+  {
+    "path": "scripts/crew_spin_box_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 13212,
+    "sha256": "25f26be49d4db3f7f8c41f1ecc726398b3ebd4e9af4079ed2af2ab7cf28924de"
+  },
+  {
+    "path": "scripts/crew_stop.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 19901,
+    "sha256": "7cf5ab98f84c36beadce091ea418ea641cd616c7cb27df49b0c5496c7b2b9f00"
+  },
+  {
+    "path": "scripts/crew_stop_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 12544,
+    "sha256": "109aa897179f8774e212db3ae9ed5b6438b617df04d3c4f6991f74e499672e34"
+  },
+  {
+    "path": "scripts/crew_terminal_window_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 18712,
+    "sha256": "45678813cbf4486a47aca6aaa7efc390417cbb2cf52c0278caa4c7f973b791b1"
+  },
+  {
+    "path": "scripts/crew_tokens_section_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 14494,
+    "sha256": "8b6cc179c7863a8d18d91dee8c857aa28ad271852df046bceae4ee7bfa42d7c9"
+  },
+  {
+    "path": "scripts/crew_tools.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 9933,
+    "sha256": "13418d7675b662369f297f5e272b51c60cf87be9df85eb562569e6d4403a286e"
+  },
+  {
+    "path": "scripts/crew_tools_audit.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 5369,
+    "sha256": "4a9d520dc7e5592279358cdf411ebf1e913d9b3fa7e54ad6f3da85a8bd43426d"
+  },
+  {
+    "path": "scripts/crew_top_area_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 24045,
+    "sha256": "1048abb4ea75ec3b80e86edfad29291b0fc204e923a8cbd06ef490cadd312750"
+  },
+  {
+    "path": "scripts/crew_two_stage_proof.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 13512,
+    "sha256": "eddfa03fd3123830a4d51f413641a5d8fd678211ccd46c1b19a0b67a8563f19a"
+  },
+  {
+    "path": "scripts/crew_watch.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 8580,
+    "sha256": "16b32011ed8a1f340073742b88d21438c72b101d6e30ebc506c39dab38a92e83"
+  },
+  {
+    "path": "scripts/crew_ws.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 4930,
+    "sha256": "404a4d521e49b4af46ef1c9a6f1dd77a82f49b8e60b89b95d4b5684ea156e15a"
+  },
+  {
+    "path": "scripts/git_safe.py",
+    "tracked": true,
+    "category": "implementation",
+    "size_bytes": 10734,
+    "sha256": "7e82e911d67d953eae88404bcee6efafa110fe2ee45aae49139d603583cd9d0c"
+  },
+  {
+    "path": "scripts/reproduce_subagent_ledger_verification.py",
+    "tracked": false,
+    "category": "implementation",
+    "size_bytes": 11833,
+    "sha256": "9792ce73988649a09f5ebcd738e199cb0e7c284fbc9e5462f6751b08f17cf0db"
+  },
+  {
+    "path": "scripts/run_content_eval.py",
+    "tracked": false,
+    "category": "implementation",
+    "size_bytes": 1816,
+    "sha256": "05d45e960831d055aedf866a39d66215f377af83cc70be0836c5e71bd07ee688"
+  },
+  {
+    "path": "scripts/run_probe.py",
+    "tracked": false,
+    "category": "implementation",
+    "size_bytes": 793,
+    "sha256": "e25c91fbdaf420e2291dcf6baf69ecb5374cf99a8947c6925ad578e204310eec"
+  },
+  {
+    "path": "scripts/run_remediation_evals.py",
+    "tracked": false,
+    "category": "implementation",
+    "size_bytes": 8114,
+    "sha256": "c0d7a9ce56a6df1197a2819853f0c127bd17244b4910508bec6dd1d55fa4ca49"
+  },
+  {
+    "path": "tests/__init__.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 99,
+    "sha256": "1e0959c04f35c0f72404c85697e99c84502ba78d7cf5ddedc5b8f79b39b49018"
+  },
+  {
+    "path": "tests/e2e/windows_native.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 33657,
+    "sha256": "dd1b868c2568c0682a57515efc5c12b91b8105a4dfb93db75aa0b6c5ac34f8ad"
+  },
+  {
+    "path": "tests/fixtures/eval/worker_helper.py",
+    "tracked": false,
+    "category": "test",
+    "size_bytes": 528,
+    "sha256": "ab6ec71371421316d82b96c4d7ec41bf7c1c04e185c2c5efeb35ee1f389ee30a"
+  },
+  {
+    "path": "tests/fixtures/worker_greeting.py",
+    "tracked": false,
+    "category": "test",
+    "size_bytes": 120,
+    "sha256": "d17fee7456e789e9f1e681add7277241bbf8b7f6e1d946fa62ec42a50ccd58ef"
+  },
+  {
+    "path": "tests/hermes_fake.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 1804,
+    "sha256": "fafcf65c455168d1885017cfca42d76bbdf3ac7e81a656670159cc5811d21d93"
+  },
+  {
+    "path": "tests/kernel_board.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 4267,
+    "sha256": "bcc4e16fb63817a65c06572829e4e29c40a143af96fcf4e4515215af7bd8ca5f"
+  },
+  {
+    "path": "tests/module_env.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 4825,
+    "sha256": "b180585d58cddaaff05fddf16258eca0859579e4878c3d5cfd8ad2c9ec1222df"
+  },
+  {
+    "path": "tests/test_crew_ack_path.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 3977,
+    "sha256": "c5bd6c8ecbf91acb6d61f01664b6cb99ed23addfb011b149acd1a5cb829f05a9"
+  },
+  {
+    "path": "tests/test_crew_board_archived.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 3644,
+    "sha256": "f91c9381b0646efc9aac6cc57c56c61f2f68016c7a2687c6415109ac629d7ef6"
+  },
+  {
+    "path": "tests/test_crew_card.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 57289,
+    "sha256": "dd62e1193595fd81369f266601d3b71f303917c61ad2b1faca3832ac2dff19b2"
+  },
+  {
+    "path": "tests/test_crew_coordinator.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 56843,
+    "sha256": "c12701989cb2299fbdb8406de92ecdb6988e4d1505fe37bd766a6a406628e986"
+  },
+  {
+    "path": "tests/test_crew_daemon_autospawn.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 6619,
+    "sha256": "2283bf246d64cfca5c1c8ddcc161dc6e444de7def4c4730b35f28e42432d8926"
+  },
+  {
+    "path": "tests/test_crew_dashboard_customization.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 89502,
+    "sha256": "ba04309270244104c289e515f6415be8851ee3c9ff69d4e74f0d97ba3757901c"
+  },
+  {
+    "path": "tests/test_crew_dashboard_embed.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 8097,
+    "sha256": "a65081447b3b37ceadb36e7afbd489906d3728c9b68e43ddb06818e2d3b84cba"
+  },
+  {
+    "path": "tests/test_crew_desktop_plugin.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 1684,
+    "sha256": "8a3ff0aa8fdb7c451537cc11f5c1d3e578badef424685dc5547f1e0dd22a6bda"
+  },
+  {
+    "path": "tests/test_crew_diagnose.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 9470,
+    "sha256": "eb3d21d6a9b9584b835e39588a6660c2417eeef4840f86750d6eefcc1c61f760"
+  },
+  {
+    "path": "tests/test_crew_faces.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 2241,
+    "sha256": "3f1e237a27c9db6a794d19eff49f135f3b3dd8e1e2aa87756b929e6f1777db13"
+  },
+  {
+    "path": "tests/test_crew_failure_signature.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 5202,
+    "sha256": "3dc1bdcf37a17c271ee01fee6cc5e87b56cc77a2e49c52a9b185c1d7fb33214f"
+  },
+  {
+    "path": "tests/test_crew_graph.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 15588,
+    "sha256": "a7ec0265a5ada9a4f6b445a03a31b6c2f12c7e8a8d0f9dc58803e94138717904"
+  },
+  {
+    "path": "tests/test_crew_heal.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 11685,
+    "sha256": "0204ffdb8ee58e75e08751b7927e7172ac9949a136acb5e6c95e31107da4d3f3"
+  },
+  {
+    "path": "tests/test_crew_hermes_python.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 2796,
+    "sha256": "ce26b15bef050f1955b157037b814cb63da74354965c0df29eadd926c8deb329"
+  },
+  {
+    "path": "tests/test_crew_intake_create.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 22389,
+    "sha256": "9a7ce7d0fa4171d2c61c30c0203638b7945631f2ea6170c156192e402ac8f3b5"
+  },
+  {
+    "path": "tests/test_crew_kanban_multi_board.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 11045,
+    "sha256": "3eeb3b75bffaaa3e18f5746baad0b56bc87417f45394ae20b83e38dd6385a8bf"
+  },
+  {
+    "path": "tests/test_crew_lessons.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 7872,
+    "sha256": "5b97cb4df020a52fd913b3101cb1bc163bcb5ee751dd8680968e47692afd7749"
+  },
+  {
+    "path": "tests/test_crew_live_facts.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 8797,
+    "sha256": "19853946a22b79aacdfab5a42add075b84f1d2fc374be03231fa29ecae79e4cd"
+  },
+  {
+    "path": "tests/test_crew_module_env.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 4905,
+    "sha256": "ea7e062981537659761bf321743fcdde9fc3fdd402ce0634e1fd87bd984fbb83"
+  },
+  {
+    "path": "tests/test_crew_notes.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 6864,
+    "sha256": "31f6ba259774a9babd4a52723caa00551514546a530ff40f8c79165af7c81a30"
+  },
+  {
+    "path": "tests/test_crew_notify.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 11793,
+    "sha256": "33403f917c7513c35475c436d3ce597c342d255a61aee23d078dc4b1fa86dae9"
+  },
+  {
+    "path": "tests/test_crew_panel_steps.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 11913,
+    "sha256": "e8e2daafe759f7bae93ff02b253ff3cb963e706a696b2ac6c84a9a5bc5df49a9"
+  },
+  {
+    "path": "tests/test_crew_plugin_loop.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 15653,
+    "sha256": "4c9c34193d153124fe0585f582b55dc8572d97fa52edce2b9beaeb673739082e"
+  },
+  {
+    "path": "tests/test_crew_probe_skip.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 3071,
+    "sha256": "30f8f53a8809ec7d7edcf94ab6087f44a9b5f50a17419d764ea2fd8610fc22ba"
+  },
+  {
+    "path": "tests/test_crew_proc.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 5927,
+    "sha256": "824aed3fdcc027671258d7d8cc49fad91aeb6ec5ec7631ca481d95226bd6e20b"
+  },
+  {
+    "path": "tests/test_crew_proof_board.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 7581,
+    "sha256": "e15d09f1e5943677aa728b01485ced72a9a0918c24ff9f96253f942ece9a0dce"
+  },
+  {
+    "path": "tests/test_crew_proof_fixtures.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 3916,
+    "sha256": "6f29f68f41666e71862a3d872785fdf913ddf7402dd8f95ead9318d47018dba1"
+  },
+  {
+    "path": "tests/test_crew_proof_script.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 14892,
+    "sha256": "82d09bab9fc548fe5ff740775c4d5ff37d1488d7d0dac616a6135c0f38387fb9"
+  },
+  {
+    "path": "tests/test_crew_publish.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 4052,
+    "sha256": "922b3edaab935c8d57c16d29ed7b26b19bcfc497b5a27497ff5be3987627b9b1"
+  },
+  {
+    "path": "tests/test_crew_route_floor.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 11382,
+    "sha256": "f263b58ef00b601314fd77221dc0cc7c23dec4cf48b13f95954e96520681446e"
+  },
+  {
+    "path": "tests/test_crew_run_launcher.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 2095,
+    "sha256": "ecca1e90f0f5ac1e9ea2968818973152a012721bf436f3a9c97e7417868dedc8"
+  },
+  {
+    "path": "tests/test_crew_safety.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 34025,
+    "sha256": "9a63e6f7c1e6f57c2e7f76ee8e468280cda2f209451c80207b7ab21612722e6d"
+  },
+  {
+    "path": "tests/test_crew_safety_resolution.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 5441,
+    "sha256": "15efca4536fafb8121f46ca77650353ff1550874f34669360d0a63bdb72beef8"
+  },
+  {
+    "path": "tests/test_crew_scenarios_e2e.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 19392,
+    "sha256": "b66ce26859164c7b8be0789373957b1a7f984ef3d6404e0cb08286d909eba3db"
+  },
+  {
+    "path": "tests/test_crew_slim_profiles.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 21332,
+    "sha256": "87ac6fe19abfe9e3e7702e045001e7ff762936166a2f638fa06d4a76cc6def53"
+  },
+  {
+    "path": "tests/test_crew_stop.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 10732,
+    "sha256": "65a95735b507a40a50acc75532a772252be8695294b2864ae5eea7ae5037c273"
+  },
+  {
+    "path": "tests/test_crew_stop_park.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 12487,
+    "sha256": "0b3004f5b1cc16231089729c47b757e08e5e280f5d3ca0d808c3c3740ee873ea"
+  },
+  {
+    "path": "tests/test_crew_thrash_stop.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 10568,
+    "sha256": "22c83a9256e00b406bacf127107c396b11810790aae6f452a5e754ce5b5eb3f1"
+  },
+  {
+    "path": "tests/test_crew_tools.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 12445,
+    "sha256": "577a8a419a7d97ebd97db3dc6e6d6e30816f27c704ef47e7ba17354b6bd47b0a"
+  },
+  {
+    "path": "tests/test_crew_tools_guard.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 10083,
+    "sha256": "8ac47e59a1f19a77ff7f3cf97f3207fa2033fb61a895eca72ce5875ecd676b35"
+  },
+  {
+    "path": "tests/test_crew_two_stage.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 8895,
+    "sha256": "24be69a4f8424ef781e72f12f8d79ca2fbfc18ea9564b8089f9c0a140e6eac44"
+  },
+  {
+    "path": "tests/test_crew_verdict_boundaries.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 4015,
+    "sha256": "57e20c02ad90410fc7ea96c58fa61a90d147a8813c4e985187fac4c639b83008"
+  },
+  {
+    "path": "tests/test_crew_verifier_block.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 6748,
+    "sha256": "857431fdd426db7d93eb4508c2b496772b75c2d88fdd07a19f98af00f11e5764"
+  },
+  {
+    "path": "tests/test_crew_versions.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 7497,
+    "sha256": "11b7aba0537c6518a8e93b0db9328d194447233d304bfe2c668e06c522fa720d"
+  },
+  {
+    "path": "tests/test_crew_watch.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 8972,
+    "sha256": "95f9d4e3982a0d1397ed575f34aabb06e8ffae42a527ce9b287c23c80714df6a"
+  },
+  {
+    "path": "tests/test_crew_windows_layout.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 4613,
+    "sha256": "72207f1ef8fd1b58dd3381887f08ae73f6da46482174e2a87b62ac90d59075b1"
+  },
+  {
+    "path": "tests/test_crew_windows_proofs.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 1936,
+    "sha256": "e141678139efbb3a73daad26d64997681267a8884e177b51ccc9851a37bec527"
+  },
+  {
+    "path": "tests/test_crew_windows_support.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 12247,
+    "sha256": "2823460cc463f4d8ef7d8102a15f1cb2f68e804bf1f0611e920515d9f9e59b3e"
+  },
+  {
+    "path": "tests/test_extended_tools.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 28345,
+    "sha256": "995b4ecff74a2edc75a2d875293e8eebec0d06f6d28413b0dcfc03ae61768c11"
+  },
+  {
+    "path": "tests/test_install_crew_permissions.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 31101,
+    "sha256": "e8ed5f58a1227084f89def09798a2bc26ef11e0f032fff22c1d628560dc794e4"
+  },
+  {
+    "path": "tests/test_native_tools.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 16328,
+    "sha256": "28ae047d8d2870fdc72b7a8e0594f93b9e5f7a447bb5e865eea0334e4db19c31"
+  },
+  {
+    "path": "tests/test_role_contracts.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 16959,
+    "sha256": "1b5955cc97538841509e80cb0961bedca9ecfb8e54b87661483e05ae1c65c4a5"
+  },
+  {
+    "path": "tests/test_runtime_events.py",
+    "tracked": true,
+    "category": "test",
+    "size_bytes": 12961,
+    "sha256": "c69e52172f962fb0e1fbbc3eb2b0dbc8076fad22d635d0b11fc2e59d73f9d1ab"
+  }
+]

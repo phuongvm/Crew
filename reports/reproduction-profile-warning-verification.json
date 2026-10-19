@@ -1,0 +1,148 @@
+{
+  "execution_timestamp": 1792412983.8375223,
+  "total_duration_s": 63.33782887458801,
+  "own_install_id": "59b350e06553",
+  "expected_install_id": "59b350e06553",
+  "install_id_consistent": true,
+  "total_monitor_polls": 1256,
+  "total_state_snapshots": 4,
+  "active_cli_snapshots_count": 4,
+  "peak_concurrent_subagents": 3,
+  "observed_subagent_pids": [
+    32600,
+    36512,
+    53652,
+    67300
+  ],
+  "all_observed_install_ids": [
+    "59b350e06553"
+  ],
+  "foreign_install_id_count": 0,
+  "shared_profile_warning_count": 0,
+  "all_subagents_rc_zero": true,
+  "subagent_runs": [
+    {
+      "skill": "crew-diagnose",
+      "rc": 0,
+      "duration": 45.89,
+      "stdout_chars": 26,
+      "stderr_chars": 0
+    },
+    {
+      "skill": "crew-verifier",
+      "rc": 0,
+      "duration": 56.92,
+      "stdout_chars": 5675,
+      "stderr_chars": 0
+    },
+    {
+      "skill": "crew-role-worker",
+      "rc": 0,
+      "duration": 63.33,
+      "stdout_chars": 5095,
+      "stderr_chars": 0
+    }
+  ],
+  "active_snapshots_sample": [
+    {
+      "timestamp": 1792412919.9388626,
+      "total_entries": 2,
+      "cli_entries_count": 1,
+      "cli_entries": [
+        {
+          "pid": 32600,
+          "install": "59b350e06553",
+          "purpose": "cli",
+          "argv": "O:\\workspaces\\oss\\hermes-agent\\venv\\Scripts\\hermes -s crew-diagnose -z Use the \"crew-diagnose\" skill. The command is: /crew-diagnose blocked",
+          "create_time": 1792412854.659222,
+          "hermes_home": "o:\\workspaces\\_config\\agent4070\\hermes"
+        }
+      ],
+      "all_installs": [
+        "59b350e06553"
+      ],
+      "warning": ""
+    },
+    {
+      "timestamp": 1792412925.5134952,
+      "total_entries": 2,
+      "cli_entries_count": 1,
+      "cli_entries": [
+        {
+          "pid": 67300,
+          "install": "59b350e06553",
+          "purpose": "cli",
+          "argv": "O:\\workspaces\\oss\\hermes-agent\\venv\\Scripts\\hermes -s crew-verifier -z Use the \"crew-verifier\" skill. You are assigned as verifier on card t_test_verifier_01 with Verify: agent, artifact: \"reviews/findings-watchdog.md\", proof command: \"test -s reviews/findings-watchdog.md\". How do you verify this card and what tools do you use?",
+          "create_time": 1792412922.300084,
+          "hermes_home": "o:\\workspaces\\_config\\agent4070\\hermes"
+        }
+      ],
+      "all_installs": [
+        "59b350e06553"
+      ],
+      "warning": ""
+    },
+    {
+      "timestamp": 1792412926.002093,
+      "total_entries": 3,
+      "cli_entries_count": 2,
+      "cli_entries": [
+        {
+          "pid": 67300,
+          "install": "59b350e06553",
+          "purpose": "cli",
+          "argv": "O:\\workspaces\\oss\\hermes-agent\\venv\\Scripts\\hermes -s crew-verifier -z Use the \"crew-verifier\" skill. You are assigned as verifier on card t_test_verifier_01 with Verify: agent, artifact: \"reviews/findings-watchdog.md\", proof command: \"test -s reviews/findings-watchdog.md\". How do you verify this card and what tools do you use?",
+          "create_time": 1792412922.300084,
+          "hermes_home": "o:\\workspaces\\_config\\agent4070\\hermes"
+        },
+        {
+          "pid": 53652,
+          "install": "59b350e06553",
+          "purpose": "cli",
+          "argv": "O:\\workspaces\\oss\\hermes-agent\\venv\\Scripts\\hermes -s crew-diagnose -z Use the \"crew-diagnose\" skill. The command is: /crew-diagnose blocked",
+          "create_time": 1792412922.6932762,
+          "hermes_home": "o:\\workspaces\\_config\\agent4070\\hermes"
+        }
+      ],
+      "all_installs": [
+        "59b350e06553"
+      ],
+      "warning": ""
+    },
+    {
+      "timestamp": 1792412926.4056878,
+      "total_entries": 4,
+      "cli_entries_count": 3,
+      "cli_entries": [
+        {
+          "pid": 67300,
+          "install": "59b350e06553",
+          "purpose": "cli",
+          "argv": "O:\\workspaces\\oss\\hermes-agent\\venv\\Scripts\\hermes -s crew-verifier -z Use the \"crew-verifier\" skill. You are assigned as verifier on card t_test_verifier_01 with Verify: agent, artifact: \"reviews/findings-watchdog.md\", proof command: \"test -s reviews/findings-watchdog.md\". How do you verify this card and what tools do you use?",
+          "create_time": 1792412922.300084,
+          "hermes_home": "o:\\workspaces\\_config\\agent4070\\hermes"
+        },
+        {
+          "pid": 53652,
+          "install": "59b350e06553",
+          "purpose": "cli",
+          "argv": "O:\\workspaces\\oss\\hermes-agent\\venv\\Scripts\\hermes -s crew-diagnose -z Use the \"crew-diagnose\" skill. The command is: /crew-diagnose blocked",
+          "create_time": 1792412922.6932762,
+          "hermes_home": "o:\\workspaces\\_config\\agent4070\\hermes"
+        },
+        {
+          "pid": 36512,
+          "install": "59b350e06553",
+          "purpose": "cli",
+          "argv": "O:\\workspaces\\oss\\hermes-agent\\venv\\Scripts\\hermes -s crew-role-worker -z Use the \"crew-role-worker\" skill. You are assigned as worker on card t_test_worker_01 with goal: \"Fix watchdog logging\", artifact: \"gateway/shutdown_watchdog.py\", Verify: proof, proof command: \"pytest tests/test_shutdown_watchdog.py\". How do you execute this card and what tools do you use?",
+          "create_time": 1792412923.1207771,
+          "hermes_home": "o:\\workspaces\\_config\\agent4070\\hermes"
+        }
+      ],
+      "all_installs": [
+        "59b350e06553"
+      ],
+      "warning": ""
+    }
+  ]
+}

@@ -55,8 +55,8 @@ Select the verification mode based on whether the result is deterministic mechan
 - **Proof command**: `test -s <review_artifact_path>`.
 
 ### Mode D: Dual Closed-Loop Chained Pipeline (`Verify: dual`)
-- **Use when**: Code implementation, critical bugfixes, or remediation of reviewer rejections that require BOTH automated test passing AND independent cognitive review by `@reviewer`.
-- **MANDATORY AUTOMATED CHAINING**: Coordinator MUST create TWO linked cards in Turn 1 using `crew_card_create` or `kanban_create`:
+- **Use when**: Code implementation, critical bugfixes, runtime troubleshooting, configuration/script fixes, or remediation of reviewer rejections that require BOTH automated test passing AND independent cognitive review by `@reviewer`.
+- **MANDATORY AUTOMATED CHAINING**: Coordinator MUST create TWO linked cards in Turn 1 using `crew_card_create` or `kanban_create` — never stop at a single `Verify: proof` worker card for runtime fixes (which risks shallow static string checks grading own homework):
   1. **Card 1 (Worker Implementation/Remediation)**:
      ```python
      crew_card_create(
@@ -102,7 +102,18 @@ Proof mode: safe
 - **Use when**: Subtask part of a split plan (`crew_plan_split` or `crew_plan`).
 - **Workflow**: Worker calls `kanban_complete` directly; close-out card aggregates parent proof.
 
-## 4. Coordinator Tool Guidance for Fast-Track Intake
+## 4. Operational Pitfalls for Intake & Execution
+
+### Pitfall 1: Ambient PATH Resolution for Subagents
+When spawning child subagents via `subprocess.run`, NEVER pass ambient `["hermes", ...]`. On Windows, PATH resolution can pick up internal PM runtime binaries with foreign `install_id` hashes (e.g. `2fed3012074e`), writing conflicting records to `spawn-ledger.json` and triggering `shared_profile_warning` ("Another Hermes installation is using this profile") across active sessions. Always pin to `sys.executable + " -m hermes_cli.main"` or `<project_root>/venv/Scripts/hermes.exe`.
+
+### Pitfall 2: Windows MSYS Proof Command Backslash Escaping
+Never use literal escaped backslashes inside single-quoted strings (e.g. `text.replace('\\\\', '/')`) in Python `-c` proof commands on Windows MSYS. During MSYS argument parsing, `\\\\` collapses into an escaped single quote (`\'`), breaking the string tokenizer with `SyntaxError: unterminated string literal`. Use `text.replace(chr(92), '/')` or avoid backslashes in proof commands entirely.
+
+### Pitfall 3: Watcher Subshell Argument Passing Syntax Error
+Do not wrap command resolution in a subshell with trailing arguments: `(which py ... || python) "arg"` causes `bash: syntax error near unexpected token`. Invoke Python directly with proper quotes.
+
+## 5. Coordinator Tool Guidance for Fast-Track Intake
 
 The coordinator utilizes the registered `crew` toolset for operations:
 
