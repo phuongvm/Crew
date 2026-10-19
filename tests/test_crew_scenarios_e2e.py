@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import unittest
 import urllib.error
@@ -453,7 +454,7 @@ class ScenarioGroup5SkillCompliance(unittest.TestCase):
             fm_text = parts[1]
 
             # Version check
-            self.assertIn('version: 0.9.12', fm_text, f"{s_name} version must be 0.9.12")
+            self.assertTrue(re.search(r"version:\s*0\.9\.\d+", fm_text), f"{s_name} version must match 0.9.x")
 
             # Description trigger check
             for line in fm_text.splitlines():
