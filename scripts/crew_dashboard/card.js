@@ -712,10 +712,52 @@ function panelModel(n){
   } else if(kind === "verifier"){
     m.role = "verifier"; m.title = "Verifier · verdict";
     var runsV = ev.review_runs || [], lastRun = runsV[runsV.length-1] || {};
+    var activeRun = null;
+    for(var i = runsV.length - 1; i >= 0; i--){
+      var r = runsV[i];
+      if(r && (r.status === "running" || r.outcome === "running" || (r.live && r.live.state === "pending") || (!r.outcome && r.started_at && !r.ended_at))){
+        activeRun = r;
+        break;
+      }
+    }
+    var targetRun = activeRun || lastRun;
+    var runSess = targetRun.session || lastRun.session || null;
+    var sid = targetRun.session_id || lastRun.session_id || (runSess && (runSess.id || runSess.session_id)) || ev.session_id || "";
+    var sessNode = null;
+    if(sid){
+      var ns = (state && state.nodes) || [];
+      for(var j = 0; j < ns.length; j++){
+        var x = ns[j];
+        if(x && (x.id === "session:" + sid || x.id === sid || ((x.evidence || {}).session_id === sid))){
+          sessNode = x;
+          break;
+        }
+      }
+    }
+    var se = (sessNode && sessNode.evidence) || (runSess && runSess.evidence) || runSess || {};
+    var verModel = targetRun.model || targetRun.model_name || targetRun.session_model ||
+                   lastRun.model || lastRun.model_name || lastRun.session_model ||
+                   se.model || (sessNode && sessNode.model) ||
+                   (targetRun.model_override ? (targetRun.provider_override ? targetRun.provider_override + "/" : "") + targetRun.model_override : "") ||
+                   (lastRun.model_override ? (lastRun.provider_override ? lastRun.provider_override + "/" : "") + lastRun.model_override : "") ||
+                   ev.model || ev.reviewer_model || ev.verifier_model ||
+                   (ev.model_override ? (ev.provider_override ? ev.provider_override + "/" : "") + ev.model_override : "") || "";
+    if(!verModel && (targetRun.run_id !== undefined || lastRun.run_id !== undefined)){
+      var rid = targetRun.run_id !== undefined ? targetRun.run_id : lastRun.run_id;
+      if(rid !== null && rid !== undefined){
+        var rn = nodeById("run:" + rid);
+        if(rn){
+          var rne = rn.evidence || {};
+          var ru = unitOf(rn);
+          var ruSe = (ru && ru.session && ru.session.evidence) || {};
+          verModel = rne.model || ruSe.model || rn.model || "";
+        }
+      }
+    }
     m.sub = ev.by ? "by " + ev.by + (ev.ts ? " · " + hhmm(ev.ts) : "") : (runsV.length ? runsV.length + " review run(s)" : "no verdict yet");
     m.pill = [ev.verdict || "unverified", ev.verdict || "unverified"];
-    m.chips = [["model", "model", "", "panelModCopy"], ["session_id", "session", lastRun.session_id || "", "panelSidCopy"],
-               ["kanban id", "card", state.card_id, "panelCidCopy"]];
+    m.chips = [["model", "model", verModel || "", "panelModCopy"], ["session_id", "session", sid || lastRun.session_id || "", "panelSidCopy"],
+               ["kanban id", "card", (state && state.card_id) || "", "panelCidCopy"]];
     if(ev.verdict === "FAIL") m.callout = ["Verification failed", ev.output_head || "(no output recorded)", ev.command ? "command: " + ev.command : "", "FAIL", "panelWhyCopy"];
     m.kpis = [[ev.rc===null || ev.rc===undefined ? "-" : String(ev.rc), "rc"],
               [ev.duration_s===null || ev.duration_s===undefined ? "-" : ev.duration_s + "s", "duration"],

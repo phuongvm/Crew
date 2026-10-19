@@ -149,18 +149,13 @@ the only verdict record; the verifier node and its chip read the newest line sin
 `kanban_complete` on a crew card is refused, in every profile, unless the card's proof command has a PASS
 line there and no check failed after it (`crew_card.close_check`). "The card's proof command" is the one
 snapshotted in the card's `origin` event when it opened (or the one an applied coordinator `rescope` set), so
-a rewritten `proof command:` line can never produce a PASS. The `Verify:` contract line picks who runs it:
-`proof` (default when a proof command is named: the writer calls `crew_verdict` and closes the card, no
-verifier session, `kanban_request_review` is refused) or `independent` (the writer requests review, the card's
-model pin is swapped for the router's `review` pick, the verifier runs the proof plus one extra check and
-closes it). A proof command that runs a script in a `.crew/` folder (`python3 <landing folder>/.crew/<date-time-slug>/verify.py`, one folder per card) is
-always `independent` (a `proof` card is coerced, `crew_card.coerce_verify`): the VERIFIER writes that script from the
-card's `Done when` (and `Inputs`), never the writer (the plugin's role guard refuses a worker or content write, patch or
-terminal write under `.crew/`; the verifier's file tools reach `.crew/` only). The script is bound by hash at its first
-run; it changes only through a coordinator `revise_script` decision: without `delegate` the script is accepted as it is
-(reason recorded), with `delegate` the card goes to the verifier's review step (`crew_card.send_to_verifier`) to rewrite
-it, and the new hash is recorded with `by=verifier`, the reason and `authorized_by=<decision id>`. A command-only proof
-stays `Verify: proof`. The optional `Inputs:` contract line (paths, URLs, or short quoted text, at most about 2000
+a rewritten `proof command:` line can never produce a PASS. The `Verify:` contract line picks who runs it across five canonical taxonomy modes:
+- `proof` (default when an automated shell command is named: the writer calls `crew_verdict` and completes the card via `kanban_complete`; no verifier session runs; `crew_review_handoff` is refused).
+- `independent` (the writer calls `crew_review_handoff`, the verifier writes a dedicated verification script under `.crew/`, runs `crew_verdict` plus one extra check, and calls `kanban_complete` on PASS or `crew_request_changes` on FAIL). A proof command that runs a script in a `.crew/` folder (`python3 <landing folder>/.crew/<date-time-slug>/verify.py`, one folder per card) is always `independent` (a `proof` card is coerced, `crew_card.coerce_verify`): the VERIFIER writes that script from the card's `Done when` (and `Inputs`), never the writer (the plugin's role guard refuses a worker or content write, patch or terminal write under `.crew/`; the verifier's file tools reach `.crew/` only). The script is bound by hash at its first run; it changes only through a coordinator `revise_script` decision: without `delegate` the script is accepted as it is (reason recorded), with `delegate` the card goes to the verifier's review step (`crew_card.send_to_verifier`) to rewrite it, and the new hash is recorded with `by=verifier`, the reason and `authorized_by=<decision id>`. A command-only proof stays `Verify: proof`.
+- `agent` (standalone cognitive evaluation or artifact review owned exclusively by the verifier profile, e.g. evaluating PRs, architecture specs, or remediation findings). The verifier writes the review findings artifact (`reviews/findings-*.md`), runs `crew_verdict` on the artifact proof command (e.g. `test -s <artifact>`), and completes directly via `kanban_complete`. It is never handed off for review; `crew_review_handoff` is refused.
+- `dual` (automated tests PASS + independent reviewer audit). Can be structured as Single-Card Dual (`Verify: dual` on 1 card where worker proves PASS, hands off to verifier who audits and completes or requests changes in a closed rework loop) or as a Two-Card Chained Pipeline (Card 1 `worker` with `Verify: proof` linked to Card 2 `verifier` with `Verify: agent`).
+- `closeout` (subtask part of a plan split with no proof of its own; worker completes directly, aggregator/closeout card runs parent proof).
+The optional `Inputs:` contract line (paths, URLs, or short quoted text, at most about 2000
 characters) is read by the writer before it starts and checked by the verifier and the coordinator next to `Done when`.
 Either way the coordinator loop re-runs the proof once after the card is done (`by=coordinator`,
 an `audit` decision); a FAIL comments on the done card and opens one follow-up card under it. The owner's override is

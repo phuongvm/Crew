@@ -196,7 +196,7 @@ Select the verification mode based on whether the result is deterministic mechan
 |---|---|---|---|---|
 | `proof` | Deterministic automated shell command (exit code 0) | Mechanical code, unit tests, syntax, file presence | Worker proves via `crew_verdict`; coordinator audits | Worker calls `kanban_complete`. No verifier session; `crew_review_handoff` is refused. |
 | `independent` | Verifier-authored script (`.crew/<folder>/verify.py`) | Independent checks, multi-clause contracts | Verifier writes script, runs `crew_verdict`, 1 extra check | Worker calls `crew_review_handoff`. Verifier calls `kanban_complete` on PASS, `crew_request_changes` on FAIL. |
-| `agent` | Standalone cognitive review or evaluation | Spec audits, PR review, findings document | Verifier (`@reviewer`) evaluates artifact vs criteria | Verifier runs `crew_verdict` on findings artifact and calls `kanban_complete`. |
+| `agent` | Standalone cognitive review or evaluation | Spec audits, PR review, findings document | Verifier (`@reviewer`) evaluates artifact vs criteria | Verifier runs `crew_verdict` on findings artifact and calls `kanban_complete`. Never `request_review`. |
 | `dual` | Automated tests PASS + independent reviewer audit | Critical code, runtime fixes, reviewer remediation | Worker runs `crew_verdict` PASS; verifier performs 2nd check | Worker calls `crew_review_handoff`. Verifier calls `kanban_complete` on PASS, `crew_request_changes` on FAIL. |
 | `closeout` | Subtask part of a plan split with no proof of its own | Multi-part split plan child task | Worker completes split subtask | Worker calls `kanban_complete` directly. Aggregator/closeout card runs parent proof. |
 
@@ -212,9 +212,10 @@ Select the verification mode based on whether the result is deterministic mechan
 
 #### Mode 3: Standalone Cognitive Review Task (`Verify: agent`)
 - **Use when**: Standalone evaluation, architecture audit, OpenSpec proposal review, pull request review, or security assessment assigned directly to `@reviewer`.
+- **Role & Assignee**: Standalone verifier card (`Role: verifier`, assigned directly to `@reviewer`).
 - **Artifact**: `reviews/findings-*.md` containing an explicit, unambiguous verdict (`APPROVED` or `REJECTED`).
 - **Proof command**: `test -s <review_artifact_path>` (verifies the review findings document exists and is non-empty).
-- **Workflow**: The verifier analyzes the target against criteria and inputs, writes the findings artifact, executes its proof via `crew_verdict(card_id="<id>")`, conducts one extra check, and calls `kanban_complete` on PASS. (If reviewing an active worker card that handed off, the verifier uses `crew_request_changes(card_id="<id>", reason="<reason>")` on rejection).
+- **Workflow**: The verifier analyzes the target against criteria and inputs, writes the findings artifact, executes its proof via `crew_verdict(card_id="<id>")`, conducts one extra check, and calls `kanban_complete` on PASS. It **never** calls `kanban_request_review` or `crew_review_handoff` (an agent card is a standalone verifier card and is never re-reviewed). The coordinator audits the proof command and parses the findings artifact's verdict word.
 
 #### Mode 4: Dual Closed-Loop Chained Pipeline (`Verify: dual`)
 - **Use when**: Code implementation, critical bugfixes, runtime troubleshooting, configuration/script fixes, or remediation of reviewer rejections that require BOTH automated test passing AND independent cognitive review by `@reviewer`.
@@ -227,6 +228,54 @@ Select the verification mode based on whether the result is deterministic mechan
 - **Use when**: Child subtask produced by `crew_plan_split` or `crew_plan` that represents an intermediate step with no independent proof command of its own.
 - **Proof command**: Omitted or inherited parent proof.
 - **Workflow**: Worker completes subtask and calls `kanban_complete` directly with the artifact paths (`crew_review_handoff` is refused). The parent close-out card runs the overarching split card's proof once all parts are done.
+
+### 4.2 Pipeline Topologies: Single-Card Dual vs. Two-Card Chain
+
+When work requires both automated proof execution and independent reviewer validation, the coordinator chooses between two distinct execution topologies:
+
+| Dimension | Topology 1: Single-Card Dual | Topology 2: Two-Card Chain |
+|---|---|---|
+| **Card Count** | 1 card total | 2 linked cards |
+| **Card 1 Configuration** | `Role: worker`, `Verify: dual`, automated test proof | `Role: worker`, `Verify: proof`, automated test proof |
+| **Card 2 Configuration** | None (same card transfers to review) | `Role: verifier`, `Verify: agent`, `parents: [<card_1_id>]`, findings proof |
+| **Worker Terminal Action** | Calls `crew_review_handoff` (never `kanban_complete`) | Calls `kanban_complete` directly on Card 1 upon `crew_verdict` PASS |
+| **Reviewer Intake** | Claims Card 1 from the `review` column | Claims Card 2 when auto-promoted to `ready` |
+| **Reviewer Terminal Action** | `kanban_complete` on PASS; `crew_request_changes` on FAIL | Runs Card 2 proof via `crew_verdict`; calls `kanban_complete` on Card 2 |
+| **Review Artifact** | Stored in review run history and verdict ledger | Durable on-disk review document (`reviews/findings-*.md`) |
+| **Failure / Rework Handling** | `crew_request_changes` resets card to `running` for worker rework | Card 2 records `verdict: REJECTED`; coordinator dispatches new rework card |
+| **When to Choose** | Standard feature implementation, localized refactoring, single-agent tickets | Critical runtime fixes, OpenSpec changes, reviewer rejection remediation (Phase 2b), multi-agent pipelines |
+
+#### Detailed Topology 1: Single-Card Dual (`Verify: dual`)
+1. **Intake & Dispatch**: Coordinator opens a single card with `Role: worker`, `Verify: dual`, and the automated test command as `proof command`.
+2. **Worker Execution**:
+   - Implements changes in an isolated worktree under `O:/workspaces/.worktrees/<name>` (Zero-Checkout).
+   - Runs `crew_verdict(card_id="<id>")` to verify automated tests pass (exit code 0).
+   - **Self-completion prohibition**: Worker is **strictly forbidden** from calling `kanban_complete`.
+   - Worker calls `crew_review_handoff(card_id="<id>", summary="<summary>")` (or `kanban_request_review`). The kernel review guard repins the card for review and moves it to the `review` column.
+3. **Verifier Execution**:
+   - `@reviewer` claims the card in review.
+   - Re-runs `crew_verdict(card_id="<id>")` to independently confirm the proof command passes unattended.
+   - Performs exactly ONE extra substantive check (inspecting code diff, boundary conditions, edge cases against `Inputs`).
+   - If acceptable: Verifier calls `kanban_complete(summary="...")` to mark the card done.
+   - If defects found: Verifier calls `crew_request_changes(card_id="<id>", reason="<reason>")` to return the card to the worker without triggering block-loop penalties.
+
+#### Detailed Topology 2: Two-Card Chain (`Verify: proof` → `Verify: agent`)
+1. **Intake & Dispatch**: Coordinator opens two linked cards in Turn 1:
+   - **Card 1**: `Role: worker`, `assignee: coder`, `skills: ["crew-role-worker"]`, `Verify: proof`, `proof command: <automated test>`.
+   - **Card 2**: `Role: verifier`, `assignee: reviewer`, `skills: ["crew-verifier", "openspec-verifier"]`, `Verify: agent`, `parents: [<card_1_id>]`, `artifact: reviews/findings-*.md`, `proof command: test -s "<findings_path>"`.
+   - Card 2 enters the board in `todo (gated)` waiting on Card 1.
+2. **Worker Execution on Card 1**:
+   - Implements changes in an isolated worktree (Zero-Checkout).
+   - Runs `crew_verdict(card_id="<id>")` to verify automated tests pass (exit code 0).
+   - Worker calls `kanban_complete(summary="...")`.
+   - Card 1 completes, automatically satisfying Card 2's parent dependency and promoting Card 2 from `todo` to `ready`.
+3. **Verifier Execution on Card 2**:
+   - `@reviewer` claims Card 2 from `ready`.
+   - Audits Card 1's deliverables, diffs, and proof receipts against the original contract.
+   - Writes the formal review artifact to disk (`reviews/findings-*.md`) containing an explicit `APPROVED` or `REJECTED` verdict.
+   - Runs `crew_verdict(card_id="<id>")` on Card 2's proof command (`test -s ...`).
+   - Performs ONE extra check.
+   - Verifier calls `kanban_complete(summary="...")` on Card 2 (never `crew_review_handoff` or `kanban_request_review`).
 
 Absolute paths, always, never a long one-liner full of nested quotes. Show the drafted task in one short block (title, role,
 goal, artifact, lands at, for, done when, proof, budget, route), then the safety choice (below), then call
@@ -325,7 +374,7 @@ Crew provides 17 native and registered tools across Core, Pipeline, Workspace, I
 | **Core** | `crew_status` | All roles | Replaces ad-hoc database queries to inspect board/queue state | `limit`, `format` ("text"\|"json") | Read-only | Inspect progress / report status |
 | **Core** | `crew_event_subscribe` | Coordinator | Replaces manual webhook event configuration for card transitions | `action` ("subscribe"\|"list"\|"unsubscribe"\|"clear"), `url`, `events`, `headers`, `format` | Mutating (saves subscription) | Monitor webhook dispatch |
 | **Pipeline** | `crew_stop_card` | Coordinator, Worker | Replaces raw `kanban_block`/`kanban_archive` to park or archive cards safely | `card_id` (required), `archive`, `dry_run` | Mutating (updates status) | Park for resume or archive |
-| **Pipeline** | `crew_review_handoff` | Worker, Content | Replaces generic `kanban_request_review` for `independent`, `dual`, and `agent` modes; refused for `proof` & `closeout` | `card_id` (required), `summary` (required for handoff), `action`, `reviewer` | Mutating (moves to review) | Hand off to reviewer |
+| **Pipeline** | `crew_review_handoff` | Worker, Content | Replaces generic `kanban_request_review` for `independent` and `dual` modes; refused for `proof`, `agent`, & `closeout` | `card_id` (required), `summary` (required for handoff), `action`, `reviewer` | Mutating (moves to review) | Hand off to reviewer |
 | **Pipeline** | `crew_request_changes` | Verifier | Replaces generic `kanban_request_changes`; returns card to implementer with actionable reasons without block loops | `card_id` (required), `reason` (required) | Mutating (requeues card) | Implementer resumes rework |
 | **Pipeline** | `crew_plan_split` | Coordinator | Replaces manual parent/child/closeout creation with atomic validated decomposition | `goal`, `children` (required); `title`, `done_when`, `dry_run` | Mutating (creates linked cards) | Dispatch child tasks |
 | **Workspace**| `crew_worktree_create` | Worker, Verifier | Replaces `git worktree add` to enforce Zero-Checkout under `O:/workspaces/.worktrees/<name>` | `repo`, `name`, `branch` (required); `base`, `worktrees_root`, `dry_run` | Mutating (creates worktree) | Work in isolated worktree |

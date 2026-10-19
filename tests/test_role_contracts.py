@@ -462,5 +462,118 @@ class RoleSpecificationTests(unittest.TestCase):
         self.assertIn("crew_diagnose.py", prompt)
 
 
+def _footer(body):
+    """The Contract:/Finish:/Verifier, finish lines of a rendered card body (the lifecycle footer)."""
+    return "\n".join(
+        ln for ln in body.splitlines()
+        if ln.startswith(("Contract:", "Finish:", "Verifier, finish"))
+    )
+
+
+class VerifyAgentLifecycleFooterTests(unittest.TestCase):
+    """Semantic lifecycle tests: the rendered finish footer must match the canonical 5-mode taxonomy.
+
+    `Verify: agent` is a standalone verifier card: the verifier is its only writer, runs the proof itself
+    and completes it directly with kanban_complete after PASS. It is never handed off for review, so its
+    footer must never tell anyone to call kanban_request_review or forbid kanban_complete.
+    """
+
+    FORBIDDEN = (
+        "kanban_request_review(",
+        "Never kanban_complete",
+        "run the proof command yourself, then kanban_request_review",
+    )
+
+    @staticmethod
+    def _agent_card():
+        return {
+            "title": "Review findings",
+            "role": "verifier",
+            "coordinator": "default/sess-agent",
+            "verifier": "reviewer",
+            "verify": "agent",
+            "budget": 500000,
+            "goal": "Independently audit the implementation",
+            "artifact": "reviews/findings-x.md",
+            "lands": "/repo",
+            "audience": "Commander",
+            "done_when": "Findings document written with a verdict word",
+            "proof_cmd": "test -s reviews/findings-x.md",
+        }
+
+    @staticmethod
+    def _crew_card_module():
+        scripts = str(ROOT / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        os.environ.setdefault("HERMES_BIN", "/bin/false")
+        import crew_card  # noqa: E402
+        return crew_card
+
+    def _assert_agent_footer(self, footer, verifier):
+        self.assertTrue(footer, "Verify: agent body has no lifecycle footer")
+        for bad in self.FORBIDDEN:
+            self.assertNotIn(bad, footer, "Verify: agent footer contains forbidden text %r" % bad)
+        self.assertIn("standalone verifier card", footer)
+        self.assertIn("%s is its only writer" % verifier, footer)
+        self.assertIn("then kanban_complete(summary=...)", footer)   # verifier-owned direct completion
+        self.assertIn("never handed off for review", footer)
+        self.assertIn("crew_review_handoff is refused", footer)
+        self.assertIn("PASS", footer)
+        # the agent footer is not the worker-proof footer (no 'No verifier session runs on this card')
+        self.assertNotIn("No verifier session runs", footer)
+
+    def test_render_contract_body_agent_footer_is_verifier_owned_direct_completion(self):
+        body = render_contract_body(self._agent_card())
+        self.assertIn("Verify: agent", body)
+        self._assert_agent_footer(_footer(body), "reviewer")
+        self.assertIn("verdict --card <this card id>", _footer(body))
+
+    def test_render_contract_body_agent_round_trips_without_leaking_footer(self):
+        card = self._agent_card()
+        parsed = parse_markdown_card(render_contract_body(card))
+        self.assertEqual(parsed.verify, "agent")
+        self.assertEqual(parsed.role, "verifier")
+        self.assertEqual(parsed.proof_cmd, card["proof_cmd"])
+        self.assertNotIn("kanban_complete", parsed.done_when)
+        self.assertNotIn("Finish:", str(getattr(parsed, "unparsed_notes", "") or ""))
+
+    def test_render_body_agent_footer_is_verifier_owned_direct_completion(self):
+        crew_card = self._crew_card_module()
+        from unittest import mock
+        with mock.patch.object(crew_card, "role_profile", return_value="reviewer"):
+            body = crew_card.render_body(self._agent_card())
+        self.assertEqual("agent", crew_card.verify_mode(body))
+        footer = _footer(body)
+        self._assert_agent_footer(footer, "reviewer")
+        self.assertIn("crew_verdict(card=<this card id>)", footer)
+        self.assertEqual("agent", crew_card.parse_contract(body)["verify"])   # the round trip keeps it
+
+    def test_footers_follow_canonical_taxonomy_for_every_mode(self):
+        crew_card = self._crew_card_module()
+        from unittest import mock
+        base = dict(self._agent_card(), role="worker")
+        with mock.patch.object(crew_card, "role_profile", return_value="reviewer"):
+            rendered = {
+                mode: (_footer(render_contract_body(dict(base, verify=mode))),
+                       _footer(crew_card.render_body(dict(base, verify=mode))))
+                for mode in ("proof", "independent", "agent", "dual", "closeout")
+            }
+        for mode, pair in rendered.items():
+            for footer in pair:
+                if mode in ("independent", "dual"):
+                    # handed to the reviewer; the writer must never self-complete
+                    self.assertIn('kanban_request_review(summary=..., reviewer="reviewer")', footer, mode)
+                    self.assertIn("Never kanban_complete this card yourself", footer, mode)
+                else:
+                    # proof / agent / closeout: completed directly, never handed off for review
+                    self.assertNotIn("kanban_request_review(", footer, mode)
+                    self.assertNotIn("Never kanban_complete", footer, mode)
+                    self.assertIn("kanban_complete(summary=...)", footer, mode)
+        # the two renderers agree on which modes are direct-completion
+        self.assertNotEqual(rendered["agent"][0], rendered["proof"][0])
+        self.assertNotEqual(rendered["agent"][1], rendered["proof"][1])
+
+
 if __name__ == "__main__":
     unittest.main()

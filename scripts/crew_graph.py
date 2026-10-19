@@ -1725,6 +1725,7 @@ class _Builder(object):
                     _, sdb, srow = sess
                     sd = session_row_to_dict(srow)
                     item["session_id"] = sd["id"]
+                    item["model"] = sd.get("model") or ""
                     calls += load_tool_calls(sdb, sd["id"], sd["ended_at"])
                     steps = tail_steps(load_steps(sdb, sd["id"], sd["started_at"], sd["ended_at"]), self.steps_n) or steps
                     vprompt = load_prompt(sdb, sd["id"])

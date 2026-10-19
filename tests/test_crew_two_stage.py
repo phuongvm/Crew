@@ -71,6 +71,35 @@ class ReviewGuardTests(unittest.TestCase):
             self.assertIsNone(self.plug._review_guard("kanban_request_review", {"summary": "done"}))
         repin.assert_called_once_with("t_w")
 
+    def test_a_dual_card_repins_for_the_verifier_and_goes_on(self):
+        self.card("Verify: dual\n")
+        with mock.patch.object(crew_card, "repin_for_review", return_value={"action": "pinned"}) as repin:
+            self.assertIsNone(self.plug._review_guard("kanban_request_review", {"summary": "done"}))
+        repin.assert_called_once_with("t_w")
+
+    def test_an_agent_card_refuses_the_review_and_explains_completion(self):
+        self.card("Verify: agent\n")
+        res = self.plug._review_guard("kanban_request_review", {"summary": "done"})
+        self.assertEqual("block", res["action"])
+        self.assertIn("kanban_complete", res["message"])
+
+    def test_an_agent_card_refuses_native_review_handoff(self):
+        self.card("Verify: agent\n")
+        import native_tools
+        with mock.patch.object(native_tools, "_card_tool", return_value=crew_card):
+            res = native_tools.handle_crew_review_handoff({"card_id": "t_w", "summary": "done"})
+        self.assertEqual("refused", res.get("status"))
+        self.assertEqual("agent", res.get("verify"))
+        self.assertIn("kanban_complete", res.get("error", ""))
+        row = crew_card.card_row("t_w")
+        self.assertEqual("running", row[2])
+
+    def test_a_closeout_card_refuses_the_review_and_explains_completion(self):
+        self.card("Verify: closeout\n")
+        res = self.plug._review_guard("kanban_request_review", {"summary": "done"})
+        self.assertEqual("block", res["action"])
+        self.assertIn("kanban_complete", res["message"])
+
     def test_the_verifier_never_requests_review_it_would_become_the_implementer(self):
         self.card("Verify: independent\n")
         with mock.patch.object(self.plug, "_crew_role", return_value="verifier"):

@@ -149,6 +149,19 @@ class VersionTests(unittest.TestCase):
             h2 = hashlib.sha256(inst.read_bytes()).hexdigest()
             self.assertEqual(h1, h2, f"Parity mismatch for {p.parent.name}/SKILL.md")
 
+    def test_all_five_skills_document_five_verification_modes_and_both_topologies(self):
+        target_skills = ["crew", "crew-no-spec", "crew-role-worker", "crew-role-content", "crew-verifier"]
+        modes = ["proof", "independent", "agent", "dual", "closeout"]
+        topologies = ["Single-Card Dual", "Two-Card Chain"]
+        for skill_name in target_skills:
+            skill_path = REPO / "skills" / skill_name / "SKILL.md"
+            self.assertTrue(skill_path.exists(), f"Skill {skill_name} missing at {skill_path}")
+            content = skill_path.read_text(encoding="utf-8")
+            for mode in modes:
+                self.assertIn(mode, content, f"Mode '{mode}' missing from {skill_name}/SKILL.md")
+            for topo in topologies:
+                self.assertIn(topo, content, f"Topology '{topo}' missing from {skill_name}/SKILL.md")
+
 
 if __name__ == "__main__":
     unittest.main()

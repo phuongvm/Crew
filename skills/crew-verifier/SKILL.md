@@ -9,13 +9,46 @@ version: 0.9.13
 Used on a card whose `Verify:` line is `independent`, `dual`, or `agent` (governed by `contracts.py`). You judge; you never fix.
 
 ## Verification Taxonomy Overview
-- Modes that NEVER reach the verifier:
-  - `Verify: proof`: The writer proves it via `crew_verdict(card_id="<card id>")` and completes via `kanban_complete`. The coordinator audits.
-  - `Verify: closeout`: Split plan child task; completed directly by the writer. Close-out card aggregates parent proof.
-- Modes handled by the verifier:
-  - `Verify: agent`: Standalone cognitive review or evaluation task assigned directly to `@reviewer`. You author the findings artifact (e.g. `reviews/findings-*.md`), execute its verification proof command via `crew_verdict(card_id="<card id>")`, perform your extra check, and call `kanban_complete` on PASS (or `crew_request_changes(card_id="<card id>", reason="<reason>")` if reviewing an active worker card).
-  - `Verify: independent`: Claim the card from the review column (handed off via `crew_review_handoff(card_id="<card id>", summary="<summary>")`), author `.crew/` script from contract criteria, run `crew_verdict(card_id="<card id>")`, perform extra check, and call `kanban_complete` on PASS or `crew_request_changes(card_id="<card id>", reason="<reason>")` on FAIL.
-  - `Verify: dual`: Claim the card from the review column (handed off via `crew_review_handoff(card_id="<card id>", summary="<summary>")` after worker's `crew_verdict(card_id="<card id>")` PASS). Run `crew_verdict(card_id="<card id>")` to independently verify the proof command, perform ONE extra substantive check (inspecting code, diff, and edge cases against `Inputs`), and call `kanban_complete` on PASS or `crew_request_changes(card_id="<card id>", reason="<reason>")` on FAIL.
+
+Verifiers must understand all 5 verification modes, distinguishing modes that never reach the review lane from modes actively judged by the verifier:
+
+| Mode | Verification Nature | Reaches Verifier? | Verifier Responsibility | Verifier Terminal Action |
+|---|---|---|---|---|
+| `proof` | Deterministic automated shell command | No | None. Writer proves via `crew_verdict`; coordinator audits. | N/A (coordinator audits) |
+| `closeout` | Subtask part of a split plan | No | None. Completed directly by writer; parent aggregates proof. | N/A |
+| `independent` | Verifier-authored script (`.crew/<folder>/verify.py`) | Yes | Claim card from `review`. Author `.crew/` script from contract criteria, run `crew_verdict`, perform 1 extra check. | `kanban_complete` on PASS; `crew_request_changes` on FAIL |
+| `agent` | Standalone cognitive review or evaluation | Yes (Direct) | Assigned directly to `@reviewer` (`Role: verifier`). Author review findings artifact (`reviews/findings-*.md` with explicit `APPROVED` or `REJECTED`), run `crew_verdict` (`test -s ...`), perform 1 extra check. | `kanban_complete` on PASS. Never `crew_review_handoff` or `kanban_request_review`. |
+| `dual` | Automated tests PASS + independent reviewer audit | Yes | Claim card from `review`. Re-run `crew_verdict` to verify automated test pass independently, perform 1 extra substantive check. | `kanban_complete` on PASS; `crew_request_changes` on FAIL |
+
+## Pipeline Topologies: Single-Card Dual vs. Two-Card Chain Guidance for Verifiers
+
+Verifiers encounter two distinct pipeline topologies when conducting independent evaluations:
+
+| Feature | Topology 1: Single-Card Dual | Topology 2: Two-Card Chain |
+|---|---|---|
+| **Card Intake** | Claimed from the `review` column (same card ID as worker) | Claimed from `ready` (Card 2 auto-promoted from `todo` on Card 1 done) |
+| **Card Configuration** | `Role: worker`, `Verify: dual` | `Role: verifier`, `Verify: agent`, `parents: [<card_1_id>]` |
+| **Handoff Mechanism** | Worker called `crew_review_handoff` | Worker completed Card 1 via `kanban_complete`; kernel unblocked Card 2 |
+| **Proof Verified** | Opening automated test command (e.g. `pytest tests/...`) | Review findings document existence (`test -s "<findings_path>"`) |
+| **Primary Artifact** | Implementation files in worktree / repo | Review report (`reviews/findings-*.md`) with explicit verdict |
+| **Terminal Action** | `kanban_complete` on PASS; `crew_request_changes` on FAIL | Runs Card 2 proof via `crew_verdict`; calls `kanban_complete` on Card 2 |
+| **Rework Mechanism** | `crew_request_changes` resets card to `running` for worker rework | `verdict: REJECTED` in findings document alerts coordinator for rework card |
+
+### Operating in Topology 1: Single-Card Dual (`Verify: dual`)
+1. Claim the card from the `review` column (handed off after worker's `crew_verdict(card_id="<id>")` PASS).
+2. Re-run `crew_verdict(card_id="<id>")` to independently verify that the automated proof command passes with exit code 0.
+3. Perform exactly ONE extra substantive check (inspecting code diff, edge cases, boundaries against `Inputs`).
+4. On PASS: Call `kanban_complete(summary="...")` with the proof output and extra check evidence.
+5. On FAIL: Call `crew_request_changes(card_id="<id>", reason="<reason>")` detailing the exact failed criteria. This returns the card to the worker for rework without unblock-loop penalties.
+
+### Operating in Topology 2: Two-Card Chain (`Verify: proof` → `Verify: agent`)
+1. Claim Card 2 from `ready` (automatically promoted when Card 1 was completed by worker with `kanban_complete`).
+2. Card 2 is a standalone verifier card (`Role: verifier`, `Verify: agent`).
+3. Independently audit Card 1's deliverables, diffs, and test outputs against the contract criteria and `Inputs`.
+4. Author the formal review artifact at the card's specified `Artifact:` path (e.g. `reviews/findings-*.md`). State an explicit, unambiguous verdict: **APPROVED** or **REJECTED**.
+5. Run Card 2's proof command via `crew_verdict(card_id="<id>")` (which verifies `test -s <review_findings_path>`).
+6. Perform ONE extra read-only check.
+7. Call `kanban_complete(summary="...")` on Card 2 with the findings path and proof output. Never call `crew_review_handoff` or `kanban_request_review`.
 
 ## Do, in this order, then stop
 

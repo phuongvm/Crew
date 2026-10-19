@@ -54,9 +54,42 @@ Select the verification mode based on whether the result is deterministic mechan
 - **Artifact**: `reviews/findings-*.md` containing explicit verdict (`APPROVED` / `REJECTED`).
 - **Proof command**: `test -s <review_artifact_path>`.
 
-### Mode D: Dual Closed-Loop Chained Pipeline (`Verify: dual`)
+### Mode D: Dual Verification (`Verify: dual`)
 - **Use when**: Code implementation, critical bugfixes, runtime troubleshooting, configuration/script fixes, or remediation of reviewer rejections that require BOTH automated test passing AND independent cognitive review by `@reviewer`.
-- **MANDATORY AUTOMATED CHAINING**: Coordinator MUST create TWO linked cards in Turn 1 using `crew_card_create` or `kanban_create` — never stop at a single `Verify: proof` worker card for runtime fixes (which risks shallow static string checks grading own homework):
+- **Topologies**: Dual verification can be executed via either **Single-Card Dual** or **Two-Card Chain** topologies (detailed in Section 3.1).
+
+### Mode E: Plan Split Close-Out Part (`Verify: closeout`)
+- **Use when**: Subtask part of a split plan (`crew_plan_split` or `crew_plan`).
+- **Workflow**: Worker calls `kanban_complete` directly; close-out card aggregates parent proof.
+
+### 3.1 Pipeline Topologies: Single-Card Dual vs. Two-Card Chain
+
+When configuring tasks requiring independent review alongside automated proof commands, coordinators must explicitly choose the appropriate topology:
+
+| Feature | Topology 1: Single-Card Dual | Topology 2: Two-Card Chain |
+|---|---|---|
+| **Topology** | 1 Card (`Verify: dual`) | 2 Linked Cards (`Verify: proof` → `Verify: agent`) |
+| **Worker Protocol** | Runs `crew_verdict`; calls `crew_review_handoff` (never `kanban_complete`) | Runs `crew_verdict`; calls `kanban_complete` directly on Card 1 |
+| **Reviewer Protocol** | Claims Card 1 from `review`; verifies proof + extra check; calls `kanban_complete` or `crew_request_changes` | Claims Card 2 when auto-promoted; writes findings artifact; runs `crew_verdict`; calls `kanban_complete` |
+| **Artifact History** | In-flight review run events | Separate permanent review document (`reviews/findings-*.md`) |
+| **When to Use** | Focused feature tasks, straightforward refactoring | Critical bugfixes, rejection remediation, runtime fixes, formal audits |
+
+#### Topology 1: Single-Card Dual (`Verify: dual`)
+- **Intake**: Coordinator opens 1 card with `Role: worker`, `Verify: dual`, and the automated test command as `proof command`.
+- **Worker Execution**:
+  1. Worker implements changes in an isolated worktree under `O:/workspaces/.worktrees/<name>` (Zero-Checkout).
+  2. Runs `crew_verdict(card_id="<id>")` to verify automated tests pass (exit code 0).
+  3. Worker is **strictly forbidden** from calling `kanban_complete`.
+  4. Worker calls `crew_review_handoff(card_id="<id>", summary="<summary>")` to transition card to `review` column.
+- **Reviewer Execution**:
+  1. `@reviewer` claims card from `review`.
+  2. Re-runs `crew_verdict(card_id="<id>")` to independently verify proof command.
+  3. Performs ONE extra substantive check.
+  4. On PASS: calls `kanban_complete(summary="...")`.
+  5. On FAIL: calls `crew_request_changes(card_id="<id>", reason="<reason>")` to return card to worker for rework.
+
+#### Topology 2: Two-Card Chain (`Verify: proof` → `Verify: agent`)
+- **MANDATORY AUTOMATED CHAINING**: For critical bugfixes, runtime troubleshooting, or remediation of reviewer rejections, coordinator creates TWO linked cards in Turn 1:
   1. **Card 1 (Worker Implementation/Remediation)**:
      ```python
      crew_card_create(
@@ -96,11 +129,7 @@ Proof mode: safe
 """
      )
      ```
-  Card 2 starts in `todo (gated)` and automatically promotes to `ready` when Card 1 completes. The Commander never needs to manually trigger a second session for review!
-
-### Mode E: Plan Split Close-Out Part (`Verify: closeout`)
-- **Use when**: Subtask part of a split plan (`crew_plan_split` or `crew_plan`).
-- **Workflow**: Worker calls `kanban_complete` directly; close-out card aggregates parent proof.
+  Card 2 starts in `todo (gated)` and automatically promotes to `ready` when Card 1 completes via `kanban_complete`. The Commander never needs to manually trigger a second session for review!
 
 ## 4. Operational Pitfalls for Intake & Execution
 

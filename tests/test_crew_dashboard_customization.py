@@ -70,12 +70,13 @@ class RealBoardCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.home = tempfile.mkdtemp(prefix="crew-dash-home-")
-        keys = ("HERMES_HOME", "CREW_ACK_FILE", "HERMES_BIN", "KANBAN_DB", "HERMES_KANBAN_DB")
+        keys = ("HERMES_HOME", "CREW_ACK_FILE", "HERMES_BIN", "KANBAN_DB", "HERMES_KANBAN_DB", "HERMES_DELEGATED_CHILD_CONTEXT")
         cls._env = {k: os.environ.get(k) for k in keys}
         os.environ["HERMES_HOME"] = cls.home
         os.environ["CREW_ACK_FILE"] = os.path.join(cls.home, "crew", "attention_acks.json")
         os.environ.setdefault("HERMES_BIN", "/bin/false")
         os.environ.pop("HERMES_KANBAN_DB", None)
+        os.environ.pop("HERMES_DELEGATED_CHILD_CONTEXT", None)
         kb, cls.conn, db_path = kbd.open_board(cls.home)
         os.environ["KANBAN_DB"] = db_path
         cls.card = kbd.add_card(cls.conn, title="dash card")
@@ -546,6 +547,68 @@ class CrewDashboardCustomizationTests(RealBoardCase):
         self.assertIn('"inputs": body_field(body, "Inputs")', cg_src)
         self.assertIn('"proof_cmd": body_field(body, "proof command")', cg_src)
         self.assertIn('"body": body or ""', cg_src)
+
+    def test_verifier_panel_model_resolution(self):
+        card_js_path = os.path.join(CREW_ROOT, "scripts", "crew_dashboard", "card.js")
+        with open(card_js_path, "r", encoding="utf-8") as f:
+            card_js = f.read()
+        self.assertIn('kind === "verifier"', card_js)
+        self.assertIn("verModel", card_js)
+
+        cg_path = os.path.join(CREW_ROOT, "scripts", "crew_graph.py")
+        with open(cg_path, "r", encoding="utf-8") as f:
+            cg_src = f.read()
+        self.assertIn('item["model"] = sd.get("model") or ""', cg_src)
+
+        import shutil, subprocess
+        node = shutil.which("node")
+        if not node:
+            return
+
+        card_js_path_json = json.dumps(card_js_path)
+        script = f"""
+const fs = require('fs');
+let src = fs.readFileSync({card_js_path_json}, 'utf-8');
+src = src.replace('__CREW_JSON_NAME__', '"card.json"')
+         .replace('__CREW_INITIAL__', '{{"card_id":"t_test","nodes":[]}}')
+         .replace('__CREW_COLOURS__', '{{}}');
+
+const vm = require('vm');
+const sandbox = {{
+  console: console,
+  window: {{ addEventListener: () => {{}} }},
+  document: {{
+    addEventListener: () => {{}},
+    getElementById: () => null,
+    querySelectorAll: () => [],
+    createElement: () => ({{ appendChild: () => {{}}, classList: {{ add: () => {{}}, remove: () => {{}} }} }}),
+    readyState: 'complete'
+  }},
+  location: {{ search: '' }},
+  fetch: () => Promise.resolve({{ ok: true, json: () => Promise.resolve({{}}) }})
+}};
+vm.createContext(sandbox);
+vm.runInContext(src, sandbox);
+
+const n = {{
+  kind: 'verifier',
+  evidence: {{
+    review_runs: [
+      {{ run_id: 1, session_id: 's1', model: 'claude-3-5-sonnet', outcome: 'completed' }},
+      {{ run_id: 2, session_id: 's2', model: 'gpt-4o-reviewer', status: 'running' }}
+    ],
+    verdict: 'PASS'
+  }}
+}};
+const m = sandbox.panelModel(n);
+console.log(JSON.stringify(m.chips));
+"""
+        res = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        chips = json.loads(res.stdout.strip().splitlines()[-1])
+        model_chip = [c for c in chips if c[0] == "model"][0]
+        self.assertEqual(model_chip[2], "gpt-4o-reviewer")
+
 
 
 class SessionTraceabilityJsTests(unittest.TestCase):

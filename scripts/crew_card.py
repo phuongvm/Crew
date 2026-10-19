@@ -861,6 +861,21 @@ def render_body(c):
             "artifact paths and the raw proof output. No verifier session runs on this card; "
             "kanban_request_review is refused.",
         ]
+    elif mode == "agent":
+        # A standalone verifier card (Role: verifier, assigned to the verifier profile): the verifier is its
+        # only writer and completes it directly after its own PASS. It is never handed off for review.
+        lines += [
+            "",
+            "Contract: one writer per card; state on disk, not in context. This is a standalone verifier card: "
+            "%s is its only writer, writes the findings artifact, runs the proof command itself and stores the "
+            "raw output with its verdict. kanban_complete is refused without a PASS line for the proof command "
+            "run by the verifier. Two failed verifications hand the card back to the coordinator, who decides. "
+            "Budget is a hard stop." % verifier,
+            "Finish: the verifier runs crew_verdict(card=<this card id>) (runs the proof, writes "
+            "$HERMES_HOME/crew/verdicts/<card>.jsonl, verdict PASS), then kanban_complete(summary=...) with the "
+            "findings artifact path and the raw proof output. This card is never handed off for review: "
+            "crew_review_handoff is refused.",
+        ]
     else:
         lines += [
             "",

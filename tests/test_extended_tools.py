@@ -103,6 +103,7 @@ ALL_TOOLS = CORE | EXTENDED | SCRIPT_ONLY
 PROOF_BODY = ("Role: worker\nCoordinator: owner/s\nVerify: proof\nBudget: 200000 tokens\n\nGOAL: g\nDone when: d\n\n"
               "proof command: true\n")
 INDEPENDENT_BODY = PROOF_BODY.replace("Verify: proof", "Verify: independent")
+AGENT_BODY = PROOF_BODY.replace("Verify: proof", "Verify: agent")
 
 
 def child(i, **over):
@@ -329,6 +330,14 @@ class ReviewHandoffTests(BoardCase):
         res = handle_crew_review_handoff({"card_id": cid, "summary": "done"})
         self.assertEqual("refused", res["status"])
         self.assertEqual("proof", res["verify"])
+        self.assertEqual("ready", self.status(cid))
+
+    def test_agent_card_is_refused(self):
+        cid = K.add_card(self.conn, "ready", body=AGENT_BODY)
+        res = handle_crew_review_handoff({"card_id": cid, "summary": "done"})
+        self.assertEqual("refused", res["status"])
+        self.assertEqual("agent", res["verify"])
+        self.assertIn("kanban_complete", res.get("error", ""))
         self.assertEqual("ready", self.status(cid))
 
     def test_handoff_needs_summary_and_known_card(self):

@@ -640,7 +640,7 @@ CREW_REVIEW_HANDOFF_SCHEMA = {
     "description": (
         "Pipeline ops: hand an independent-verification crew card to its verifier's review step "
         "(model pin swapped for the review pick, card moved to `review`), or preview the prior-run hand-off "
-        "context a retried worker receives. `Verify: proof` and `closeout` cards are refused."
+        "context a retried worker receives. `Verify: proof`, `agent`, and `closeout` cards are refused."
     ),
     "parameters": {
         "type": "object",
@@ -822,7 +822,7 @@ def handle_crew_stop_card(args: dict, **kwargs: Any) -> dict[str, Any]:
 
 
 def handle_crew_review_handoff(args: dict, **kwargs: Any) -> dict[str, Any]:
-    """Handler for crew_review_handoff: verifier handoff for independent cards, or hand-off preview."""
+    """Handler for crew_review_handoff: verifier handoff for independent or dual cards, or hand-off preview."""
     args = _args(args)
     card_id = _card_id_arg(args)
     if not card_id:
@@ -862,7 +862,11 @@ def handle_crew_review_handoff(args: dict, **kwargs: Any) -> dict[str, Any]:
         if mode == "closeout":
             return {"status": "refused", "card_id": card_id, "verify": mode,
                     "error": "card %s is `Verify: closeout` (one part of a split): complete it directly" % card_id}
-        if mode not in ("independent", "agent", "dual"):
+        if mode == "agent":
+            return {"status": "refused", "card_id": card_id, "verify": mode,
+                    "error": "card %s is `Verify: agent`: a standalone verifier card is never submitted for review "
+                             "(it is completed directly by the verifier via kanban_complete after crew_verdict PASS)" % card_id}
+        if mode not in ("independent", "dual"):
             return {"status": "refused", "card_id": card_id, "verify": mode or None,
                     "error": "card %s has no independent `Verify:` line; there is no verifier to hand it to" % card_id}
         reviewer = str(args.get("reviewer") or "").strip() or card_mod.role_profile("verifier")
