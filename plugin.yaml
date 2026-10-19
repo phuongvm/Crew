@@ -16,6 +16,13 @@ description: >
   independent verifier that runs the proof itself, a per-card token budget as a hard stop, and a local
   dashboard of every card, run and step. /crew-status, /crew-graph and /crew-stop are plain commands with
   no model call; /crew-diagnose explains every stuck card.
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call
+  - pre_llm_call
+  - post_api_request
+  - api_request_error
+  - on_kanban_dispatch_tick
 provides_tools:
   - crew_card_create
   - crew_diagnose
@@ -34,13 +41,6 @@ provides_tools:
   - crew_proof_check
   - crew_lesson
   - crew_plan
-provides_hooks:
-  - pre_tool_call
-  - post_tool_call
-  - pre_llm_call
-  - post_api_request
-  - api_request_error
-  - on_kanban_dispatch_tick
 # register() registers one skill at runtime: crew-verifier (ctx.register_skill). The other skills
 # (crew, crew-role-worker, crew-role-content, crew-diagnose) ship as skills/<name>/SKILL.md and the
 # installer copies them into <profile>/skills/crew/; plugin.yaml has no field for skills.

@@ -1209,7 +1209,11 @@ def _string_response_adapter(fn: Any) -> Any:
 
 
 def _register(ctx: Any, tools: list) -> None:
+    existing = getattr(ctx, "tools", None)
+    existing_names = {t["name"] if isinstance(t, dict) else getattr(t, "name", None) for t in existing} if isinstance(existing, list) else set()
     for name, schema, handler in tools:
+        if name in existing_names:
+            continue
         try:
             ctx.register_tool(
                 name=name,
