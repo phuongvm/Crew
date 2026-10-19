@@ -30,6 +30,10 @@ provides_tools:
   - crew_worktree_cleanup
   - crew_flow_graph
   - crew_lesson_record
+  - crew_progress
+  - crew_proof_check
+  - crew_lesson
+  - crew_plan
 provides_hooks:
   - pre_tool_call
   - post_tool_call
@@ -37,13 +41,6 @@ provides_hooks:
   - post_api_request
   - api_request_error
   - on_kanban_dispatch_tick
-provides_tools:
-  - crew_verdict
-  - crew_progress
-  - crew_proof_check
-  - crew_lesson
-  - crew_plan
-  - crew_diagnose
 # register() registers one skill at runtime: crew-verifier (ctx.register_skill). The other skills
 # (crew, crew-role-worker, crew-role-content, crew-diagnose) ship as skills/<name>/SKILL.md and the
 # installer copies them into <profile>/skills/crew/; plugin.yaml has no field for skills.
