@@ -15,3 +15,7 @@ node_modules/
 crew/attention_acks.json
 Test_output/
 scripts/crewgraph.json
+
+# runtime test fixtures and telemetry snapshots written by test runs
+fixtures/
+reports/snapshots/
