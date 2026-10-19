@@ -132,9 +132,13 @@ CREW_DIAGNOSE_SCHEMA = {
                 "enum": ["blocked", "triage", "todo", "ready", "running", "done", "archived"],
                 "description": "Filter cards by state. Defaults to 'blocked'."
             },
-            "card_id": {
+            "card": {
                 "type": "string",
                 "description": "Specific card ID to diagnose (e.g. 't_ab12cd34'). Overrides state filter."
+            },
+            "card_id": {
+                "type": "string",
+                "description": "Specific card ID to diagnose (alias for card). Overrides state filter."
             },
             "format": {
                 "type": "string",
@@ -158,13 +162,17 @@ CREW_VERDICT_SCHEMA = {
                 "type": "string",
                 "description": "The target card ID (e.g., 't_1234abcd')."
             },
+            "card": {
+                "type": "string",
+                "description": "The target card ID (alias for card_id)."
+            },
             "command": {
                 "type": "string",
                 "description": "Optional command override. Must match the owner-confirmed proof command; unconfirmed commands will be refused."
             },
             "timeout": {
                 "type": "integer",
-                "description": "Execution timeout in seconds. Defaults to 60."
+                "description": "Execution timeout in seconds. Defaults to 300."
             },
             "by": {
                 "type": "string",
@@ -322,7 +330,7 @@ def handle_crew_diagnose(args: dict, **kwargs: Any) -> Any:
     if not isinstance(args, dict):
         args = {}
     state = str(args.get("state") or "blocked").strip().lower()
-    card_id = (args.get("card_id") or "").strip() or None
+    card_id = (args.get("card") or args.get("card_id") or "").strip() or None
     fmt = str(args.get("format") or "text").strip().lower()
 
     diag_mod = _diagnose_tool()
@@ -359,15 +367,15 @@ def handle_crew_verdict(args: dict, **kwargs: Any) -> dict[str, Any]:
     """Handler for crew_verdict."""
     if not isinstance(args, dict):
         return {"status": "error", "error": "arguments must be a JSON object"}
-    card_id = str(args.get("card_id") or "").strip()
+    card_id = str(args.get("card") or args.get("card_id") or "").strip()
     if not card_id:
-        return {"status": "error", "error": "card_id is required"}
+        return {"status": "error", "error": "card or card_id is required"}
 
     command = args.get("command")
     if command is not None:
         command = str(command).strip()
 
-    timeout = 60
+    timeout = 300
     if args.get("timeout"):
         try:
             timeout = int(args["timeout"])
@@ -1209,10 +1217,17 @@ def _string_response_adapter(fn: Any) -> Any:
 
 
 def _register(ctx: Any, tools: list) -> None:
+    # Check if tool is already registered in global Hermes registry (e.g. from upstream crew_tools)
+    try:
+        from tools.registry import registry
+        is_in_registry = lambda n: registry.get_entry(n) is not None
+    except Exception:
+        is_in_registry = lambda n: False
+
     existing = getattr(ctx, "tools", None)
     existing_names = {t["name"] if isinstance(t, dict) else getattr(t, "name", None) for t in existing} if isinstance(existing, list) else set()
     for name, schema, handler in tools:
-        if name in existing_names:
+        if name in existing_names or is_in_registry(name):
             continue
         try:
             ctx.register_tool(
