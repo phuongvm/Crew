@@ -23,7 +23,13 @@ spec = importlib.util.spec_from_file_location("crew_tools_guard_under_test", str
 P = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(P)
 
-TOOLS = ["crew_verdict", "crew_progress", "crew_proof_check", "crew_lesson", "crew_plan", "crew_diagnose"]
+TOOLS = [
+    "crew_card_create", "crew_diagnose", "crew_event_subscribe", "crew_flow_graph",
+    "crew_lesson", "crew_lesson_record", "crew_plan", "crew_plan_split",
+    "crew_progress", "crew_proof_check", "crew_request_changes", "crew_review_handoff",
+    "crew_status", "crew_stop_card", "crew_verdict", "crew_worktree_cleanup",
+    "crew_worktree_create",
+]
 
 
 class FakeCtx:
@@ -113,6 +119,30 @@ class GuardTests(unittest.TestCase):
                 with self.subTest(tool=tool):
                     self.assertIsNone(self.guard(tool, {"card": "t_x"}, role="verifier"))
 
+    def test_verifier_blocked_from_mutating_extended_tools(self):
+        os.environ["HERMES_KANBAN_TASK"] = "t_x"
+        mutating_tools = (
+            "crew_stop_card",
+            "crew_worktree_create",
+            "crew_worktree_cleanup",
+            "crew_plan_split",
+            "crew_lesson_record",
+            "crew_review_handoff",
+            "crew_card_create",
+        )
+        with mock.patch.object(P, "_card_budget", lambda c: 0), mock.patch.object(P, "_verdict_fails", lambda c: 0):
+            for tool in mutating_tools:
+                with self.subTest(tool=tool):
+                    res = self.guard(tool, {}, role="verifier")
+                    self.assertIsNotNone(res)
+                    self.assertEqual("block", res["action"])
+                    self.assertIn("verifier has no write/send tools", res["message"])
+            # Non-mutating or verifier-permitted tools remain allowed
+            for tool in ("crew_verdict", "crew_progress", "crew_lesson", "crew_proof_check",
+                         "crew_diagnose", "crew_status", "crew_flow_graph", "crew_request_changes"):
+                with self.subTest(allowed_tool=tool):
+                    self.assertIsNone(self.guard(tool, {"card_id": "t_x", "reason": "actionable defect"}, role="verifier"))
+
     def test_the_coordinator_turn_cannot_act_through_the_tools(self):
         os.environ["CREW_COORDINATOR_TURN"] = "1"
         for tool in ("crew_verdict", "crew_progress", "crew_lesson", "crew_plan"):
@@ -142,7 +172,7 @@ class OpenHookTests(unittest.TestCase):
 class NoShellCommandNamedTests(unittest.TestCase):
     """Model-facing text names the tool, never a crew_card.py command. The one line allowed to is `watch`."""
     ANY = re.compile(r"crew_card\.py\s+(?!watch\b)\S+")
-    ALLOWED = {"skills/crew/SKILL.md": 1}   # the one `crew_card.py watch` line
+    ALLOWED = {"skills/crew/SKILL.md": 1, "skills/crew-no-spec/SKILL.md": 1}   # the `crew_card.py watch` lines
 
     def test_skills_name_no_crew_card_command_but_watch(self):
         found = {}
@@ -150,7 +180,7 @@ class NoShellCommandNamedTests(unittest.TestCase):
             rel = path.relative_to(REPO).as_posix()
             text = path.read_text(encoding="utf-8")
             self.assertEqual([], self.ANY.findall(text), rel)
-            n = len(re.findall(r"crew_card\.py\s+watch\b", text))
+            n = len(re.findall(r'crew_card\.py(?:"|\b)\s+watch\b', text))
             if n:
                 found[rel] = n
         self.assertEqual(self.ALLOWED, found)

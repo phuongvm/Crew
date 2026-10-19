@@ -167,11 +167,40 @@ and tell me what it answered.
 
 ## The roles' tools
 
-The roles do not shell out to `crew_card.py`. The plugin registers six tools in the `crew` toolset and the role
-skills name them: `crew_verdict` (run the card's confirmed proof), `crew_progress` (mark a unit pass or fail),
-`crew_proof_check` (screen a proof command and read the safety mode), `crew_lesson` (record a lesson), `crew_plan`
-(open a parent with children) and `crew_diagnose` (the read-only list of stuck cards). `watch` and the owner's CLI
-stay as they are. The idea of native tools instead of shell lines came from @phuongvm (PR #16).
+The roles do not shell out to `crew_card.py`. The plugin registers 17 tools in the `crew` toolset across Core, Pipeline, Workspace, Intelligence, and Helpers, declared in `plugin.yaml` and documented in the role skills:
+
+### Core Tools (5)
+- `crew_card_create`: create a guarded, contract-validated Crew card directly in Turn 1 (replaces raw `kanban_create`).
+- `crew_diagnose`: read-only diagnostic reader for stuck, blocked, or in-flight cards across states.
+- `crew_verdict`: run the card's owner-confirmed proof command unattended and record the PASS/FAIL line in the verdict log.
+- `crew_status`: query board and card state, metrics, and queue status across roles.
+- `crew_event_subscribe`: manage webhook subscriptions for card lifecycle events.
+
+### Pipeline & Workflow Tools (4)
+- `crew_stop_card`: park or archive active or queued cards safely.
+- `crew_review_handoff`: transition completed work to the `review` column for independent, dual, or agent verification.
+- `crew_request_changes`: return a card from review back to the implementer with actionable rejection reasons.
+- `crew_plan_split`: split a complex plan into parent, child cards, and a closeout aggregator.
+
+### Workspace & Isolation Tools (2)
+- `crew_worktree_create`: create an isolated git worktree under `O:/workspaces/.worktrees/<name>` to enforce Zero-Checkout.
+- `crew_worktree_cleanup`: remove an isolated worktree and branch cleanly after completion/merge.
+
+### Intelligence & Self-Improvement Tools (2)
+- `crew_flow_graph`: generate deterministic visual dependency graphs in Mermaid or JSON format.
+- `crew_lesson_record`: structured lesson recording with validation against schema rules and role retrieval.
+
+### Script & Progress Helpers (4)
+- `crew_progress`: mark units pass/fail with raw line evidence on multi-unit deliverables.
+- `crew_proof_check`: pre-screen proposed proof commands for danger and read the safety mode.
+- `crew_lesson`: quick lesson recording for roles.
+- `crew_plan`: open a parent card with children and closeout from a plan spec object.
+
+### Role Mapping
+- **Coordinator**: `crew_card_create`, `crew_proof_check`, `crew_plan`, `crew_plan_split`, `crew_stop_card`, `crew_status`, `crew_diagnose`, `crew_event_subscribe`, `crew_flow_graph`, `crew_lesson_record`, `crew_lesson`.
+- **Worker**: `crew_verdict`, `crew_review_handoff`, `crew_worktree_create`, `crew_worktree_cleanup`, `crew_progress`, `crew_status`, `crew_flow_graph`, `crew_stop_card`, `crew_lesson_record`, `crew_lesson`.
+- **Content**: `crew_verdict`, `crew_review_handoff`, `crew_progress`, `crew_status`, `crew_flow_graph`, `crew_lesson_record`, `crew_lesson`.
+- **Verifier**: `crew_verdict`, `crew_request_changes`, `crew_progress`, `crew_worktree_create`, `crew_worktree_cleanup`, `crew_status`, `crew_flow_graph`, `crew_lesson_record`, `crew_lesson`.
 
 ## Self-improvement
 

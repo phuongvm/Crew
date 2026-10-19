@@ -69,7 +69,7 @@ You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesyste
      - Verify: `proof`.
      - Proof command: Automated validation script (e.g. `openspec validate <change> --strict && test -s design.md`).
   2. **Card 2 (Independent Re-Review by @reviewer)**:
-     - Assignee: `@reviewer` (skills: `["completed-handoff-review", "openspec-verifier"]`).
+     - Assignee: `@reviewer` (skills: `["crew-verifier", "openspec-verifier"]`).
      - Parents: `[Card 1 id]` (starts in `todo (gated)`).
      - Goal: Independently verify complete remediation of all reviewer findings.
      - Artifact: `reviews/findings-reviewer-v<N>.md`.
@@ -149,7 +149,7 @@ The schema enforces typed validation, token budget floors, and tolerant Markdown
 | Constraints | what must not change, off-limit tools or data, deadline | you fill "none stated" unless the ask or a risk you see needs the owner |
 | Budget | tokens for the card | you fill the role's default from the `<crew-facts>` block |
 | Role | worker (@coder: code/config/infra/investigation), verifier (@reviewer: review/audit/verification), or content (@designer: reports/pages) | you fill |
-| Verify | `proof` (script-only exit 0), `agent` (@reviewer semantic verdict), or `dual` (coder implementation chained with reviewer re-review) | you fill |
+| Verify | `proof` (script exit 0), `independent` (verifier writes .crew/ script), `dual` (coder PASS + reviewer audit), `agent` (standalone cognitive review), or `closeout` (split subtask) | you fill |
 | Route | `auto` (inherit profile default model/provider; never override unless explicitly commanded) | you fill `auto` |
 
 ## 3. Missing or ambiguous -> ask only what the result needs, open nothing
@@ -190,7 +190,7 @@ Write the proof command, do NOT run it, test it or iterate on it in the intake. 
 
 - Command-only proof: one short plain command (`test -f <file> && grep -q "..." <file>`, `curl -sf ...`). You write
   it, the owner confirms it, the card stays `Verify: proof` (the writer runs it, the coordinator audits).
-- Script proof: `python "<landing folder>/.crew/<YYYYMMDD-HHMMSS>-<slug>/verify.py"` (or `sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" <landing folder>/.crew/<YYYYMMDD-HHMMSS>-<slug>/verify.py`), absolute path: a folder of its
+- Script proof: `python "<landing folder>/.crew/<YYYYMMDD-HHMMSS>-<slug>/verify.py"`, absolute path: a folder of its
   own under `.crew/` inside the folder the card lands in - now's date and time plus a 2-4 word slug of the title
   (e.g. `.crew/20261003-143201-healthcare-landing/verify.py`), so two cards in one folder never share a script
   (the plugin refuses a script another open card uses). Use it when the proof needs several checks. Write `Verify: independent` (the plugin sets it
@@ -267,7 +267,6 @@ line the plugin asks for at the top of the turn:
 
 ```
 terminal(background=true, notify_on_complete=true, command='python "$HERMES_HOME/plugins/crew/scripts/crew_card.py" watch --card <id>')
-# Fallback: command='sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" crew_card.py watch --card <id>'
 ```
 
 ```
@@ -280,8 +279,32 @@ its output comes back into this session as a new turn: relay it to the owner in 
 No other waiting, no follow-up card, no extra writer, no retry. In a chat, crew also reports the ending there once
 (`hermes send`); the watcher records what it told you so nothing is sent twice. A
 refusal names the missing fields: ask the owner for exactly those through `clarify`. Independent parts
-with different artifacts go through `crew_plan(spec={...the plan object...})`
+with different artifacts go through `crew_plan(spec={...the plan object...})` or `crew_plan_split(goal="<goal>", children=[...])`
 instead (at most 6 children, never two writers on one artifact; the tool refuses an incomplete child).
+
+## 5. Complete 17-Tool Decision Matrix & Guidance
+
+Crew provides 17 native and registered tools across Core, Pipeline, Workspace, Intelligence, and Helpers:
+
+| Category | Tool | Allowed Roles | When It Replaces Generic Kanban / Shell | Arguments / Parameters | Mutability / Safety | Next Action |
+|---|---|---|---|---|---|---|
+| **Core** | `crew_card_create` | Coordinator | Replaces `kanban_create` with validated contract schema & gap checking | `title`, `role` (required); `goal`, `artifact`, `lands`, `audience`, `done_when`, `proof_cmd`, `verify`, `proof_mode`, `constraints`, `budget`, `parents`, `skills`, `dry_run`, `allow_no_proof`, `initial_status` | Mutating (creates card) | Launch background watcher |
+| **Core** | `crew_diagnose` | Coordinator, All | Replaces manual `kanban_list`/`kanban_show` loops for diagnosing stuck cards | `state` ("blocked"\|"triage"\|"todo"\|"ready"\|"running"\|"done"\|"archived"), `card_id`, `format` ("text"\|"json") | Read-only | Formulate `RESUME:` / `WHO:` plan |
+| **Core** | `crew_verdict` | Worker, Content, Verifier | Replaces manual terminal test runs; records authoritative PASS/FAIL in `$HERMES_HOME/crew/verdicts/<card>.jsonl` | `card_id` (required), `timeout` | Safe or Brave per card Proof mode | On PASS: complete or handoff; On FAIL: fix or request changes |
+| **Core** | `crew_status` | All roles | Replaces ad-hoc database queries to inspect board/queue state | `limit`, `format` ("text"\|"json") | Read-only | Inspect progress / report status |
+| **Core** | `crew_event_subscribe` | Coordinator | Replaces manual webhook event configuration for card transitions | `action` ("subscribe"\|"list"\|"unsubscribe"\|"clear"), `url`, `events`, `headers`, `format` | Mutating (saves subscription) | Monitor webhook dispatch |
+| **Pipeline** | `crew_stop_card` | Coordinator, Worker | Replaces raw `kanban_block`/`kanban_archive` to park or archive cards safely | `card_id` (required), `archive`, `dry_run` | Mutating (updates status) | Park for resume or archive |
+| **Pipeline** | `crew_review_handoff` | Worker, Content | Replaces generic `kanban_request_review` for `independent`, `dual`, and `agent` modes; refused for `proof` & `closeout` | `card_id` (required), `summary` (required for handoff), `action`, `reviewer` | Mutating (moves to review) | Hand off to reviewer |
+| **Pipeline** | `crew_request_changes` | Verifier | Replaces generic `kanban_request_changes`; returns card to implementer with actionable reasons without block loops | `card_id` (required), `reason` (required) | Mutating (requeues card) | Implementer resumes rework |
+| **Pipeline** | `crew_plan_split` | Coordinator | Replaces manual parent/child/closeout creation with atomic validated decomposition | `goal`, `children` (required); `title`, `done_when`, `dry_run` | Mutating (creates linked cards) | Dispatch child tasks |
+| **Workspace**| `crew_worktree_create` | Worker, Verifier | Replaces `git worktree add` to enforce Zero-Checkout under `O:/workspaces/.worktrees/<name>` | `repo`, `name`, `branch` (required); `base`, `worktrees_root`, `dry_run` | Mutating (creates worktree) | Work in isolated worktree |
+| **Workspace**| `crew_worktree_cleanup`| Worker, Verifier, Coordinator | Replaces raw directory deletion/git branch removal; refuses dirty or main checkouts | `repo`, `name` (required); `worktrees_root`, `delete_branch`, `force`, `dry_run` | Mutating (removes worktree) | Workspace hygiene |
+| **Intelligence** | `crew_flow_graph` | All roles | Replaces manual board tracing with Mermaid or JSON dependency visualization | `card_id`, `direction` ("TD"\|"TB"\|"LR"\|"RL"\|"BT"), `format` ("mermaid"\|"json") | Read-only | View/render dependency graph |
+| **Intelligence** | `crew_lesson_record` | All roles | Structured lesson recording with validation against `contracts.py` `lesson_gaps` | `role` (required), `text` (required for add), `action` ("add"\|"show") | Mutating (appends lesson) | Turn completion |
+| **Helpers** | `crew_progress` | Worker, Verifier | Marks progress on multi-unit deliverables with raw evidence | `card` (required), `unit`, `result` ("pass"\|"fail"), `evidence` | Mutating (updates unit state) | Continue units or finish |
+| **Helpers** | `crew_proof_check` | Coordinator | Pre-screens proposed proof command for danger before card creation | `command` (required) | Read-only | Ask owner if flagged; proceed if ok |
+| **Helpers** | `crew_lesson` | All roles | Quick lesson recording into `lessons.md` | `role`, `text` (required) | Mutating (appends lesson) | Durable learning captured |
+| **Helpers** | `crew_plan` | Coordinator | Opens parent with children from a plan spec object | `spec` (required), `dry_run` | Mutating (creates cards) | Monitor plan execution |
 
 ## Never
 

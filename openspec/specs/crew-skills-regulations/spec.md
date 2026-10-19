@@ -73,6 +73,6 @@ Every Crew skill (`SKILL.md`) SHALL contain valid YAML frontmatter starting at b
 - **GIVEN** the skill files under `skills/*/SKILL.md`
 - **WHEN** validated against package metadata and authoring rules
 - **THEN** each file's frontmatter MUST parse as valid YAML
-- **AND** `version` MUST match `plugin.yaml` (`0.9.12`)
+- **AND** `version` MUST match `plugin.yaml` (`0.9.13`)
 - **AND** the initial trigger phrase of `description` MUST NOT exceed 60 characters.
 

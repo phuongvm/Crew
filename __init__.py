@@ -573,8 +573,12 @@ _BUDGET_CACHE = {}
 ALWAYS_ALLOWED_OVER_BUDGET = {"kanban_block", "kanban_comment", "kanban_show", "kanban_heartbeat"}
 # Allowed over budget only when the card passes the close rule (a PASS line for its proof command).
 CLOSE_TOOLS_AFTER_PASS = {"kanban_complete", "kanban_request_review", "kanban_block"}
-VERIFIER_BLOCKED_TOOLS = {"write_file", "patch", "skill_manage", "memory", "kanban_create", "kanban_link",
-                          "cronjob_manage", "delegate_task", "execute_code", "send_message", "crew_plan"}
+VERIFIER_BLOCKED_TOOLS = {
+    "write_file", "patch", "skill_manage", "memory", "kanban_create", "kanban_link",
+    "cronjob_manage", "delegate_task", "execute_code", "send_message", "crew_plan",
+    "crew_card_create", "crew_stop_card", "crew_worktree_create", "crew_worktree_cleanup",
+    "crew_plan_split", "crew_lesson_record", "crew_review_handoff",
+}
 # The coordinator's decision turn (crew_coordinator.py sets CREW_COORDINATOR_TURN) reads and decides; the loop
 # applies the answer. The same write filter as the verifier, plus the verbs that would move the card itself.
 COORDINATOR_TURN_BLOCKED = VERIFIER_BLOCKED_TOOLS | {"kanban_complete", "kanban_block", "kanban_unblock",

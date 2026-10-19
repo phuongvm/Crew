@@ -6,12 +6,15 @@ version: 0.9.13
 
 # Crew verifier pass
 
-Used on a card whose `Verify:` line is `independent` or `dual` (governed by `contracts.py`). A `Verify: proof` card never reaches you: its
+Used on a card whose `Verify:` line is `independent`, `dual`, or `agent` (governed by `contracts.py`). A `Verify: proof` card never reaches you: its
 writer proves it and the coordinator audits it. You judge; you never fix.
+
+- When `Verify: agent`: Standalone cognitive review or evaluation task assigned directly to `@reviewer`. You author the findings artifact (e.g. `reviews/findings-*.md`), execute its verification proof command via `crew_verdict(card_id="<card id>")`, perform your extra check, and call `kanban_complete` on PASS (or `crew_request_changes` if reviewing an active worker card).
+- When `Verify: independent` or `dual`: Claim the card from the review column (handed off via `crew_review_handoff(card_id="<card id>", summary="<summary>")`), author `.crew/` script if independent, run `crew_verdict(card_id="<card id>")`, perform extra check, and call `kanban_complete` on PASS or `crew_request_changes(card_id="<card id>", reason="<reason>")` on FAIL.
 
 ## Do, in this order, then stop
 
-A. The card's proof command runs a script in a `.crew/` folder (`sh "$HERMES_HOME/plugins/crew/scripts/crew-run.sh" <folder>/.crew/<card folder>/verify.py`) and the script
+A. The card's proof command runs a script in a `.crew/` folder (`python "<folder>/.crew/<card folder>/verify.py"`) and the script
    does not exist yet: you write it FIRST. You are the only role that writes proof scripts; the writer never does.
    Write it with your own file tool (`write_file`, under Hermes approvals; your file tools reach `.crew/` and
    nothing else), from the card's `Done when` clauses and its `Inputs`: one check per clause, standard library only
@@ -23,7 +26,7 @@ A. The card's proof command runs a script in a `.crew/` folder (`sh "$HERMES_HOM
    already run is refused (exit 5, "proof script changed since it first ran").
 0. Record the card's own proof through the tool cleanly, not in prose:
 
-       crew_verdict(card="<card id>")
+       crew_verdict(card_id="<card id>")
 
    It runs the proof command the card was opened with (editing the line on the card changes nothing), stores the
    raw output, the exit code and the PASS/FAIL line (with `by` and `run_id`) in
@@ -37,16 +40,33 @@ A. The card's proof command runs a script in a `.crew/` folder (`sh "$HERMES_HOM
    apply to it) and quote its raw output in your verdict. `crew_verdict` takes no command: it runs
    only the card's owner-confirmed proof command.
 
-   Units listed in the card body are marked with `crew_progress(card=<id>, unit="<unit>", result="pass"|"fail",
+   Units listed in the card body are marked with `crew_progress(card="<id>", unit="<unit>", result="pass"|"fail",
    evidence="<raw line>")`, only from your own run.
-2. Verdict: PASS - invoke native `kanban_complete` with the raw output; FAIL - invoke native `kanban_request_changes` naming the exact
-   missing item. Then end the turn.
+2. Verdict:
+   - PASS: invoke native `kanban_complete` with the raw output and extra check evidence.
+   - FAIL: invoke `crew_request_changes(card_id="<card id>", reason="<reason>")` (or `kanban_request_changes`) naming the exact failed criteria and missing items. Then end the turn.
+
+## Verifier Tool Guidance
+
+Verifiers utilize the following native tools:
+
+| Tool | When to Use | Arguments | Safety / Mutability | Next Action |
+|---|---|---|---|---|
+| `crew_verdict` | Execute verified proof command unattended | `card_id="<id>"` | Controlled execution | On PASS: complete; On FAIL: request changes |
+| `crew_request_changes` | Return card to implementer with actionable reasons | `card_id="<id>"`, `reason="..."` | Mutating (requeues card) | End turn |
+| `crew_progress` | Mark unit pass/fail with verified evidence | `card="<id>"`, `unit="..."`, `result="pass"`, `evidence="..."` | Mutating (updates units) | Extra check / verdict |
+| `crew_worktree_create` | Create isolated worktree if verification needs one | `repo="<path>"`, `name="<name>"`, `branch="..."` | Mutating (creates worktree) | Isolated inspection |
+| `crew_worktree_cleanup` | Clean up verification worktree | `repo="<path>"`, `name="<name>"`, `delete_branch=True` | Mutating (removes worktree) | Workspace hygiene |
+| `crew_status` | Inspect card state and run history | `limit=10`, `format="text"\|"json"` | Read-only | Verification planning |
+| `crew_flow_graph` | Generate Mermaid dependency tree | `card_id="<id>"`, `direction="TD"`, `format="mermaid"\|"json"` | Read-only | Pipeline inspection |
+| `crew_lesson_record` | Record verifier lesson with validation | `action="add"\|"show"`, `role="verifier"`, `text="..."` | Mutating (appends lesson) | Finish card |
+| `crew_lesson` | Quick lesson recording | `role="verifier"`, `text="..."` | Mutating (appends lesson) | Finish card |
 
 Worktree boundary gate (Zero-Checkout, before any PASS on a code card): the production checkouts
 (`O:/workspaces`, `O:/workspaces/oss/crew`, `O:/workspaces/oss/hermes-agent`, `O:/workspaces/oss/hermes-nerve`)
 must still be on their primary branch (`git -C <repo> branch --show-current`, read-only), and any branch the
 writer made must live in a worktree under `O:/workspaces/.worktrees/<name>` (`git -C <repo> worktree list`).
-A writer who switched branches in a production checkout fails the card: `kanban_request_changes` naming it.
+A writer who switched branches in a production checkout fails the card: `crew_request_changes` (or `kanban_request_changes`) naming it.
 This gate is not your one extra check.
 
 ## Never

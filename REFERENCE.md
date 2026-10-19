@@ -215,7 +215,10 @@ roles/briefs/*.md      one short contract brief per role
 skills/crew/           the intake skill behind /crew
 skills/crew-verifier/  verification checklist skill
 skills/crew-role-worker/ + crew-role-content/  what a writer card is forced to load
-scripts/crew_tools.py  the `crew` toolset the roles call: crew_verdict, crew_progress, crew_proof_check, crew_lesson, crew_plan, crew_diagnose
+native_tools.py        registers 13 core & extended tools (crew_card_create, crew_diagnose, crew_verdict, crew_status,
+                       crew_event_subscribe, crew_stop_card, crew_review_handoff, crew_request_changes,
+                       crew_plan_split, crew_worktree_create, crew_worktree_cleanup, crew_flow_graph, crew_lesson_record)
+scripts/crew_tools.py  the 4 script helper tools completing the 17-tool catalog: crew_progress, crew_proof_check, crew_lesson, crew_plan
 scripts/crew_card.py   open a card from a contract, plan a parent with child cards, run a verdict
 scripts/crew_coordinator.py    the coordinator loop: one pass per dispatch tick over the board's events (heal, decide, ask the owner)
 scripts/crew_heal.py           the mechanical remedies the loop calls first (a library; no command of its own)

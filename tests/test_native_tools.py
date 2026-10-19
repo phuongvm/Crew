@@ -96,6 +96,8 @@ class ToolSchemasTests(unittest.TestCase):
         self.assertIn("proof_cmd", params["properties"])
         self.assertIn("budget", params["properties"])
         self.assertIn("verify", params["properties"])
+        self.assertIn("constraints", params["properties"])
+        self.assertIn("proof_mode", params["properties"])
 
     def test_diagnose_schema_fields(self):
         props = CREW_DIAGNOSE_SCHEMA["parameters"]["properties"]
@@ -209,6 +211,21 @@ class CrewCardCreateHandlerTests(unittest.TestCase):
         })
         self.assertEqual("ok", res["status"])
         self.assertTrue(res["card"].get("dry_run"))
+
+    def test_card_create_preserves_constraints_and_proof_mode(self):
+        res = handle_crew_card_create({
+            "title": "Constraint card",
+            "role": "worker",
+            "goal": "Test constraints preservation",
+            "proof_cmd": "python -V",
+            "proof_mode": "safe",
+            "constraints": "ZERO-CHECKOUT-MUST-SURVIVE; worktree isolation",
+            "dry_run": True,
+        })
+        self.assertEqual("ok", res["status"])
+        card = res["card"]
+        self.assertIn("Constraints: ZERO-CHECKOUT-MUST-SURVIVE; worktree isolation", card.get("body", ""))
+        self.assertIn("Proof mode: safe", card.get("body", ""))
 
 
 class CrewDiagnoseHandlerTests(unittest.TestCase):

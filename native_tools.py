@@ -92,6 +92,28 @@ CREW_CARD_CREATE_SCHEMA = {
                 "enum": ["proof", "independent", "agent", "dual"],
                 "description": "Verification mode for the card. Defaults to 'proof'."
             },
+            "proof_mode": {
+                "type": "string",
+                "enum": ["safe", "brave"],
+                "description": "Proof execution mode ('safe' or 'brave'). Defaults to 'safe'."
+            },
+            "constraints": {
+                "type": "string",
+                "description": "Operational constraints (e.g. Zero-Checkout invariant, dependencies, isolation rules)."
+            },
+            "inputs": {
+                "type": "string",
+                "description": "Inputs for the card (e.g. paths, URLs, references)."
+            },
+            "units": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Deliverable units for multi-unit progress tracking."
+            },
+            "proof_approved": {
+                "type": "boolean",
+                "description": "If true, mark the proof as approved."
+            },
             "parents": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -283,6 +305,8 @@ def handle_crew_card_create(args: dict, **kwargs: Any) -> dict[str, Any]:
         c["units"] = args["units"]
     if args.get("inputs"):
         c["inputs"] = str(args["inputs"])
+    if args.get("constraints"):
+        c["constraints"] = str(args["constraints"]).strip()
 
     dry_run = bool(args.get("dry_run", False))
     allow_no_proof = bool(args.get("allow_no_proof", False))
