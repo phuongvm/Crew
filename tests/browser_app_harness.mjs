@@ -98,6 +98,18 @@ function page(url, body, setup = () => {}) {
   delete board.dashboard_url
 }
 
+// --- the card page's shareable "link" (EventLine, open-card.cardUrl) in the served shell: <origin>/card/<id>, and the
+// shell loaded at that address opens that card
+{
+  const lan = page('http://192.168.1.20:8799/card/' + card.card_id, '<div id=crew-app></div>')
+  const a = await until(lan.doc, '.page-card #event a.tailnet')
+  const shared = a && a.getAttribute('href')
+  eq(shared, 'http://192.168.1.20:8799/card/' + card.card_id, 'served shell: the card link is the page origin + /card/<id>')
+  const again = page(shared, '<div id=crew-app></div>')
+  ok(await until(again.doc, '#crew-app .page-card .crew-graph .node'), 'served shell: the shared card link opens the card page')
+  ok(again.fetchLog.some(f => f[0] === '/card/' + card.card_id + '.json'), 'served shell: the shared link opened the requested card')
+}
+
 // Every selector in the app's injected <style data-crew> sheets that targets body, html or :root without the shell key.
 function hostRules(doc) {
   const css = [...doc.querySelectorAll('style[data-crew]')].map(e => e.textContent).join('\n').replace(/\/\*[\s\S]*?\*\//g, '')
@@ -214,6 +226,19 @@ if (tabPath) {
     eq(doc.querySelector('a.tailnet').getAttribute('href'), 'https://mc.example.com/hermes/crew',
       'the dashboard tab: the link is the dashboard origin + its base path + the Crew tab, not 127.0.0.1:8799')
     await React.act(async () => { root.unmount() })
+    delete board.dashboard_url
+  }
+  {
+    // the card page's shareable link in the dashboard tab: <dashboard>/crew?card=<id>; the tab loaded there opens that card
+    board.dashboard_url = 'http://127.0.0.1:8799'
+    const first = await open(200, 'https://mc.example.com/hermes/crew?card=' + card.card_id, '/hermes')
+    ok(await until(first.doc, '#crew-app .page-card .crew-graph .node') && !first.doc.querySelector('#crew-app .page-board'),
+      'the dashboard tab: a ?card=<id> address opens that card, not the board')
+    ok(first.log.some(l => l[0] === '/api/plugins/crew/card/' + card.card_id + '.json'), 'the dashboard tab: the linked card is read under the base')
+    const a = await until(first.doc, '#crew-app .page-card #event a.tailnet')
+    eq(a && a.getAttribute('href'), 'https://mc.example.com/hermes/crew?card=' + card.card_id,
+      'the dashboard tab: the card link is the dashboard origin + its base path + the Crew tab + ?card=<id>')
+    await React.act(async () => { first.root.unmount() })
     delete board.dashboard_url
   }
   {

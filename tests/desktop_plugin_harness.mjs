@@ -165,6 +165,33 @@ const settle = () => React.act(async () => { await new Promise(r => setTimeout(r
   delete window.hermesDesktop
   ctx.rest = savedRest
 }
+// --- the card page's shareable "link" (EventLine): produced as the gateway's Crew tab + ?card=<id> (open-card.cardUrl),
+// and a Desktop page freshly loaded at that address opens that card (CrewPage reads ?card= on arrival), not the board
+{
+  const savedRest = ctx.rest
+  const fx = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'card.live.json'), 'utf8'))
+  const asked = []
+  ctx.rest = async p => { asked.push(p); return p.startsWith('/card/') ? fx : board }
+  window.hermesDesktop = { getConnection: async () => ({ baseUrl: 'https://hermes.remote.example:9119/' }) }
+  // open the card from the board, read the card page's link
+  const m = await mountKeep(page.render)
+  await React.act(async () => { m.host.querySelector('a.card[data-id="t_live77"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })) })
+  await settle()
+  const shared = m.host.querySelector('#event a.tailnet')?.getAttribute('href')
+  await m.done()
+  eq(shared, 'https://hermes.remote.example:9119/crew?card=' + fx.card_id, 'Desktop: the card link is the gateway Crew tab + ?card=<id>')
+  // load the page at that address: it opens the linked card on arrival
+  dom.reconfigure({ url: shared })
+  asked.length = 0
+  const m2 = await mountKeep(page.render)
+  await settle()
+  ok(m2.host.querySelector('.page-card') && !m2.host.querySelector('.page-board'), 'Desktop: a page loaded at the shared card link opens the card, not the board')
+  ok(asked.some(p => p.startsWith('/card/' + fx.card_id)), 'Desktop: the shared link opened the requested card (fetched /card/' + fx.card_id + ')')
+  await m2.done()
+  dom.reconfigure({ url: 'about:blank' })
+  delete window.hermesDesktop
+  ctx.rest = savedRest
+}
 const click = el => React.act(async () => { el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, button: 0 })) })
 const VERDICT = { PASS: '✓ verified', FAIL: '✕ verify failed', unverified: '○ unverified' }
 const STATE_CHIP = { ready: 'queued', todo: 'queued', blocked: 'blocked', triage: 'needs you', review: 'in review' }

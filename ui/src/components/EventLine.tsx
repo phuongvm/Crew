@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { fmtTime, toneVar } from '../card-format'
 import type { CardJson, CardNode } from '../card-types'
+import { cardUrl } from '../open-card'
 import { useDashboardLink } from './Board'
 
 const T = ({ children }: { children: ReactNode }) => <span className="t">{children}</span>
@@ -63,9 +64,7 @@ function Kpis({ card }: { card: CardJson }) {
 
 export function EventLine({ card }: { card: CardJson }) {
   const dashLink = useDashboardLink(card.dashboard_url)
-  const cardUrl = dashLink.endsWith('/crew')
-    ? `${dashLink}?card=${encodeURIComponent(card.card_id || '')}`
-    : `${dashLink.replace(/\/+$/, '')}/card/${encodeURIComponent(card.card_id || '')}`
+  const href = cardUrl(dashLink, card.card_id || '')   // open-card.ts: the one producer every Crew page reads back
 
   return (
     <div id="event">
@@ -73,7 +72,7 @@ export function EventLine({ card }: { card: CardJson }) {
       <span className="evmain"><Event card={card} /></span>
       <Kpis card={card} />
       <span className="node">
-        <a className="tailnet" href={cardUrl} title="shareable card link">link</a>
+        <a className="tailnet" href={href} title="shareable card link">link</a>
       </span>
     </div>
   )

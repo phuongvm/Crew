@@ -14203,6 +14203,19 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
 }
 `;
 
+  // src/open-card.ts
+  var CREW_ROUTE = "/crew";
+  var CARD_ID = /^[A-Za-z0-9_-]+$/;
+  function cardFromSearch(search) {
+    const id = new URLSearchParams((search || "").replace(/^\?/, "")).get("card") || "";
+    return CARD_ID.test(id) ? id : "";
+  }
+  function cardUrl(dashLink, id) {
+    const base = (dashLink || "").trim().replace(/\/+$/, "");
+    const enc = encodeURIComponent(id);
+    return base.endsWith(CREW_ROUTE) ? base + "?card=" + enc : base + "/card/" + enc;
+  }
+
   // src/components/EventLine.tsx
   var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
   var T = ({ children }) => /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { className: "t", children });
@@ -14274,11 +14287,11 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
   }
   function EventLine({ card }) {
     const dashLink = useDashboardLink(card.dashboard_url);
-    const cardUrl = dashLink.endsWith("/crew") ? `${dashLink}?card=${encodeURIComponent(card.card_id || "")}` : `${dashLink.replace(/\/+$/, "")}/card/${encodeURIComponent(card.card_id || "")}`;
+    const href = cardUrl(dashLink, card.card_id || "");
     return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { id: "event", children: [
       /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { className: "evmain", children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Event, { card }) }),
       /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Kpis, { card }),
-      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { className: "node", children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("a", { className: "tailnet", href: cardUrl, title: "shareable card link", children: "link" }) })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { className: "node", children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("a", { className: "tailnet", href, title: "shareable card link", children: "link" }) })
     ] });
   }
 
@@ -15896,7 +15909,12 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
     const snap = window.__CREW_SNAPSHOT;
     const hosted = !!opts.base;
     const api = (0, import_react13.useMemo)(() => snap ? snapshotApi(snap) : fetchApi(opts.base || "", opts.fetch, !hosted), [snap, opts.base, opts.fetch, hosted]);
-    const start = () => snap ? { page: "card", id: snap.card_id } : hosted ? { page: "board", all: false } : parseLocation(window.location.pathname, window.location.search);
+    const start = () => {
+      if (snap) return { page: "card", id: snap.card_id };
+      if (!hosted) return parseLocation(window.location.pathname, window.location.search);
+      const shared = cardFromSearch(window.location.search);
+      return shared ? { page: "card", id: shared } : { page: "board", all: false };
+    };
     const [route, setRoute] = (0, import_react13.useState)(start);
     (0, import_react13.useEffect)(() => {
       if (snap || hosted) return;
