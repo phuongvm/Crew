@@ -23,10 +23,24 @@ BODY = "Role: worker\nCoordinator: owner/s\nBudget: 200000 tokens\n\nGOAL: g\nDo
 
 
 def open_board(directory):
-    """(kb, conn, path) for a fresh board file in `directory`; HERMES_KANBAN_DB points at it."""
+    """(kb, conn, path) for a fresh board file in `directory`; HERMES_KANBAN_DB points at it (KANBAN_DB under
+    the dispatcher fence, see below).
+
+    Inside a dispatcher-spawned worker HERMES_DELEGATED_CHILD_CONTEXT is set, and the kernel fences whatever
+    HERMES_KANBAN_DB names (agent.delegation_context.kanban_path_is_fenced): kbc.connect() opens it mode=ro
+    (`unable to open database file` on a board not made yet) and write_txn refuses every mutation. So under the
+    fence the scratch board is named through KANBAN_DB only (crew_card.kanban_db reads either pin) and
+    HERMES_KANBAN_DB is unset - as tests/test_extended_tools.py does. The board is created before any pin, and
+    the fence itself is left as it is."""
     path = os.path.join(directory, "kanban.db")
-    os.environ["HERMES_KANBAN_DB"] = path
-    return kb, kbc.connect(Path(path)), path
+    fenced = bool(os.environ.get("HERMES_DELEGATED_CHILD_CONTEXT", "").strip())
+    os.environ.pop("HERMES_KANBAN_DB", None)
+    conn = kbc.connect(Path(path))
+    if fenced:
+        os.environ["KANBAN_DB"] = path
+    else:
+        os.environ["HERMES_KANBAN_DB"] = path
+    return kb, conn, path
 
 
 def add_card(conn, status="ready", body=BODY, title="t", assignee="crew-worker", parents=()):
