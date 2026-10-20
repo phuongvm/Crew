@@ -14171,6 +14171,8 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
 .page-card .brand:hover{background:var(--crew-fill-1)}
 .page-card .brand:focus-visible{outline:2px solid var(--crew-tone-ready);outline-offset:2px}
 .page-card #event{padding-left:28px}
+.page-card .tailnet{color:var(--crew-tone-ready)}
+.page-card .node{white-space:nowrap;font-size:12px;margin-left:4px;display:inline-flex;align-items:center}
 /* the graph (graph.css) sits in the page's row where #stage used to: it takes the width the rail and panel leave */
 .page-card #row > .crew-graph{flex:1 1 auto;}
 /* The panel's tool chips also took the graph's base .chips / .chip rules on the old page (graph.css scopes those to

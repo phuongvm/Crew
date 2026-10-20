@@ -146,6 +146,24 @@ def dashboard_url():
             return url.rstrip("/")
     except (OSError, ValueError, AttributeError):
         pass
+    try:
+        cfg_path = os.path.join(base_home(), "config.yaml")
+        if os.path.isfile(cfg_path):
+            with open(cfg_path, encoding="utf-8") as fh:
+                in_dashboard = False
+                for line in fh:
+                    stripped = line.strip()
+                    if stripped == "dashboard:":
+                        in_dashboard = True
+                        continue
+                    if in_dashboard and stripped and not line.startswith((" ", "\t")):
+                        in_dashboard = False
+                    if in_dashboard and stripped.startswith("public_url:"):
+                        val = stripped.split(":", 1)[1].strip().strip('"\'')
+                        if val:
+                            return val.rstrip("/")
+    except Exception:
+        pass
     return "http://127.0.0.1:%s" % (os.environ.get("CREW_GRAPH_PORT") or "8799")
 
 
