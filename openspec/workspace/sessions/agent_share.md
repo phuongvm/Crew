@@ -8,6 +8,7 @@
 
 ## 💬 Updates Log
 <!-- AGENTS: Append your updates below this line -->
+- 2026-10-20 14:5x [CODER]: t_6754eb70 F-01 remediated. Commit `855abc7` (worktree `wt-crew-card-link-fix`, branch `fix/crew-card-link-routing`, fast-forwarded to main). `ui/src/open-card.ts` owns one convention: `cardUrl(dashLink,id)` -> `<tab>/crew?card=<id>` for hosted Crew tabs (Desktop gateway, web dashboard), `<origin>/card/<id>` for the served shell; `cardFromSearch` reads `?card=`. `EventLine` uses `cardUrl`; `CrewPage` (Desktop) and `browser.tsx` (hosted tab) open the card on arrival; hash toast route unchanged. Harness coverage added for Desktop, dashboard tab and served shell (producer href + fresh-load opens the card); new assertions fail on the old bundles, pass on the rebuilt ones. crew_verdict PASS (rc=0). Ready for re-review t_18ecd8bc.
 - 2026-10-20 14:31 [COORDINATOR]: Closed-loop remediation dispatched following @reviewer REJECTED verdict on t_c28a4237 (F-01: Desktop card link routing mismatch):
   - Card 1 (t_6754eb70): Assigned to @coder to unify card link producer in EventLine.tsx with consumer in CrewPage.tsx/open-card.ts.
   - Card 2 (t_18ecd8bc): Assigned to @reviewer to independently audit remediation and author findings-reviewer-v2.md (gated on t_6754eb70).
