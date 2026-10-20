@@ -113,6 +113,8 @@ function watchBlocked(ctx: WatchCtx, api: CrewApi) {
 
 // Hermes Desktop loads the generated desktop/plugin.js: a page at /crew, a sidebar row, and the right-hand flow pane.
 // hideOnly keeps a close verb off the pane (closing the only plugin pane disables the plugin; track-model.ts:76-80).
+// defaultCollapsed: the pane arrives minimized on the right rail (pane-shell/tree/store.ts adoptMissingPanes); it only
+// seeds the first arrival, so an owner who opens it keeps it open with the saved layout.
 type WatchCtx = {
   setInterval?(fn: () => void, ms: number): () => void
   os?: { notify(n: { title: string; body: string }): unknown }
@@ -132,7 +134,7 @@ export default {
         id: 'flow',
         area: PANES_AREA,
         title: 'Crew flow',
-        data: { placement: 'right', width: '260px', hideOnly: true, collapsible: true },
+        data: { placement: 'right', width: '260px', hideOnly: true, collapsible: true, defaultCollapsed: true },
         render: () => <Pane api={api} />
       }
     ])

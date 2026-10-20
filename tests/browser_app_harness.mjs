@@ -85,6 +85,19 @@ function page(url, body, setup = () => {}) {
   delete board.dispatcher
 }
 
+// --- the header's "link": the server's loopback default yields to the origin the viewer used; a public URL stands
+{
+  board.dashboard_url = 'http://127.0.0.1:8799'
+  const lan = page('http://192.168.1.20:8799/', '<div id=crew-app></div>')
+  await until(lan.doc, '.page-board a.tailnet')
+  eq(lan.doc.querySelector('a.tailnet').getAttribute('href'), 'http://192.168.1.20:8799/', 'served shell over the LAN: the link is the page origin, not 127.0.0.1:8799')
+  board.dashboard_url = 'https://crew.tail1234.ts.net:8445/'
+  const pub = page('http://192.168.1.20:8799/', '<div id=crew-app></div>')
+  await until(pub.doc, '.page-board a.tailnet')
+  eq(pub.doc.querySelector('a.tailnet').getAttribute('href'), 'https://crew.tail1234.ts.net:8445/', 'an explicit public dashboard_url is kept')
+  delete board.dashboard_url
+}
+
 // Every selector in the app's injected <style data-crew> sheets that targets body, html or :root without the shell key.
 function hostRules(doc) {
   const css = [...doc.querySelectorAll('style[data-crew]')].map(e => e.textContent).join('\n').replace(/\/\*[\s\S]*?\*\//g, '')
@@ -153,13 +166,14 @@ function hostRules(doc) {
 // --- the Hermes web dashboard tab: index.js mounts the app, fetched and run through the SDK's authedFetch
 if (tabPath) {
   const tab = fs.readFileSync(tabPath, 'utf8')
-  const open = async (appStatus) => {
+  const open = async (appStatus, url = 'http://127.0.0.1:9119/crew', basePath) => {
     const dom = new JSDOM('<!doctype html><html><head></head><body><div id="root"></div></body></html>', {
-      url: 'http://127.0.0.1:9119/crew', runScripts: 'dangerously', pretendToBeVisual: true   // dangerously: the tab runs the app as an inline script element, as a browser does, virtualConsole: new VirtualConsole()
+      url, runScripts: 'dangerously', pretendToBeVisual: true   // dangerously: the tab runs the app as an inline script element, as a browser does, virtualConsole: new VirtualConsole()
     })
     const w = dom.window
     const log = []
     let Page = null
+    if (basePath !== undefined) w.__HERMES_BASE_PATH__ = basePath
     w.__HERMES_PLUGIN_SDK__ = {
       React,
       authedFetch: async (u, init) => {
@@ -192,6 +206,15 @@ if (tabPath) {
     const before = log.length
     await settle(2300)
     eq(log.length, before, 'closing the tab unmounts the app: polling stops')
+  }
+  {
+    board.dashboard_url = 'http://127.0.0.1:8799'
+    const { doc, root } = await open(200, 'https://mc.example.com/hermes/crew', '/hermes')
+    await until(doc, '#crew-app .page-board a.tailnet')
+    eq(doc.querySelector('a.tailnet').getAttribute('href'), 'https://mc.example.com/hermes/crew',
+      'the dashboard tab: the link is the dashboard origin + its base path + the Crew tab, not 127.0.0.1:8799')
+    await React.act(async () => { root.unmount() })
+    delete board.dashboard_url
   }
   {
     const { doc, log, root } = await open(500)

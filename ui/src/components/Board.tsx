@@ -31,6 +31,59 @@ const BELL = (
   </svg>
 )
 
+// The header's "link": where this board is reached from the viewer's side. The server's dashboard_url is authoritative
+// only when it names a real host (the tailnet/public URL install.py --publish records, or CREW_DASHBOARD_URL); its
+// default is the local http service on loopback (crew_card.dashboard_url), which is wrong for anyone not on that
+// machine, so a loopback value yields to what the viewer actually used: Desktop's gateway connection, the Hermes web
+// dashboard's own origin (+ its base path + the Crew tab), or the served shell's origin.
+export const CREW_TAB = '/crew'   // dashboard/manifest.json tab.path
+const LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)$/i
+const isHttp = (u: string): boolean => /^https?:\/\/[^/]/i.test(u)
+const trim = (u: string): string => u.trim().replace(/\/+$/, '')
+export function isLoopbackUrl(u: string): boolean {
+  try { return LOOPBACK.test(new URL(u).hostname) } catch { return false }
+}
+export interface LinkEnv {
+  desktop?: boolean        // inside Hermes Desktop: the renderer's own origin (file:// or a dev server) is never the board
+  gatewayBase?: string     // Desktop: window.hermesDesktop.getConnection().baseUrl
+  origin?: string          // the browser page's location.origin
+  dashboardTab?: boolean   // mounted by the Hermes web dashboard tab (window.__HERMES_PLUGIN_SDK__)
+  basePath?: string        // the dashboard's reverse-proxy prefix (window.__HERMES_BASE_PATH__)
+}
+export function resolveDashboardLink(serverUrl: string | undefined, env: LinkEnv): string {
+  const server = trim(serverUrl || '')
+  if (server && isHttp(server) && !isLoopbackUrl(server)) return server + '/'
+  if (env.desktop) return env.gatewayBase && isHttp(env.gatewayBase) ? trim(env.gatewayBase) + CREW_TAB : (server || '') + '/'
+  const origin = env.origin && isHttp(env.origin) ? trim(env.origin) : ''
+  if (!origin) return (server || '') + '/'
+  if (!env.dashboardTab) return origin + '/'
+  const base = trim(env.basePath || '')
+  return origin + (base && !base.startsWith('/') ? '/' : '') + base + CREW_TAB
+}
+
+// The viewer's side of resolveDashboardLink, read from the page; Desktop's connection is an IPC round-trip, so it lands
+// on a later render (until then, and when it fails or wedges, the server's URL stands).
+function useDashboardLink(serverUrl: string | undefined): string {
+  const w: any = typeof window !== 'undefined' ? window : undefined
+  const desk = w?.hermesDesktop
+  const desktop = !!desk
+  const [gatewayBase, setGatewayBase] = useState('')
+  useEffect(() => {
+    if (typeof desk?.getConnection !== 'function') return
+    let live = true
+    Promise.resolve()
+      .then(() => desk.getConnection())
+      .then((c: any) => { if (live && typeof c?.baseUrl === 'string') setGatewayBase(c.baseUrl) }, () => { /* gateway down: keep the fallback */ })
+    return () => { live = false }
+  }, [desk])
+  let origin = ''
+  try { origin = w?.location?.origin || '' } catch { /* sandboxed */ }
+  return resolveDashboardLink(serverUrl, {
+    desktop, gatewayBase, origin, dashboardTab: !!w?.__HERMES_PLUGIN_SDK__,
+    basePath: typeof w?.__HERMES_BASE_PATH__ === 'string' ? w.__HERMES_BASE_PATH__ : ''
+  })
+}
+
 // The board (ui-spec section 4), ported from scripts/crew_dashboard/board.js: one header line with the board's own
 // facts, the lanes in the order the server sends them, the bell with its list. Same DOM and class names as the old
 // page, so the ported board.css applies unchanged.
@@ -47,6 +100,7 @@ export function Board({ api, onOpenCard, flags, onFlags, home }: Props) {
   })
   const query = [all ? 'all=1' : '', older ? 'older=1' : ''].filter(Boolean).join('&')
   const { board, error, loading, refresh } = useBoard(api, 2000, query)
+  const link = useDashboardLink(board?.dashboard_url)
 
   const setOlderFlag = (on: boolean) => {
     store('older', on ? '1' : null)
@@ -89,7 +143,6 @@ export function Board({ api, onOpenCard, flags, onFlags, home }: Props) {
   const live = board.live || 0
   const cards = board.cards || 0
   const counts = board.counts || {}
-  const link = (board.dashboard_url || (typeof location !== 'undefined' ? location.origin : '')) + '/'
   const brand = (
     <a className="brand" href="/" title="overview" aria-label="crew overview" onClick={home ? e => { e.preventDefault(); home() } : undefined}>
       <img src={MARK_URI} alt="" width={26} height={26} />

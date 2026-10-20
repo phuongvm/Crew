@@ -96,6 +96,7 @@ eq([nav.data.path, nav.data.label], ['/crew', 'Crew'])
 eq([pane.id, pane.title, pane.data.placement, pane.data.width], ['flow', 'Crew flow', 'right', '260px'])
 ok(pane.data.hideOnly === true, 'the pane is hideOnly')
 ok(pane.data.collapsible === true, 'the pane is collapsible')
+ok(pane.data.defaultCollapsed === true, 'the pane arrives collapsed (default OFF): Desktop minimizes it on first adoption')
 
 // --- render both for real: effects run, ctx.rest answers the fixture, React re-renders
 async function mount(render) {
@@ -143,6 +144,27 @@ async function mountKeep(render) {
   return { host, done: async () => { await React.act(async () => { root.unmount() }); host.remove() } }
 }
 const settle = () => React.act(async () => { await new Promise(r => setTimeout(r, 20)) })
+// --- the header's "link": Desktop resolves it from the live gateway connection, never the server's loopback default
+{
+  const savedRest = ctx.rest
+  ctx.rest = async () => ({ ...board, dashboard_url: 'http://127.0.0.1:8799' })
+  const linkOf = async () => {
+    const m = await mountKeep(page.render)
+    await settle()
+    const href = m.host.querySelector('a.tailnet')?.getAttribute('href')
+    await m.done()
+    return href
+  }
+  window.hermesDesktop = { getConnection: async () => ({ baseUrl: 'https://hermes.remote.example:9119/' }) }
+  eq(await linkOf(), 'https://hermes.remote.example:9119/crew', 'Desktop: the link is the connected gateway + the Crew tab, not 127.0.0.1:8799')
+  window.hermesDesktop = { getConnection: async () => { throw new Error('Gateway is starting') } }
+  eq(await linkOf(), 'http://127.0.0.1:8799/', 'Desktop: a failing getConnection falls back to the server URL')
+  ctx.rest = async () => ({ ...board, dashboard_url: 'https://crew.tail1234.ts.net:8445' })
+  window.hermesDesktop = { getConnection: async () => ({ baseUrl: 'http://127.0.0.1:9119' }) }
+  eq(await linkOf(), 'https://crew.tail1234.ts.net:8445/', 'Desktop: an explicit public dashboard URL wins over the connection')
+  delete window.hermesDesktop
+  ctx.rest = savedRest
+}
 const click = el => React.act(async () => { el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, button: 0 })) })
 const VERDICT = { PASS: '✓ verified', FAIL: '✕ verify failed', unverified: '○ unverified' }
 const STATE_CHIP = { ready: 'queued', todo: 'queued', blocked: 'blocked', triage: 'needs you', review: 'in review' }

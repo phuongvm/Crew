@@ -56,6 +56,18 @@ class DesktopPluginTests(unittest.TestCase):
     def test_plugin_js_under_the_desktop_size_cap(self):
         self.assertLess(os.path.getsize(os.path.join(ROOT, "desktop", "plugin.js")), 512 * 1024)
 
+    def test_flow_pane_arrives_collapsed(self):
+        """The flow pane is OFF by default: Desktop's pane shell minimizes a pane whose data says defaultCollapsed on
+        first adoption (apps/desktop/src/components/pane-shell/tree/store.ts), so it stops taking 260px of the chat."""
+        import re
+        for rel in (("ui", "src", "desktop.tsx"), ("desktop", "plugin.js")):
+            with open(os.path.join(ROOT, *rel), encoding="utf-8") as fh:
+                src = fh.read()
+            m = re.search(r"id: ['\"]flow['\"],[\s\S]{0,200}?data: \{([^}]*)\}", src)
+            self.assertIsNotNone(m, "/".join(rel) + ": no flow pane registration")
+            assert m is not None
+            self.assertRegex(m.group(1), r"defaultCollapsed: true", "/".join(rel))
+
     def test_desktop_surface_lint_is_clean(self):
         hermes = os.path.expanduser("~/.hermes/hermes-agent")
         if not os.path.isdir(hermes):

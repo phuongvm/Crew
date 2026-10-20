@@ -215,8 +215,8 @@ var base_default = `/* Ported from scripts/crew_dashboard/tokens.css: the only p
      THIS field, not the one the viewer's OS prefers: a black-ring mark on a dark page is an invisible mark.
      The dashboard's field is dark; a light host sets --crew-scheme:light with its --color-* / --dt-* tokens. */
   color-scheme: var(--crew-scheme, dark);
-  --crew-bg: var(--color-background, var(--dt-background, #0f1115));
-  --crew-fg: var(--color-foreground, var(--ui-base, #e8eaed));
+  --crew-bg: var(--color-background, var(--dt-background, #041c1c));
+  --crew-fg: var(--color-foreground, var(--ui-base, #ffffff));
   --crew-font: var(--dt-font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
   --crew-mono: var(--dt-font-mono, ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace);
 }
@@ -900,6 +900,56 @@ function Lane({ lane: l, api, archivedOpen, older, onToggleArchived, onOlder, on
 import { jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
 var HEADER = [["running", "running", ["running"]], ["blocked", "blocked", ["blocked", "triage"]], ["done", "done", ["done"]]];
 var BELL = /* @__PURE__ */ jsx4("svg", { width: "15", height: "15", viewBox: "0 0 24 24", "aria-hidden": "true", fill: "currentColor", children: /* @__PURE__ */ jsx4("path", { d: "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" }) });
+var CREW_TAB = "/crew";
+var LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)$/i;
+var isHttp = (u) => /^https?:\/\/[^/]/i.test(u);
+var trim = (u) => u.trim().replace(/\/+$/, "");
+function isLoopbackUrl(u) {
+  try {
+    return LOOPBACK.test(new URL(u).hostname);
+  } catch {
+    return false;
+  }
+}
+function resolveDashboardLink(serverUrl, env) {
+  const server = trim(serverUrl || "");
+  if (server && isHttp(server) && !isLoopbackUrl(server)) return server + "/";
+  if (env.desktop) return env.gatewayBase && isHttp(env.gatewayBase) ? trim(env.gatewayBase) + CREW_TAB : (server || "") + "/";
+  const origin = env.origin && isHttp(env.origin) ? trim(env.origin) : "";
+  if (!origin) return (server || "") + "/";
+  if (!env.dashboardTab) return origin + "/";
+  const base = trim(env.basePath || "");
+  return origin + (base && !base.startsWith("/") ? "/" : "") + base + CREW_TAB;
+}
+function useDashboardLink(serverUrl) {
+  const w = typeof window !== "undefined" ? window : void 0;
+  const desk = w?.hermesDesktop;
+  const desktop = !!desk;
+  const [gatewayBase, setGatewayBase] = useState4("");
+  useEffect4(() => {
+    if (typeof desk?.getConnection !== "function") return;
+    let live = true;
+    Promise.resolve().then(() => desk.getConnection()).then((c) => {
+      if (live && typeof c?.baseUrl === "string") setGatewayBase(c.baseUrl);
+    }, () => {
+    });
+    return () => {
+      live = false;
+    };
+  }, [desk]);
+  let origin = "";
+  try {
+    origin = w?.location?.origin || "";
+  } catch {
+  }
+  return resolveDashboardLink(serverUrl, {
+    desktop,
+    gatewayBase,
+    origin,
+    dashboardTab: !!w?.__HERMES_PLUGIN_SDK__,
+    basePath: typeof w?.__HERMES_BASE_PATH__ === "string" ? w.__HERMES_BASE_PATH__ : ""
+  });
+}
 function Board({ api, onOpenCard, flags, onFlags, home }) {
   injectCss("base", base_default);
   injectCss("board", board_default);
@@ -915,6 +965,7 @@ function Board({ api, onOpenCard, flags, onFlags, home }) {
   });
   const query = [all ? "all=1" : "", older ? "older=1" : ""].filter(Boolean).join("&");
   const { board, error, loading, refresh } = useBoard(api, 2e3, query);
+  const link = useDashboardLink(board?.dashboard_url);
   const setOlderFlag = (on) => {
     store("older", on ? "1" : null);
     setOlder(on);
@@ -963,7 +1014,6 @@ function Board({ api, onOpenCard, flags, onFlags, home }) {
   const live = board.live || 0;
   const cards = board.cards || 0;
   const counts = board.counts || {};
-  const link = (board.dashboard_url || (typeof location !== "undefined" ? location.origin : "")) + "/";
   const brand = /* @__PURE__ */ jsx4("a", { className: "brand", href: "/", title: "overview", "aria-label": "crew overview", onClick: home ? (e) => {
     e.preventDefault();
     home();
@@ -1153,6 +1203,15 @@ var card_default = `/* The card page, ported from scripts/crew_dashboard/crew.cs
   font:inherit;font-size:10px;line-height:14px;padding:0 0 0 5px;cursor:pointer;}
 .page-card #sitfields .copy:hover{color:var(--crew-text-1);}
 .page-card #sitfields .copy:focus-visible{outline:2px solid var(--crew-tone-ready);outline-offset:1px;}
+/* the discussion chip: the card's way back to the chat it came from (Desktop opens it, a browser copies it) */
+.page-card #sitfields .fp.discussion{border-color:color-mix(in srgb, var(--crew-tone-running) 40%, transparent);}
+.page-card #sitfields .copy.jump{color:var(--crew-tone-running);}
+.page-card #sitfields .copy.jump:hover{color:var(--crew-text-1);}
+.crew-toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,8px);opacity:0;pointer-events:none;z-index:50;
+  max-width:min(560px,90vw);padding:6px 12px;border-radius:6px;font-size:11.5px;line-height:16px;
+  background:var(--crew-elevated);color:var(--crew-text-1);border:1px solid var(--crew-stroke-1);box-shadow:var(--crew-shadow);
+  transition:opacity .18s ease,transform .18s ease;}
+.crew-toast.on{opacity:1;transform:translate(-50%,0);}
 /* The open chat button sits on a row of its own, in the copy buttons' quiet style, with no divider before it. */
 .page-card #sitfields .brk{flex-basis:100%;height:0;}
 .page-card #sitfields .openrow .copy{border-left:0;padding-left:0;}
@@ -3495,13 +3554,12 @@ var desktop_default = {
     const kanban = kanbanRowSwitch(ctx);
     ctx.registerMany([
       { id: "page", area: ROUTES_AREA, data: { path: "/crew" }, render: () => /* @__PURE__ */ jsx21(Host, { api, kanban, children: /* @__PURE__ */ jsx21(CrewPage, { api }) }) },
-      // Fallback local daemon probe: http://127.0.0.1:8799/healthz
       { id: "nav", area: SIDEBAR_NAV_AREA, data: { path: "/crew", label: "Crew", codicon: "organization", asTile: true } },
       {
         id: "flow",
         area: PANES_AREA,
         title: "Crew flow",
-        data: { placement: "right", width: "260px", hideOnly: true, collapsible: true },
+        data: { placement: "right", width: "260px", hideOnly: true, collapsible: true, defaultCollapsed: true },
         render: () => /* @__PURE__ */ jsx21(Pane, { api })
       }
     ]);
