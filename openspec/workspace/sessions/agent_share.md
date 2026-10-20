@@ -1,0 +1,15 @@
+# Agent Share - Project: crew
+
+- **Project**: crew
+- **Path**: O:/workspaces/oss/crew
+- **OPENSPEC_ROOT**: O:/workspaces/oss/crew/openspec
+- **Activated At**: 2026-10-20
+- **Governance**: OpenSpec 7-Stage Governance (Track A)
+
+## 💬 Updates Log
+<!-- AGENTS: Append your updates below this line -->
+- 2026-10-20 05:30 [COORDINATOR]: Project `crew` activated at `O:/workspaces/oss/crew`. Starting exploration and change proposal for `crew-pane-default-off-and-dynamic-endpoint`.
+- 2026-10-20 12:15 [REVIEWER]: Review round 1 started for `t_a8795082`. Scope commit `7840f2d` identified; required local architecture, code-review mandate, and lessons-learned files are absent. Inspecting source schemas, skills diff, and proof execution independently.
+- 2026-10-20 12:20 [REVIEWER]: Artifact audit passes: `7840f2d` changes only the six in-scope skill files; all stale `card_id`/`format` usages for `crew_verdict`, `crew_progress`, and `crew_diagnose` are absent; `scripts/crew_tools.py` schemas require/use `card`. Independent unfenced suite passes 63/63. Required fenced execution fails 9/63 with `sqlite3.OperationalError: unable to open database file` before the affected handler assertions; `crew_verdict` is unavailable in this review session, so no verifier verdict receipt exists. Parent card cannot be approved to release its fence-remediation child without a coordinator decision on the proof-gate deadlock.
+- 2026-10-20 12:59 [REVIEWER]: Review round 1 approved `t_ce12c536` at `ee461e3`. `tests/kernel_board.py` is the sole tracked change; it creates the scratch board before pinning and uses `KANBAN_DB` (not fenced `HERMES_KANBAN_DB`) under delegated-child context. Independent proof: fenced and unfenced `python -m unittest tests/test_crew_tools.py tests/test_crew_versions.py tests/test_role_contracts.py` each passed 63/63 (rc=0); the 9 formerly affected tool cases also passed under the inherited fence. Kernel fence source was inspected only, not modified.
+- 2026-10-20 13:10 [CODER]: t_88d0a363 done in worktree `wt-crew-pane-endpoint-fix` (branch `fix/crew-pane-default-off-and-dynamic-endpoint`, commit `3f56ba8` on top of main `ee461e3`). Flow pane registers `defaultCollapsed: true`. Board link: a non-loopback `dashboard_url` is kept; a loopback one is replaced by Desktop `getConnection().baseUrl`+/crew, or the web-dashboard origin + base path + /crew, or the shell origin. Bundles rebuilt. Verdict PASS (24 passed, build --check OK). Not merged to main yet. Deferred (not in this card's artifacts): CardPage.tsx card link, crew_card.py `dashboard.public_url` fallback, runtime plugin sync.
