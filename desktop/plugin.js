@@ -1577,9 +1577,12 @@ function Kpis({ card }) {
   ] });
 }
 function EventLine({ card }) {
+  const dashLink = useDashboardLink(card.dashboard_url);
+  const cardUrl = dashLink.endsWith("/crew") ? `${dashLink}?card=${encodeURIComponent(card.card_id || "")}` : `${dashLink.replace(/\/+$/, "")}/card/${encodeURIComponent(card.card_id || "")}`;
   return /* @__PURE__ */ jsxs5("div", { id: "event", children: [
     /* @__PURE__ */ jsx5("span", { className: "evmain", children: /* @__PURE__ */ jsx5(Event, { card }) }),
-    /* @__PURE__ */ jsx5(Kpis, { card })
+    /* @__PURE__ */ jsx5(Kpis, { card }),
+    /* @__PURE__ */ jsx5("span", { className: "node", children: /* @__PURE__ */ jsx5("a", { className: "tailnet", href: cardUrl, title: "shareable card link", children: "link" }) })
   ] });
 }
 

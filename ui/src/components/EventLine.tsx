@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { fmtTime, toneVar } from '../card-format'
 import type { CardJson, CardNode } from '../card-types'
+import { useDashboardLink } from './Board'
 
 const T = ({ children }: { children: ReactNode }) => <span className="t">{children}</span>
 
@@ -61,11 +62,19 @@ function Kpis({ card }: { card: CardJson }) {
 }
 
 export function EventLine({ card }: { card: CardJson }) {
+  const dashLink = useDashboardLink(card.dashboard_url)
+  const cardUrl = dashLink.endsWith('/crew')
+    ? `${dashLink}?card=${encodeURIComponent(card.card_id || '')}`
+    : `${dashLink.replace(/\/+$/, '')}/card/${encodeURIComponent(card.card_id || '')}`
+
   return (
     <div id="event">
       {/* the event text keeps the line's left and ellipsizes; the run counts sit at its right end */}
       <span className="evmain"><Event card={card} /></span>
       <Kpis card={card} />
+      <span className="node">
+        <a className="tailnet" href={cardUrl} title="shareable card link">link</a>
+      </span>
     </div>
   )
 }

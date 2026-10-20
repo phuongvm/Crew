@@ -14273,9 +14273,12 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
     ] });
   }
   function EventLine({ card }) {
+    const dashLink = useDashboardLink(card.dashboard_url);
+    const cardUrl = dashLink.endsWith("/crew") ? `${dashLink}?card=${encodeURIComponent(card.card_id || "")}` : `${dashLink.replace(/\/+$/, "")}/card/${encodeURIComponent(card.card_id || "")}`;
     return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { id: "event", children: [
       /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { className: "evmain", children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Event, { card }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Kpis, { card })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Kpis, { card }),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { className: "node", children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("a", { className: "tailnet", href: cardUrl, title: "shareable card link", children: "link" }) })
     ] });
   }
 

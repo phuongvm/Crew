@@ -63,7 +63,7 @@ export function resolveDashboardLink(serverUrl: string | undefined, env: LinkEnv
 
 // The viewer's side of resolveDashboardLink, read from the page; Desktop's connection is an IPC round-trip, so it lands
 // on a later render (until then, and when it fails or wedges, the server's URL stands).
-function useDashboardLink(serverUrl: string | undefined): string {
+export function useDashboardLink(serverUrl: string | undefined): string {
   const w: any = typeof window !== 'undefined' ? window : undefined
   const desk = w?.hermesDesktop
   const desktop = !!desk
