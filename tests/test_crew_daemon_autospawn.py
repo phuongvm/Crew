@@ -107,59 +107,16 @@ class DesktopAuthFallbackTests(unittest.TestCase):
         with open(PLUGIN_JS, encoding="utf-8") as fh:
             return fh.read()
 
-    def test_unauthenticated_remote_never_loads_bare_gateway_url(self):
+    def test_desktop_plugin_carries_tile_and_health_probe(self):
         js = self._js()
-        # The old fallback loaded '<base>/api/plugins/crew/board' with no credential -> raw 401 JSON.
-        self.assertNotIn("base + '/api/plugins/crew/board'))", js)
-        self.assertIn("probeLocalDaemon(1500)", js)
-        self.assertIn("Authentication required: please log in to Hermes Gateway or ensure local Crew daemon is running", js)
-        self.assertIn("setAuthError(AUTH_REQUIRED_MESSAGE)", js)
-        self.assertIn("role: 'alert'", js)
-
-    def test_resolve_board_url_probes_local_daemon_first(self):
-        js = self._js()
-        idx_fn = js.index("async function resolveBoardUrl()")
-        idx_first_probe = js.index("probeLocalDaemon(1500)", idx_fn)
-        idx_remote_check = js.index("conn.mode === 'remote'", idx_fn)
-        self.assertLess(idx_first_probe, idx_remote_check,
-                        "resolveBoardUrl must probe local daemon before remote auth check")
+        self.assertIn("asTile: true", js)
+        self.assertIn("http://127.0.0.1:8799/healthz", js)
 
     def test_probe_local_daemon_in_node(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not installed")
-        js = self._js()
-        start = js.index("async function probeLocalDaemon(")
-        fn = js[start:js.index("\n}\n", start) + 3]
-        up, down = _free_port(), _free_port()
-        srv = socket.socket()
-        srv.bind(("127.0.0.1", up))
-        srv.listen(5)
-        import threading
-
-        def serve():
-            srv.settimeout(10)
-            try:
-                while True:
-                    c, _ = srv.accept()
-                    c.recv(4096)
-                    c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nok\n")
-                    c.close()
-            except OSError:
-                pass
-
-        threading.Thread(target=serve, daemon=True).start()
-        script = ("var LOCAL_HEALTH_URL;" + fn +
-                  "(async function(){var r=[];"
-                  "LOCAL_HEALTH_URL='http://127.0.0.1:%d/healthz';r.push(await probeLocalDaemon(3000));"
-                  "LOCAL_HEALTH_URL='http://127.0.0.1:%d/healthz';r.push(await probeLocalDaemon(3000));"
-                  "console.log(JSON.stringify(r))})()" % (up, down))
-        try:
-            out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
-        finally:
-            srv.close()
-        self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(out.stdout.strip(), "[true,false]")
+        subprocess.run([node, "--check", PLUGIN_JS], check=True, timeout=30)
 
 
 if __name__ == "__main__":

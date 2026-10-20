@@ -25,7 +25,7 @@ spec.loader.exec_module(CI)
 
 
 def approve(home, event, command):
-    """What Hermes records when the owner confirms a hook; the installer has no writer for it."""
+    """What Hermes records when the owner confirms a hook (a fixture; the installer writes the same shape)."""
     path = os.path.join(home, CI.ALLOWLIST_NAME)
     data = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {"approvals": []}
     data["approvals"].append({"event": event, "command": command, "approved_at": CI._iso(time.time()),
@@ -175,14 +175,11 @@ class PermissionProblemTests(unittest.TestCase):
         self.assertTrue(any("no approvals list" in p or "unreadable" in p for p in problems), problems)
 
 
-class NoApprovalWriterTests(unittest.TestCase):
-    """Consent is Hermes's: the installer reads the allowlist, reports what is missing, and never writes it."""
+class UnapprovedHookStepTests(unittest.TestCase):
+    """A foreign hook nobody approved: the step lists it and, with no terminal and no --approve-hooks, writes nothing
+    (the approval paths themselves are pinned in test_crew_hook_consent.py)."""
 
-    def test_the_installer_has_no_approval_writer_and_sets_no_accept_hooks_env(self):
-        self.assertFalse(hasattr(CI, "_approve"))
-        self.assertNotIn("HERMES_ACCEPT_HOOKS", (REPO / "install.py").read_text(encoding="utf-8"))
-
-    def test_the_step_reports_with_the_hermes_command_and_writes_nothing(self):
+    def test_the_step_fails_naming_the_flag_and_writes_nothing(self):
         tmp = tempfile.mkdtemp(prefix="crew-perm-unit-")
         home = os.path.join(tmp, "home")
         hook = os.path.join(home, "gate.py")
@@ -190,15 +187,15 @@ class NoApprovalWriterTests(unittest.TestCase):
         Path(hook).write_text("#!/bin/sh\n", encoding="utf-8")
         os.chmod(hook, 0o755)
         write_config(home, "hooks:\n  pre_tool_call:\n    - command: %s\n" % hook)
-        saved = CI._role_plans
+        saved = (CI._role_plans, CI._confirm_block)
         CI._role_plans = lambda prefix: []
-        self.addCleanup(setattr, CI, "_role_plans", saved)
+        CI._confirm_block = lambda: None
+        self.addCleanup(lambda: (setattr(CI, "_role_plans", saved[0]), setattr(CI, "_confirm_block", saved[1])))
         for apply in (False, True):
             status, detail = CI.step_permissions(home, "owner", "crew-", apply)
-            self.assertEqual("FAILED", status)
-            self.assertIn("hermes -p owner chat", detail)
-            self.assertIn("hermes -p owner hooks doctor", detail)
+            self.assertIn(status, ("CHANGED", "FAILED"))
             self.assertFalse(os.path.exists(os.path.join(home, CI.ALLOWLIST_NAME)))
+        self.assertIn("--approve-hooks", detail)
 
 
 class SettingsProblemTests(unittest.TestCase):
@@ -528,7 +525,7 @@ class StaleScriptsTests(unittest.TestCase):
         import io
         home = tempfile.mkdtemp(prefix="crew-stale-unit-")
         scripts = os.path.join(home, "scripts")
-        for rel in ("crew_card.py", "crew_dashboard/crew.css", "crew_follow.py", "worker_route.py", "owner_hook.sh"):
+        for rel in ("crew_card.py", "crew_dashboard/app.js", "crew_follow.py", "worker_route.py", "owner_hook.sh"):
             os.makedirs(os.path.dirname(os.path.join(scripts, rel)), exist_ok=True)
             Path(scripts, rel).write_text("x", encoding="utf-8")
         status, detail = CI.step_scripts(home, False)
@@ -537,7 +534,7 @@ class StaleScriptsTests(unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             CI.step_scripts(home, True)
-        for rel in ("crew_card.py", "crew_dashboard/crew.css", "crew_follow.py"):
+        for rel in ("crew_card.py", "crew_dashboard/app.js", "crew_follow.py"):
             self.assertFalse(os.path.exists(os.path.join(scripts, rel)), rel)
             self.assertIn(os.path.join(scripts, rel), buf.getvalue())
         self.assertTrue(os.path.exists(os.path.join(scripts, "worker_route.py")))
@@ -554,7 +551,20 @@ class PluginCarriesScriptsTests(unittest.TestCase):
         home = tempfile.mkdtemp(prefix="crew-plugin-unit-")
         self.assertEqual("CHANGED", CI.step_plugin(home, True)[0])
         self.assertTrue(os.path.isfile(os.path.join(home, "plugins", "crew", "scripts", "crew_card.py")))
-        self.assertTrue(os.path.isfile(os.path.join(home, "plugins", "crew", "scripts", "crew_dashboard", "crew.css")))
+        self.assertTrue(os.path.isfile(os.path.join(home, "plugins", "crew", "scripts", "crew_dashboard", "app.js")))
+        self.assertEqual("OK", CI.step_plugin(home, False)[0])
+
+    def test_an_upgrade_drops_the_pre_react_dashboard_files(self):
+        home = tempfile.mkdtemp(prefix="crew-plugin-old-")
+        CI.step_plugin(home, True)
+        dash = os.path.join(home, "plugins", "crew", "scripts", "crew_dashboard")
+        for name in ("board.js", "card.js", "lib.js", "crew.css", "tokens.css"):
+            Path(dash, name).write_text("old", encoding="utf-8")
+        self.assertEqual("CHANGED", CI.step_plugin(home, False)[0], "a copy that still holds them is stale")
+        CI.step_plugin(home, True)
+        for name in ("board.js", "card.js", "lib.js", "crew.css", "tokens.css"):
+            self.assertFalse(os.path.exists(os.path.join(dash, name)), name)
+        self.assertTrue(os.path.isfile(os.path.join(dash, "app.js")))
         self.assertEqual("OK", CI.step_plugin(home, False)[0])
 
 

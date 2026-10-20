@@ -1,7 +1,7 @@
 ---
 name: crew-verifier
 description: "Use when verifying an independent card. Proof-first review."
-version: 0.9.13
+version: 0.10.0
 ---
 
 # Crew verifier pass

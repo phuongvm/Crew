@@ -149,6 +149,65 @@ def dashboard_url():
     return "http://127.0.0.1:%s" % (os.environ.get("CREW_GRAPH_PORT") or "8799")
 
 
+GATEWAY_HEARTBEAT_STALE_S = 120   # hermes gateway/status.py _RUNTIME_STATUS_STALE_TTL_S: 2x its 60 s housekeeping beat
+GATEWAY_START_HINT = "hermes gateway run (or hermes gateway install to start it automatically)"
+
+
+def dispatcher_state(home=None):
+    """Is the kanban dispatcher (it runs inside the Hermes gateway) alive? {"alive": bool, "detail": str, "command": str}.
+
+    Two plain file reads and one pid probe, no subprocess and no Hermes import (crew also runs under a bare
+    interpreter): <home>/gateway.pid names the process (JSON {"pid": ...} or a bare pid; gateway/status.py
+    _read_pid_record), and <home>/gateway_state.json carries the housekeeping heartbeat `updated_at` the gateway
+    re-stamps every 60 s (gateway/status.py runtime_status_heartbeat_age_s). A live pid whose heartbeat is older
+    than 120 s is a wedged loop: housekeeping, cron and the kanban dispatcher freeze together (hermes_cli/gateway.py
+    _runtime_health_lines). A live pid with no state file reads alive: the pid is all there is to go on."""
+    home = home or base_home()
+    import crew_proc
+    pid = 0
+    try:
+        with open(os.path.join(home, "gateway.pid"), encoding="utf-8") as fh:
+            raw = fh.read().strip()
+        try:
+            rec = json.loads(raw)
+            pid = int(rec["pid"] if isinstance(rec, dict) else rec)
+        except (ValueError, KeyError, TypeError):
+            pid = 0
+    except OSError:
+        pid = 0
+    if pid <= 0:
+        return {"alive": False, "detail": "the gateway is not running (no gateway.pid in %s)" % home,
+                "command": GATEWAY_START_HINT}
+    if not crew_proc.alive(pid):
+        return {"alive": False, "detail": "the gateway is not running (pid %d in gateway.pid is gone)" % pid,
+                "command": GATEWAY_START_HINT}
+    age = None
+    try:
+        from datetime import datetime, timezone
+        with open(os.path.join(home, "gateway_state.json"), encoding="utf-8") as fh:
+            stamp = str(json.load(fh).get("updated_at") or "")
+        when = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        age = max(0, int((datetime.now(timezone.utc) - when).total_seconds()))
+    except (OSError, ValueError, AttributeError, TypeError):
+        age = None
+    if age is not None and age > GATEWAY_HEARTBEAT_STALE_S:
+        return {"alive": False,
+                "detail": "the gateway (pid %d) has not ticked for %d s, so it looks frozen" % (pid, age),
+                "command": "hermes gateway restart"}
+    return {"alive": True, "detail": "the gateway is running (pid %d)" % pid, "command": ""}
+
+
+def dispatcher_warning(home=None):
+    """One plain sentence for the owner when the dispatcher is down, "" when it is alive."""
+    st = dispatcher_state(home)
+    if st["alive"]:
+        return ""
+    return "%s: a card does not start until it runs. Start it with %s." % (
+        st["detail"][0].upper() + st["detail"][1:], st["command"])
+
+
 def hermes_bin():
     if IS_WINDOWS:      # the Windows installer's launcher dir; PATH may not carry it in a service or scheduled task
         fallback = os.path.join(default_home(), "bin", "hermes.exe")
@@ -704,6 +763,12 @@ def stamp_session(card_id, session, db=None):
         return False
     finally:
         conn.close()
+
+
+# The pointer a Hermes Desktop chat message ends with: chat cannot open an in-app route and Windows runs no dashboard
+# server, so Desktop gets this plain line instead of a Crew Dashboard URL. One text for the card-open reply
+# (__init__._link_line) and the watcher's ending message (crew_notify._text with md=True).
+DESKTOP_LINE = "Open it in Crew: the Crew entry in the sidebar, or preview it with Ctrl+J"
 
 
 def origin_id(value):
@@ -2647,23 +2712,27 @@ def ledger_spent(card_id):
     return used, budget
 
 
+def retry_text(res):
+    """The words `retry` prints for a retry_card result (the CLI and the Hermes Desktop Retry button share them)."""
+    if not res["ok"]:
+        return res["why"]
+    lines = ["card %s  status=%s  assignee=%s" % (res["card"], res["status"], res["assignee"]),
+             "spent so far: %s tokens  new ceiling: %s tokens" % (format(res["spent"], ","), format(res["budget"], ","))]
+    if res["dry_run"]:
+        lines.append("would rewrite the Budget line and unblock %s" % res["card"])
+        return "\n".join(lines)
+    lines.append("budget line rewritten, %d ledger(s) kept as *.spent, counter resets" % res["ledgers_moved"])
+    if res["unblock"]:
+        lines.append("unblock: %s (rc=%d)" % (res["unblock"]["out"], res["unblock"]["rc"]))
+    return "\n".join(lines)
+
+
 def cmd_retry(args):
     res = retry_card(args.card, budget=args.budget, dry_run=args.dry_run,
                      unblock=not args.no_unblock,
                      profile=args.profile or (owner_profile() if owner_profile() != "default" else None))
-    if not res["ok"]:
-        print(res["why"])
-        return 2
-    print("card %s  status=%s  assignee=%s" % (res["card"], res["status"], res["assignee"]))
-    print("spent so far: %s tokens  new ceiling: %s tokens" % (format(res["spent"], ","),
-                                                               format(res["budget"], ",")))
-    if args.dry_run:
-        print("would rewrite the Budget line and unblock %s" % res["card"])
-        return 0
-    print("budget line rewritten, %d ledger(s) kept as *.spent, counter resets" % res["ledgers_moved"])
-    if res["unblock"]:
-        print("unblock: %s (rc=%d)" % (res["unblock"]["out"], res["unblock"]["rc"]))
-    return 0
+    print(retry_text(res))
+    return 0 if res["ok"] else 2
 
 
 def _pct(values, q):
@@ -2865,6 +2934,8 @@ def main():
     w.add_argument("--card", required=True)
     w.add_argument("--poll", type=int, default=None)
     w.add_argument("--lifetime", type=int, default=None)
+    w.add_argument("--md", action="store_true", help="the ending as markdown with the Desktop pointer last "
+                                                      "(Hermes Desktop renders chat as markdown)")
     le = sub.add_parser("lesson", help="record a lesson for a role (crew_lessons.py): the plugin adds it to that "
                                        "role's later turns; use this, never edit a skill")
     le.add_argument("--role", required=True, help="worker, content, verifier, coordinator or all (comma list)")
@@ -2947,7 +3018,8 @@ def main():
         if args.cmd == "watch":
             import crew_watch
             return crew_watch.main(["--card", args.card] + (["--poll", str(args.poll)] if args.poll else [])
-                                   + (["--lifetime", str(args.lifetime)] if args.lifetime else []))
+                                   + (["--lifetime", str(args.lifetime)] if args.lifetime else [])
+                                   + (["--md"] if args.md else []))
         if args.cmd == "lesson":
             import crew_lessons
             return crew_lessons.main(["add", "--role", args.role, "--text", args.text])

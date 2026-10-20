@@ -1,7 +1,7 @@
 ---
 name: crew
 description: "Use when running /crew. Coordinator intake & contract."
-version: 0.9.13
+version: 0.10.0
 ---
 
 # /crew - coordinator intake
@@ -316,6 +316,21 @@ choices:
   - "Be brave 🫡 (YOLO): nothing stops a proof except Hermes's hardline list (wiping the root, formatting a disk, fork bombs). Crew will happily rm what the proof says. Your call, your disk."
 ```
 
+  In Hermes Desktop (the preload says so) the `question` is this plain text with line breaks instead, the
+  `choices` unchanged:
+
+```
+Proof safety: how careful should crew be?
+
+Proofs run unattended. The proof:
+<the proof command>
+
+/crew-safety brave stops this question for good.
+```
+
+Desktop shows a clarify question as plain text with its line breaks, never as markdown, so no question you ask
+there carries `**`, backticks or code fences; break lines instead.
+
   Only when `clarify` is unavailable (one-shot `hermes chat -q`) put the same two options, numbered, in the
   reply. Hermes safety -> `Proof mode: safe`; Be brave -> `Proof mode: brave`. No answer is not brave: ask
   again, never default to brave. The owner's own answer is the only source of the line: never pick it
@@ -341,7 +356,7 @@ ending is reported into, the budget floor, the role's assignee and skill - and r
 message as the brief the card view draws above the coordinator. Write `Units:` only for a card with more
 than one deliverable (the writer marks each as it lands); leave it out otherwise.
 
-When `kanban_create` returns the card id, start the watcher, then reply with EXACTLY these two lines and end
+When `kanban_create` returns the card id, start the watcher, then reply with EXACTLY these lines and end
 the turn - no "Me:/You:" list, no recap of the contract, no other text beyond the `HERMES.CREW v…`
 line the plugin asks for at the top of the turn:
 
@@ -352,7 +367,27 @@ terminal(background=true, notify_on_complete=true, command='python "$HERMES_HOME
 ```
 Card open: <id> - <title>
 I'll notify you here when it's done or if it needs you.
+<the link line the HERMES.CREW preload gave, with <id> filled in>
 ```
+
+In Hermes Desktop (the preload says "Hermes Desktop renders markdown") the reply is markdown, exactly this shape, and the
+watch command gets ` --md` appended at its end (`watch --card <id> --md`):
+
+```
+**Card open** · `<id>` · <title>
+
+I'll notify you here when it's done or if it needs you.
+
+> Open it in Crew: the Crew entry in the sidebar, or preview it with Ctrl+J
+```
+
+When that watcher's ending comes back, send it on as it is: it is already markdown (bold status lead, short list, the
+same quoted pointer last). Everywhere else the plain three lines above stay. The link line is the LAST line of the reply, after the "I'll notify you here..." line, and nothing follows it. The preload
+gives it verbatim: `Open it in Crew: the Crew entry in the sidebar, or preview it with Ctrl+J` in Hermes Desktop, `Crew Dashboard: <dashboard URL>/card/<id>`
+in the terminal and on every other surface. Replace `<id>` (terminal line only) with the card id and change nothing else. Leave the line out only
+when the preload gave none. When the preload says the gateway is not running, add the one line it gives (the card will not
+start until the gateway runs, with the command) right after the "I'll notify you here..." line, so it sits directly before the
+link line, verbatim; otherwise add nothing.
 
 The watcher only reads the board; it exits when the card is done and audited, needs the owner, or was abandoned, and
 its output comes back into this session as a new turn: relay it to the owner in one or two lines, nothing more.
