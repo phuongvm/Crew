@@ -1,0 +1,10 @@
+[
+  {
+    "id": "a1792480828653",
+    "kind": "question",
+    "block": 2,
+    "quote": "2026-10-20 13:10 [CODER]: t_88d0a363 done in worktree `wt-crew-pane-endpoint-fix` (branch `fix/crew-pane-default-off-and-dynamic-endpoint`, commit `3f56ba8` on top of main `ee461e3`). Flow pane registers `defaultCollapsed: true`. Board link: a non-loopback `dashboard_url` is kept; a loopback one is replaced by Desktop `getConnection().baseUrl`+/crew, or the web-dashboard origin + base path + /crew, or the shell origin. Bundles rebuilt. Verdict PASS (24 passed, build --check OK). Not merged to main yet. Deferred (not in this card's artifacts): CardPage.tsx card link, crew_card.py `dashboard.public_url` fallback, runt",
+    "note": "Is this task from coder been reviewed by reviewer, show me evidence!",
+    "status": "resolved"
+  }
+]
