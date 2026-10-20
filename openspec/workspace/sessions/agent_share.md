@@ -8,6 +8,14 @@
 
 ## 💬 Updates Log
 <!-- AGENTS: Append your updates below this line -->
+- 2026-10-20 05:48 [COORDINATOR]: Change `crew-pane-default-off-and-dynamic-endpoint` implementation and verification COMPLETED:
+  1. `defaultCollapsed: true` added to FlowPane registration in `ui/src/desktop.tsx` and compiled bundle `desktop/plugin.js`.
+  2. Dynamic dashboard endpoint resolution implemented via `useDashboardLink` in `Board.tsx` and `EventLine.tsx`.
+  3. Backend `dashboard_url()` in `crew_card.py` updated to resolve `dashboard.public_url` from `config.yaml`.
+  4. Bundles rebuilt and verified with `node ui/build.mjs --check` (exit 0).
+  5. Full pytest suite passed (24/24 passed in 10.97s).
+  6. Runtime plugin files synchronized to `_config/agent4070/hermes/plugins/crew/`.
+  7. Verification report authored at `openspec/changes/crew-pane-default-off-and-dynamic-endpoint/reviews/verification-report.md` with verdict APPROVED.
 - 2026-10-20 05:30 [COORDINATOR]: Project `crew` activated at `O:/workspaces/oss/crew`. Starting exploration and change proposal for `crew-pane-default-off-and-dynamic-endpoint`.
 - 2026-10-20 12:15 [REVIEWER]: Review round 1 started for `t_a8795082`. Scope commit `7840f2d` identified; required local architecture, code-review mandate, and lessons-learned files are absent. Inspecting source schemas, skills diff, and proof execution independently.
 - 2026-10-20 12:20 [REVIEWER]: Artifact audit passes: `7840f2d` changes only the six in-scope skill files; all stale `card_id`/`format` usages for `crew_verdict`, `crew_progress`, and `crew_diagnose` are absent; `scripts/crew_tools.py` schemas require/use `card`. Independent unfenced suite passes 63/63. Required fenced execution fails 9/63 with `sqlite3.OperationalError: unable to open database file` before the affected handler assertions; `crew_verdict` is unavailable in this review session, so no verifier verdict receipt exists. Parent card cannot be approved to release its fence-remediation child without a coordinator decision on the proof-gate deadlock.
