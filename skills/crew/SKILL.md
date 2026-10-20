@@ -203,25 +203,25 @@ Select the verification mode based on whether the result is deterministic mechan
 #### Mode 1: Automated Script-Verified Task (`Verify: proof`)
 - **Use when**: Deterministic mechanical tasks whose correctness is 100% evaluated by automated commands (unit tests, compilation, linters, file presence, or build outputs).
 - **Proof command**: One short plain command (`python -m unittest tests/test_foo.py`, `test -f <file> && grep -q "..." <file>`, `curl -sf ...`). You write it, the owner confirms it, the card stays `Verify: proof`.
-- **Workflow**: Worker proves via `crew_verdict(card_id="<id>")`; upon PASS, worker calls `kanban_complete` with artifact paths and raw proof output. No verifier session runs; `crew_review_handoff` is refused. The coordinator audits the proof once more after completion.
+- **Workflow**: Worker proves via `crew_verdict(card="<id>")`; upon PASS, worker calls `kanban_complete` with artifact paths and raw proof output. No verifier session runs; `crew_review_handoff` is refused. The coordinator audits the proof once more after completion.
 
 #### Mode 2: Independent Verifier Task (`Verify: independent`)
 - **Use when**: Implementation or deliverables requiring independent verification checks authored by `@reviewer` rather than the writer, or multi-clause contracts where tests must be decoupled from the implementer.
 - **Proof command**: `python "<landing folder>/.crew/<YYYYMMDD-HHMMSS>-<slug>/verify.py"`, absolute path: a folder of its own under `.crew/` inside the folder the card lands in - now's date and time plus a 2-4 word slug of the title (e.g. `.crew/20261003-143201-healthcare-landing/verify.py`), so two cards in one folder never share a script. Write `Verify: independent` (the plugin sets it anyway). The script does not exist yet: the VERIFIER writes it from `Done when` and `Inputs` (standard library only), the writer never does, and the owner confirms the command, not the file. Never put a script's text in the card.
-- **Workflow**: Worker finishes work and calls `crew_review_handoff(card_id="<id>", summary="<summary>")`. The verifier writes the `.crew/` script from `Done when` and `Inputs`, runs `crew_verdict(card_id="<id>")`, performs exactly ONE extra read-only check, and calls `kanban_complete` on PASS or `crew_request_changes(card_id="<id>", reason="<reason>")` on FAIL.
+- **Workflow**: Worker finishes work and calls `crew_review_handoff(card_id="<id>", summary="<summary>")`. The verifier writes the `.crew/` script from `Done when` and `Inputs`, runs `crew_verdict(card="<id>")`, performs exactly ONE extra read-only check, and calls `kanban_complete` on PASS or `crew_request_changes(card_id="<id>", reason="<reason>")` on FAIL.
 
 #### Mode 3: Standalone Cognitive Review Task (`Verify: agent`)
 - **Use when**: Standalone evaluation, architecture audit, OpenSpec proposal review, pull request review, or security assessment assigned directly to `@reviewer`.
 - **Role & Assignee**: Standalone verifier card (`Role: verifier`, assigned directly to `@reviewer`).
 - **Artifact**: `reviews/findings-*.md` containing an explicit, unambiguous verdict (`APPROVED` or `REJECTED`).
 - **Proof command**: `test -s <review_artifact_path>` (verifies the review findings document exists and is non-empty).
-- **Workflow**: The verifier analyzes the target against criteria and inputs, writes the findings artifact, executes its proof via `crew_verdict(card_id="<id>")`, conducts one extra check, and calls `kanban_complete` on PASS. It **never** calls `kanban_request_review` or `crew_review_handoff` (an agent card is a standalone verifier card and is never re-reviewed). The coordinator audits the proof command and parses the findings artifact's verdict word.
+- **Workflow**: The verifier analyzes the target against criteria and inputs, writes the findings artifact, executes its proof via `crew_verdict(card="<id>")`, conducts one extra check, and calls `kanban_complete` on PASS. It **never** calls `kanban_request_review` or `crew_review_handoff` (an agent card is a standalone verifier card and is never re-reviewed). The coordinator audits the proof command and parses the findings artifact's verdict word.
 
 #### Mode 4: Dual Closed-Loop Chained Pipeline (`Verify: dual`)
 - **Use when**: Code implementation, critical bugfixes, runtime troubleshooting, configuration/script fixes, or remediation of reviewer rejections that require BOTH automated test passing AND independent cognitive review by `@reviewer`.
 - **Proof command**: Automated test command (`pytest tests/...`, `python -m unittest ...`).
 - **Workflow Options**:
-  - **Single-Card Dual**: The worker implements the fix, runs `crew_verdict(card_id="<id>")` to prove automated tests pass (rc=0), and calls `crew_review_handoff(card_id="<id>", summary="<summary>")` (never `kanban_complete`). The verifier claims the card in review, re-runs `crew_verdict(card_id="<id>")`, performs one extra substantive check, and calls `kanban_complete` on PASS or `crew_request_changes(card_id="<id>", reason="<reason>")` on FAIL.
+  - **Single-Card Dual**: The worker implements the fix, runs `crew_verdict(card="<id>")` to prove automated tests pass (rc=0), and calls `crew_review_handoff(card_id="<id>", summary="<summary>")` (never `kanban_complete`). The verifier claims the card in review, re-runs `crew_verdict(card="<id>")`, performs one extra substantive check, and calls `kanban_complete` on PASS or `crew_request_changes(card_id="<id>", reason="<reason>")` on FAIL.
   - **Two-Card Chained Pipeline**: Coordinator creates Card 1 (worker implementation with `Verify: proof`) and Card 2 (independent review with `Verify: agent`, `parents=[card_1_id]`). Card 1 completes via `kanban_complete` upon test pass, which automatically releases Card 2 for `@reviewer`.
 
 #### Mode 5: Plan Split Close-Out Part (`Verify: closeout`)
@@ -249,12 +249,12 @@ When work requires both automated proof execution and independent reviewer valid
 1. **Intake & Dispatch**: Coordinator opens a single card with `Role: worker`, `Verify: dual`, and the automated test command as `proof command`.
 2. **Worker Execution**:
    - Implements changes in an isolated worktree under `O:/workspaces/.worktrees/<name>` (Zero-Checkout).
-   - Runs `crew_verdict(card_id="<id>")` to verify automated tests pass (exit code 0).
+   - Runs `crew_verdict(card="<id>")` to verify automated tests pass (exit code 0).
    - **Self-completion prohibition**: Worker is **strictly forbidden** from calling `kanban_complete`.
    - Worker calls `crew_review_handoff(card_id="<id>", summary="<summary>")` (or `kanban_request_review`). The kernel review guard repins the card for review and moves it to the `review` column.
 3. **Verifier Execution**:
    - `@reviewer` claims the card in review.
-   - Re-runs `crew_verdict(card_id="<id>")` to independently confirm the proof command passes unattended.
+   - Re-runs `crew_verdict(card="<id>")` to independently confirm the proof command passes unattended.
    - Performs exactly ONE extra substantive check (inspecting code diff, boundary conditions, edge cases against `Inputs`).
    - If acceptable: Verifier calls `kanban_complete(summary="...")` to mark the card done.
    - If defects found: Verifier calls `crew_request_changes(card_id="<id>", reason="<reason>")` to return the card to the worker without triggering block-loop penalties.
@@ -266,14 +266,14 @@ When work requires both automated proof execution and independent reviewer valid
    - Card 2 enters the board in `todo (gated)` waiting on Card 1.
 2. **Worker Execution on Card 1**:
    - Implements changes in an isolated worktree (Zero-Checkout).
-   - Runs `crew_verdict(card_id="<id>")` to verify automated tests pass (exit code 0).
+   - Runs `crew_verdict(card="<id>")` to verify automated tests pass (exit code 0).
    - Worker calls `kanban_complete(summary="...")`.
    - Card 1 completes, automatically satisfying Card 2's parent dependency and promoting Card 2 from `todo` to `ready`.
 3. **Verifier Execution on Card 2**:
    - `@reviewer` claims Card 2 from `ready`.
    - Audits Card 1's deliverables, diffs, and proof receipts against the original contract.
    - Writes the formal review artifact to disk (`reviews/findings-*.md`) containing an explicit `APPROVED` or `REJECTED` verdict.
-   - Runs `crew_verdict(card_id="<id>")` on Card 2's proof command (`test -s ...`).
+   - Runs `crew_verdict(card="<id>")` on Card 2's proof command (`test -s ...`).
    - Performs ONE extra check.
    - Verifier calls `kanban_complete(summary="...")` on Card 2 (never `crew_review_handoff` or `kanban_request_review`).
 
@@ -404,8 +404,8 @@ Crew provides 17 native and registered tools across Core, Pipeline, Workspace, I
 | Category | Tool | Allowed Roles | When It Replaces Generic Kanban / Shell | Arguments / Parameters | Mutability / Safety | Next Action |
 |---|---|---|---|---|---|---|
 | **Core** | `crew_card_create` | Coordinator | Replaces `kanban_create` with validated contract schema & gap checking | `title`, `role` (required); `goal`, `artifact`, `lands`, `audience`, `done_when`, `proof_cmd`, `verify`, `proof_mode`, `constraints`, `budget`, `parents`, `skills`, `dry_run`, `allow_no_proof`, `initial_status` | Mutating (creates card) | Launch background watcher |
-| **Core** | `crew_diagnose` | Coordinator, All | Replaces manual `kanban_list`/`kanban_show` loops for diagnosing stuck cards | `state` ("blocked"\|"triage"\|"todo"\|"ready"\|"running"\|"done"\|"archived"), `card_id`, `format` ("text"\|"json") | Read-only | Formulate `RESUME:` / `WHO:` plan |
-| **Core** | `crew_verdict` | Worker, Content, Verifier | Replaces manual terminal test runs; records authoritative PASS/FAIL in `$HERMES_HOME/crew/verdicts/<card>.jsonl` | `card_id` (required), `timeout` | Safe or Brave per card Proof mode | On PASS: complete or handoff; On FAIL: fix or request changes |
+| **Core** | `crew_diagnose` | Coordinator, All | Replaces manual `kanban_list`/`kanban_show` loops for diagnosing stuck cards | `state` ("blocked"\|"triage"\|"todo"\|"ready"\|"running"\|"done"\|"archived"), `card` | Read-only | Formulate `RESUME:` / `WHO:` plan |
+| **Core** | `crew_verdict` | Worker, Content, Verifier | Replaces manual terminal test runs; records authoritative PASS/FAIL in `$HERMES_HOME/crew/verdicts/<card>.jsonl` | `card` (required), `timeout` | Safe or Brave per card Proof mode | On PASS: complete or handoff; On FAIL: fix or request changes |
 | **Core** | `crew_status` | All roles | Replaces ad-hoc database queries to inspect board/queue state | `limit`, `format` ("text"\|"json") | Read-only | Inspect progress / report status |
 | **Core** | `crew_event_subscribe` | Coordinator | Replaces manual webhook event configuration for card transitions | `action` ("subscribe"\|"list"\|"unsubscribe"\|"clear"), `url`, `events`, `headers`, `format` | Mutating (saves subscription) | Monitor webhook dispatch |
 | **Pipeline** | `crew_stop_card` | Coordinator, Worker | Replaces raw `kanban_block`/`kanban_archive` to park or archive cards safely | `card_id` (required), `archive`, `dry_run` | Mutating (updates status) | Park for resume or archive |

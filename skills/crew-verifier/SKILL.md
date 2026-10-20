@@ -35,8 +35,8 @@ Verifiers encounter two distinct pipeline topologies when conducting independent
 | **Rework Mechanism** | `crew_request_changes` resets card to `running` for worker rework | `verdict: REJECTED` in findings document alerts coordinator for rework card |
 
 ### Operating in Topology 1: Single-Card Dual (`Verify: dual`)
-1. Claim the card from the `review` column (handed off after worker's `crew_verdict(card_id="<id>")` PASS).
-2. Re-run `crew_verdict(card_id="<id>")` to independently verify that the automated proof command passes with exit code 0.
+1. Claim the card from the `review` column (handed off after worker's `crew_verdict(card="<id>")` PASS).
+2. Re-run `crew_verdict(card="<id>")` to independently verify that the automated proof command passes with exit code 0.
 3. Perform exactly ONE extra substantive check (inspecting code diff, edge cases, boundaries against `Inputs`).
 4. On PASS: Call `kanban_complete(summary="...")` with the proof output and extra check evidence.
 5. On FAIL: Call `crew_request_changes(card_id="<id>", reason="<reason>")` detailing the exact failed criteria. This returns the card to the worker for rework without unblock-loop penalties.
@@ -46,7 +46,7 @@ Verifiers encounter two distinct pipeline topologies when conducting independent
 2. Card 2 is a standalone verifier card (`Role: verifier`, `Verify: agent`).
 3. Independently audit Card 1's deliverables, diffs, and test outputs against the contract criteria and `Inputs`.
 4. Author the formal review artifact at the card's specified `Artifact:` path (e.g. `reviews/findings-*.md`). State an explicit, unambiguous verdict: **APPROVED** or **REJECTED**.
-5. Run Card 2's proof command via `crew_verdict(card_id="<id>")` (which verifies `test -s <review_findings_path>`).
+5. Run Card 2's proof command via `crew_verdict(card="<id>")` (which verifies `test -s <review_findings_path>`).
 6. Perform ONE extra read-only check.
 7. Call `kanban_complete(summary="...")` on Card 2 with the findings path and proof output. Never call `crew_review_handoff` or `kanban_request_review`.
 
@@ -64,7 +64,7 @@ A. The card's proof command runs a script in a `.crew/` folder (`python "<folder
    already run is refused (exit 5, "proof script changed since it first ran").
 0. Record the card's own proof through the tool cleanly, not in prose:
 
-       crew_verdict(card_id="<card id>")
+       crew_verdict(card="<card id>")
 
    It runs the proof command the card was opened with (editing the line on the card changes nothing), stores the
    raw output, the exit code and the PASS/FAIL line (with `by` and `run_id`) in
@@ -90,7 +90,7 @@ Verifiers utilize the following native tools:
 
 | Tool | When to Use | Arguments | Safety / Mutability | Next Action |
 |---|---|---|---|---|
-| `crew_verdict` | Execute verified proof command unattended | `card_id="<id>"` | Controlled execution | On PASS: complete; On FAIL: request changes |
+| `crew_verdict` | Execute verified proof command unattended | `card="<id>"` | Controlled execution | On PASS: complete; On FAIL: request changes |
 | `crew_request_changes` | Return card to implementer with actionable reasons | `card_id="<id>"`, `reason="..."` | Mutating (requeues card) | End turn |
 | `crew_progress` | Mark unit pass/fail with verified evidence | `card="<id>"`, `unit="..."`, `result="pass"`, `evidence="..."` | Mutating (updates units) | Extra check / verdict |
 | `crew_worktree_create` | Create isolated worktree if verification needs one | `repo="<path>"`, `name="<name>"`, `branch="..."` | Mutating (creates worktree) | Isolated inspection |

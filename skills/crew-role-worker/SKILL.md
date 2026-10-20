@@ -25,7 +25,7 @@ Loaded on a crew card whose role is worker. You are the only writer on this card
    write: skip the verdict, go to step 4 and call `crew_review_handoff(card_id="<card id>", summary="<summary>")`.
    Otherwise run the proof through the tool, never by hand, so the PASS/FAIL line lands in the verdict log:
 
-       crew_verdict(card_id="<card id>")
+       crew_verdict(card="<card id>")
 
    The tool runs the proof command the card was opened with. Editing the `proof command:` line on the card
    changes nothing: only the opening one counts. A `"verdict": "BLOCKED"` result means Hermes safety refused the proof
@@ -38,10 +38,10 @@ Loaded on a crew card whose role is worker. You are the only writer on this card
    - `Verify: independent` - call `crew_review_handoff(card_id="<card id>", summary="<summary>")` (or `kanban_request_review`)
      with the artifact paths. Never `kanban_complete`; the verifier writes the `.crew/` script and completes.
    - `Verify: dual` - Dual verification requires BOTH automated test passing AND independent reviewer audit:
-     1. Run `crew_verdict(card_id="<card id>")` to verify the opening automated proof command passes (exit code 0).
+     1. Run `crew_verdict(card="<card id>")` to verify the opening automated proof command passes (exit code 0).
      2. On PASS: You are **STRICTLY FORBIDDEN** from calling `kanban_complete` (self-completion bypasses the mandatory review gate). Call `crew_review_handoff(card_id="<card id>", summary="<summary>")` (or `kanban_request_review`) with the artifact paths and raw proof output to transfer the card to the review column for `@reviewer`.
-     3. On FAIL: Fix the defect and re-run `crew_verdict(card_id="<card id>")`. Two failed verifications stop you: call `kanban_block` and end the turn.
-     4. Note on Chained Two-Card Pipelines: If the coordinator deployed a chained pipeline where you are assigned Card 1 with `Verify: proof` and Card 2 is an independent review with `Verify: agent`, call `kanban_complete` on Card 1 after `crew_verdict(card_id="<card id>")` PASS; that completion automatically promotes Card 2 for `@reviewer`.
+     3. On FAIL: Fix the defect and re-run `crew_verdict(card="<card id>")`. Two failed verifications stop you: call `kanban_block` and end the turn.
+     4. Note on Chained Two-Card Pipelines: If the coordinator deployed a chained pipeline where you are assigned Card 1 with `Verify: proof` and Card 2 is an independent review with `Verify: agent`, call `kanban_complete` on Card 1 after `crew_verdict(card="<card id>")` PASS; that completion automatically promotes Card 2 for `@reviewer`.
    - `Verify: agent` - **Not a valid worker completion route**:
      `Verify: agent` is reserved exclusively for standalone cognitive review cards assigned directly to `@reviewer` (`Role: verifier`). A worker card must never be `Verify: agent`. If an active worker card is configured with `Verify: agent`, it is misrouted: do NOT attempt `kanban_request_review` or `crew_review_handoff` (the kernel review guard will refuse it). Instead, call `kanban_block(kind="needs_input", reason="misrouted card: Verify: agent is a standalone verifier card (Role: verifier assigned to @reviewer), not a worker task. Reconfigure to Verify: dual for worker tasks requiring independent reviewer audit.")` and stop.
    - `Verify: closeout` - a part of a split with no proof of its own: `kanban_complete` with the artifact
@@ -74,14 +74,14 @@ When working on cards that involve review gating, workers must understand which 
 | **What Unblocks Review** | Card transitions to `review` column | Card 1 completion unblocks Card 2 in `todo (gated)` → `ready` |
 
 ### Working in Topology 1: Single-Card Dual (`Verify: dual`)
-1. Run `crew_verdict(card_id="<id>")` to verify opening automated proof command passes (exit code 0).
+1. Run `crew_verdict(card="<id>")` to verify opening automated proof command passes (exit code 0).
 2. On PASS: You are **STRICTLY FORBIDDEN** from calling `kanban_complete`. Self-completion bypasses the review gate.
 3. Call `crew_review_handoff(card_id="<id>", summary="<summary>")` (or `kanban_request_review`) with artifact paths and raw proof output. This transfers the card to `@reviewer`.
-4. If reviewer returns the card via `crew_request_changes(card_id="<id>", reason="<reason>")`, address the findings in the worktree, re-verify with `crew_verdict(card_id="<id>")`, and hand off again via `crew_review_handoff(card_id="<id>", summary="<summary>")`.
+4. If reviewer returns the card via `crew_request_changes(card_id="<id>", reason="<reason>")`, address the findings in the worktree, re-verify with `crew_verdict(card="<id>")`, and hand off again via `crew_review_handoff(card_id="<id>", summary="<summary>")`.
 
 ### Working in Topology 2: Two-Card Chain (`Verify: proof` → `Verify: agent`)
 1. Worker is assigned Card 1 (`Role: worker`, `Verify: proof`). A separate downstream review card (Card 2) is assigned to `@reviewer` (`Role: verifier`, `Verify: agent`, `parents=[card_1_id]`).
-2. Run `crew_verdict(card_id="<id>")` to verify Card 1's proof command passes (exit code 0).
+2. Run `crew_verdict(card="<id>")` to verify Card 1's proof command passes (exit code 0).
 3. On PASS: Call `kanban_complete(summary="...", artifacts=[...])` with the artifact paths and raw proof output.
 4. Calling `crew_review_handoff` on Card 1 is refused by the review guard (Card 1 is `Verify: proof`). Calling `kanban_complete` is **mandatory** because Card 1's completion is the exact event that satisfies Card 2's parent dependency and releases Card 2 for `@reviewer`.
 
@@ -91,7 +91,7 @@ Workers utilize the following native tools:
 
 | Tool | When to Use | Arguments | Safety / Mutability | Next Action |
 |---|---|---|---|---|
-| `crew_verdict` | Execute verified proof command unattended | `card_id="<id>"` | Controlled execution | On PASS: complete or handoff; On FAIL: fix work |
+| `crew_verdict` | Execute verified proof command unattended | `card="<id>"` | Controlled execution | On PASS: complete or handoff; On FAIL: fix work |
 | `crew_review_handoff` | Hand off card to reviewer for `independent`, `dual` modes | `card_id="<id>"`, `summary="..."` | Mutating (moves to review) | End turn |
 | `crew_worktree_create` | Create isolated git worktree (Zero-Checkout) | `repo="<path>"`, `name="<name>"`, `branch="..."` | Mutating (creates worktree) | Work in isolated worktree |
 | `crew_worktree_cleanup` | Remove worktree and branch after merge | `repo="<path>"`, `name="<name>"`, `delete_branch=True` | Mutating (removes worktree) | Workspace hygiene |

@@ -67,6 +67,6 @@ Operators and diagnostic agents utilize the following read-only tools:
 
 | Tool | When to Use | Arguments | Safety / Mutability | Next Action |
 |---|---|---|---|---|
-| `crew_diagnose` | Core diagnostic reader of stuck/blocked cards | `state="blocked"`, `card_id="<id>"`, `format="text"\|"json"` | Read-only | Formulate `RESUME:` / `WHO:` plan |
+| `crew_diagnose` | Core diagnostic reader of stuck/blocked cards | `state="blocked"`, `card="<id>"` | Read-only | Formulate `RESUME:` / `WHO:` plan |
 | `crew_status` | Inspect board-wide or per-card state metrics | `limit=10`, `format="text"\|"json"` | Read-only | Assess queue health |
 | `crew_flow_graph` | Generate visual Mermaid dependency graph | `card_id="<id>"`, `direction="TD"`, `format="mermaid"\|"json"` | Read-only | Visualize blocked dependency chain |

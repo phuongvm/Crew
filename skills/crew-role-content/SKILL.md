@@ -19,7 +19,7 @@ Loaded on a crew card whose role is content (posts, reports, video, pages, every
 4. A card whose proof command runs a `.crew/` script is `Verify: independent` and its script is the verifier's to
    write: skip the verdict and go to step 5 (`crew_review_handoff`). Otherwise run the card's proof through the
    tool, never by hand, so the PASS/FAIL line lands in the verdict log:
-   `crew_verdict(card_id="<card id>")` (the proof command the card was
+   `crew_verdict(card="<card id>")` (the proof command the card was
    opened with; editing the line on the card changes nothing). A `"verdict": "BLOCKED"` result means Hermes safety
    refused the proof and nothing ran (no verdict line): `kanban_block` with kind `needs_input` and the `blocked` reason.
 5. Finish with the rendered artifact path, the source path and any figures with their source, by the canonical `Verify:`
@@ -28,7 +28,7 @@ Loaded on a crew card whose role is content (posts, reports, video, pages, every
      coordinator runs the proof once more afterwards).
    - `Verify: independent` - `crew_review_handoff(card_id="<card id>", summary="<summary>")` (or `kanban_request_review`),
      never `kanban_complete`.
-   - `Verify: dual` - on PASS of `crew_verdict(card_id="<card id>")`, call `crew_review_handoff(card_id="<card id>", summary="<summary>")`
+   - `Verify: dual` - on PASS of `crew_verdict(card="<card id>")`, call `crew_review_handoff(card_id="<card id>", summary="<summary>")`
      with output paths. Never `kanban_complete`.
    - `Verify: agent` - **Not a valid content creator route**:
      `Verify: agent` is reserved exclusively for standalone cognitive review cards assigned directly to `@reviewer` (`Role: verifier`). A content card must never be `Verify: agent`. If an active content card is configured with `Verify: agent`, it is misrouted: do NOT attempt `kanban_request_review` or `crew_review_handoff` (the kernel review guard will refuse it). Instead, call `kanban_block(kind="needs_input", reason="misrouted card: Verify: agent is a standalone verifier card (Role: verifier assigned to @reviewer), not a content task. Reconfigure to Verify: dual for content tasks requiring independent reviewer audit.")` and stop.
@@ -61,14 +61,14 @@ When working on deliverables that require editorial review or independent valida
 
 ### Working in Topology 1: Single-Card Dual (`Verify: dual`)
 1. Create content deliverables (rendered artifact and raw source).
-2. Run `crew_verdict(card_id="<id>")` to verify automated render/lint/proof command passes (exit code 0).
+2. Run `crew_verdict(card="<id>")` to verify automated render/lint/proof command passes (exit code 0).
 3. On PASS: You are **STRICTLY FORBIDDEN** from calling `kanban_complete`.
 4. Call `crew_review_handoff(card_id="<id>", summary="<summary>")` (or `kanban_request_review`) with rendered artifact and source paths. This transfers the card to `@reviewer`.
-5. If reviewer returns the card via `crew_request_changes(card_id="<id>", reason="<reason>")`, revise the content, re-verify with `crew_verdict(card_id="<id>")`, and hand off again via `crew_review_handoff(card_id="<id>", summary="<summary>")`.
+5. If reviewer returns the card via `crew_request_changes(card_id="<id>", reason="<reason>")`, revise the content, re-verify with `crew_verdict(card="<id>")`, and hand off again via `crew_review_handoff(card_id="<id>", summary="<summary>")`.
 
 ### Working in Topology 2: Two-Card Chain (`Verify: proof` → `Verify: agent`)
 1. Content creator is assigned Card 1 (`Role: content`, `Verify: proof`). A separate downstream review card (Card 2) is assigned to `@reviewer` (`Role: verifier`, `Verify: agent`, `parents=[card_1_id]`).
-2. Run `crew_verdict(card_id="<id>")` to verify Card 1's proof command passes (exit code 0).
+2. Run `crew_verdict(card="<id>")` to verify Card 1's proof command passes (exit code 0).
 3. On PASS: Call `kanban_complete(summary="...", artifacts=[...])` with the artifact paths and raw proof output.
 4. Calling `crew_review_handoff` on Card 1 is refused by the review guard (Card 1 is `Verify: proof`). Calling `kanban_complete` is **mandatory** because Card 1's completion is what releases Card 2 for `@reviewer`.
 
@@ -78,7 +78,7 @@ Content creators utilize the following native tools:
 
 | Tool | When to Use | Arguments | Safety / Mutability | Next Action |
 |---|---|---|---|---|
-| `crew_verdict` | Execute verified proof command unattended | `card_id="<id>"` | Controlled execution | On PASS: complete or handoff |
+| `crew_verdict` | Execute verified proof command unattended | `card="<id>"` | Controlled execution | On PASS: complete or handoff |
 | `crew_review_handoff` | Hand off deliverable to reviewer for `independent`, `dual` modes | `card_id="<id>"`, `summary="..."` | Mutating (moves to review) | End turn |
 | `crew_progress` | Mark multi-unit deliverable units | `card="<id>"`, `unit="..."`, `result="pass"`, `evidence="..."` | Mutating (updates units) | Continue next unit |
 | `crew_status` | Inspect card state | `limit=10`, `format="text"\|"json"` | Read-only | Coordinate workflow |

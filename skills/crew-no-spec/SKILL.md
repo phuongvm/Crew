@@ -1,7 +1,7 @@
 ---
 name: crew-no-spec
 description: "Use when /crew-no-spec <ask>. Fast-track direct card intake."
-version: 0.9.13
+version: 0.10.0
 ---
 
 # /crew-no-spec - fast-track coordinator intake
@@ -47,7 +47,7 @@ Select the verification mode based on whether the result is deterministic mechan
 
 ### Mode B: Independent Verifier Task (`Verify: independent`)
 - **Use when**: Work requiring an independent verification script written by `@reviewer` under `.crew/`.
-- **Workflow**: Worker completes work and calls `crew_review_handoff(card_id="<id>", summary="<summary>")`. Verifier writes `.crew/` script, runs `crew_verdict(card_id="<id>")`, performs extra check, and calls `kanban_complete` on PASS or `crew_request_changes(card_id="<id>", reason="<reason>")` on FAIL.
+- **Workflow**: Worker completes work and calls `crew_review_handoff(card_id="<id>", summary="<summary>")`. Verifier writes `.crew/` script, runs `crew_verdict(card="<id>")`, performs extra check, and calls `kanban_complete` on PASS or `crew_request_changes(card_id="<id>", reason="<reason>")` on FAIL.
 
 ### Mode C: Cognitive Review Task (`Verify: agent`)
 - **Use when**: Standalone review tasks assigned to `@reviewer` (evaluating existing artifacts, design specs, or pull requests).
@@ -78,12 +78,12 @@ When configuring tasks requiring independent review alongside automated proof co
 - **Intake**: Coordinator opens 1 card with `Role: worker`, `Verify: dual`, and the automated test command as `proof command`.
 - **Worker Execution**:
   1. Worker implements changes in an isolated worktree under `O:/workspaces/.worktrees/<name>` (Zero-Checkout).
-  2. Runs `crew_verdict(card_id="<id>")` to verify automated tests pass (exit code 0).
+  2. Runs `crew_verdict(card="<id>")` to verify automated tests pass (exit code 0).
   3. Worker is **strictly forbidden** from calling `kanban_complete`.
   4. Worker calls `crew_review_handoff(card_id="<id>", summary="<summary>")` to transition card to `review` column.
 - **Reviewer Execution**:
   1. `@reviewer` claims card from `review`.
-  2. Re-runs `crew_verdict(card_id="<id>")` to independently verify proof command.
+  2. Re-runs `crew_verdict(card="<id>")` to independently verify proof command.
   3. Performs ONE extra substantive check.
   4. On PASS: calls `kanban_complete(summary="...")`.
   5. On FAIL: calls `crew_request_changes(card_id="<id>", reason="<reason>")` to return card to worker for rework.
@@ -152,7 +152,7 @@ The coordinator utilizes the registered `crew` toolset for operations:
 | `crew_proof_check` | Screen proposed proof command before card creation | `command="<proof_cmd>"` | Read-only | If `flagged`, ask owner; if `ok`, proceed |
 | `crew_status` | Check queue, active cards, or worker progress | `limit=10`, `format="text"\|"json"` | Read-only | Report queue metrics |
 | `crew_event_subscribe` | Manage lifecycle event webhook subscriptions | `action="subscribe"\|"list"\|"unsubscribe"\|"clear"`, `url="..."`, `events=[...]`, `headers={...}`, `format="text"\|"json"` | Mutating (saves subscription) | Monitor card event webhooks |
-| `crew_diagnose` | Inspect stuck, blocked, or failed cards | `state="blocked"`, `card_id="<id>"`, `format="text"\|"json"` | Read-only | Advise resume path |
+| `crew_diagnose` | Inspect stuck, blocked, or failed cards | `state="blocked"`, `card="<id>"` | Read-only | Advise resume path |
 | `crew_stop_card` | Park or archive a stalled or aborted card | `card_id="<id>"`, `archive=False`, `dry_run=False` | Mutating (updates status) | Notify user |
 | `crew_plan_split` | Split multi-task work into children + closeout | `goal="<goal>"`, `children=[...]`, `title="<title>"`, `done_when="<done_when>"`, `dry_run=False` | Mutating (creates linked cards) | Dispatch children |
 | `crew_flow_graph` | Generate Mermaid diagram of card dependencies | `card_id="<id>"`, `direction="TD"`, `format="mermaid"\|"json"` | Read-only | Render flow diagram |
