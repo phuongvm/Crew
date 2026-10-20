@@ -98,13 +98,13 @@ function page(url, body, setup = () => {}) {
   delete board.dashboard_url
 }
 
-// --- the card page's shareable "link" (EventLine, open-card.cardUrl) in the served shell: <origin>/card/<id>, and the
-// shell loaded at that address opens that card
+// --- the card page's shareable "link" (EventLine, open-card.cardUrl) in the served shell: <origin>/crew?card=<id>, and
+// the shell loaded at that address opens that card
 {
   const lan = page('http://192.168.1.20:8799/card/' + card.card_id, '<div id=crew-app></div>')
   const a = await until(lan.doc, '.page-card #event a.tailnet')
   const shared = a && a.getAttribute('href')
-  eq(shared, 'http://192.168.1.20:8799/card/' + card.card_id, 'served shell: the card link is the page origin + /card/<id>')
+  eq(shared, 'http://192.168.1.20:8799/crew?card=' + card.card_id, 'served shell: the card link is the page origin + /crew?card=<id>')
   const again = page(shared, '<div id=crew-app></div>')
   ok(await until(again.doc, '#crew-app .page-card .crew-graph .node'), 'served shell: the shared card link opens the card page')
   ok(again.fetchLog.some(f => f[0] === '/card/' + card.card_id + '.json'), 'served shell: the shared link opened the requested card')

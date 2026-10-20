@@ -23,12 +23,11 @@ export function cardFromSearch(search: string): string {
 }
 
 // The shareable link to card `id`, built from the board's resolved link (Board.resolveDashboardLink). One convention,
-// read back by every page that can receive it:
-//   a hosted Crew tab (a link ending in "/crew": Desktop's gateway, the Hermes web dashboard tab) -> "<tab>?card=<id>",
-//     read on arrival with cardFromSearch by the Desktop page (CrewPage) and the dashboard tab (browser.tsx);
-//   the served shell (any other link) -> "<origin>/card/<id>", read by route.parseLocation.
+// "<origin>/crew?card=<id>" (the same one crew_card.card_url writes into messages), read back by every page that can
+// receive it: on arrival with cardFromSearch by the Desktop page (CrewPage) and the dashboard tab (browser.tsx), and by
+// route.parseLocation in the served shell. A link already ending in the "/crew" tab gets only the query.
 export function cardUrl(dashLink: string, id: string): string {
   const base = (dashLink || '').trim().replace(/\/+$/, '')
-  const enc = encodeURIComponent(id)
-  return base.endsWith(CREW_ROUTE) ? base + '?card=' + enc : base + '/card/' + enc
+  const tab = base.endsWith(CREW_ROUTE) ? base : base + CREW_ROUTE
+  return tab + '?card=' + encodeURIComponent(id)
 }

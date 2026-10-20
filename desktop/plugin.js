@@ -108,8 +108,8 @@ function cardFromSearch(search) {
 }
 function cardUrl(dashLink, id) {
   const base = (dashLink || "").trim().replace(/\/+$/, "");
-  const enc = encodeURIComponent(id);
-  return base.endsWith(CREW_ROUTE) ? base + "?card=" + enc : base + "/card/" + enc;
+  const tab = base.endsWith(CREW_ROUTE) ? base : base + CREW_ROUTE;
+  return tab + "?card=" + encodeURIComponent(id);
 }
 
 // src/card-open.ts

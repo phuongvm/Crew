@@ -14212,8 +14212,8 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
   }
   function cardUrl(dashLink, id) {
     const base = (dashLink || "").trim().replace(/\/+$/, "");
-    const enc = encodeURIComponent(id);
-    return base.endsWith(CREW_ROUTE) ? base + "?card=" + enc : base + "/card/" + enc;
+    const tab = base.endsWith(CREW_ROUTE) ? base : base + CREW_ROUTE;
+    return tab + "?card=" + encodeURIComponent(id);
   }
 
   // src/components/EventLine.tsx
@@ -15886,6 +15886,10 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
   function parseLocation(pathname, search) {
     const m = /^\/card\/([A-Za-z0-9_-]+)\/?$/.exec(pathname);
     if (m) return { page: "card", id: m[1] };
+    if (/^\/crew\/?$/.test(pathname)) {
+      const id = new URLSearchParams((search || "").replace(/^\?/, "")).get("card") || "";
+      if (/^[A-Za-z0-9_-]+$/.test(id)) return { page: "card", id };
+    }
     return { page: "board", all: /[?&]all=1/.test(search), .../[?&]older=1/.test(search) ? { older: true } : {} };
   }
   function hrefFor(r) {
