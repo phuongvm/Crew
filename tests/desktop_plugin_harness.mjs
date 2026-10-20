@@ -234,7 +234,7 @@ for (const name of ['board.live.json', 'board.states.json']) {
       const c = el.querySelector(`a.card[data-id="${t.id}"]`)
       ok(c, tag + 'tile ' + t.id)
       eq(c.className, 'card' + (t.active ? (t.active.quiet_s !== null && t.active.quiet_s > 120 ? ' quiet' : ' live') : ''), tag + t.id + ' tile class')
-      eq(c.getAttribute('href'), '/card/' + t.id)
+      eq(c.getAttribute('href'), '/crew?card=' + t.id, tag + t.id + ' tile href is the /crew?card=<id> link')
       eq(c.querySelector('.ti').textContent, t.title || '(untitled)')
       eq(!!c.querySelector('.su'), !!t.summary, tag + t.id + ' summary')
       const chip = c.querySelector('.ft .schip')
@@ -274,6 +274,7 @@ for (const name of ['board.live.json', 'board.states.json']) {
   eq(m.host.querySelector('#notes').hidden, false, tag + 'bell opens the list')
   eq(q('#noterows .ar').length, rows.length, tag + 'bell rows')
   if (rows.length) {
+    eq(q('#noterows .ar a.t').map(a => a.getAttribute('href')), rows.map(r => '/crew?card=' + r.id), tag + 'bell row hrefs are /crew?card=<id> links')
     await click(m.host.querySelector('#noterows .ar button'))
     ok(seen.some(r => r[0] === '/embed/ack/' + rows[0].id && r[1] === 'POST'), tag + 'ack POST /embed/ack/<id>')
     eq(q('#noterows .ar').length, rows.length - 1, tag + 'cleared row leaves the list')

@@ -1,5 +1,8 @@
+import { cardUrl } from './open-card'
+
 // The browser shell's routes, by location.pathname: "/" is the board (?all=1 shows every lane, ?older=1 the older done
-// cards), "/crew?card=<id>" a card (the link crew sends out, open-card.cardUrl); "/card/<id>" is the older card address.
+// cards), "/crew?card=<id>" a card (the link crew sends out, open-card.cardUrl); "/card/<id>" is the older card address,
+// still read so links already sent open, never written.
 export type Route = { page: 'board'; all: boolean; older?: boolean } | { page: 'card'; id: string }
 
 export function parseLocation(pathname: string, search: string): Route {
@@ -12,7 +15,7 @@ export function parseLocation(pathname: string, search: string): Route {
   return { page: 'board', all: /[?&]all=1/.test(search), ...(/[?&]older=1/.test(search) ? { older: true } : {}) }
 }
 export function hrefFor(r: Route): string {
-  if (r.page === 'card') return '/card/' + r.id
+  if (r.page === 'card') return cardUrl('', r.id)
   const q = [r.all ? 'all=1' : '', r.older ? 'older=1' : ''].filter(Boolean).join('&')
   return q ? '/?' + q : '/'
 }

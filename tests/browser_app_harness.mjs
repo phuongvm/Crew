@@ -132,7 +132,7 @@ function hostRules(doc) {
   const tile = await until(doc, 'a.card[data-id]')
   ok(tile, 'the fixture board has a tile')
   tile.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }))
-  eq(w.location.pathname, '/card/' + tile.getAttribute('data-id'), 'a tile click pushes /card/<id>')
+  eq(w.location.pathname + w.location.search, '/crew?card=' + tile.getAttribute('data-id'), 'a tile click pushes /crew?card=<id>')
   ok(await until(doc, '.page-card'), 'and shows the card')
   w.history.back()
   await until(doc, '.page-board')

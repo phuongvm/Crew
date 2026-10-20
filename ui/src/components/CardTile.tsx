@@ -1,6 +1,7 @@
 import type { CSSProperties, MouseEvent } from 'react'
 import type { CrewApi } from '../api'
 import { useAvatar } from '../avatars'
+import { cardUrl } from '../open-card'
 import type { Tile } from '../types'
 import { TileActions } from './ActionBar'
 import { fmt, QUIET_S, shortId, TONE } from './boardUtil'
@@ -50,7 +51,7 @@ export function CardTile({ t, lane, api, onOpen }: { t: Tile; lane: string; api:
     onOpen(t.id)
   }
   return (
-    <a className={'card' + motion} data-id={t.id} href={'/card/' + t.id} style={tone(TONE[t.status] || 'var(--crew-tone-neutral)')} onClick={open}>
+    <a className={'card' + motion} data-id={t.id} href={cardUrl('', t.id)} style={tone(TONE[t.status] || 'var(--crew-tone-neutral)')} onClick={open}>
       <div className="ti">{t.title || '(untitled)'}</div>
       {t.summary ? <div className="su">{t.summary}</div> : null}
       <div className="ft">

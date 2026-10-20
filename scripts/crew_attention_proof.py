@@ -265,7 +265,7 @@ READ_PANEL = """(function(){
           clearall: !!document.getElementById('clearall'),
           svg: !!document.querySelector('#bell svg'),
           ids: Array.prototype.map.call(list, function(d){
-                 return d.querySelector('a.t').getAttribute('href').split('/card/')[1]; })};
+                 return new URLSearchParams(d.querySelector('a.t').getAttribute('href').split('?')[1] || '').get('card'); })};
 })()"""
 
 READ_HIDDEN = "document.getElementById('notes').hidden"

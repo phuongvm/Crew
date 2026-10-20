@@ -3,7 +3,7 @@
 
   /                 the page: a thin shell that loads /app.js (the React app: board, card page, flow graph)
   /app.js           the app, built from ui/src (crew_dashboard/app.js)
-  /board            the same shell; the app reads location.pathname (/, /card/<id>) and ?all=1
+  /board            the same shell; the app reads location.pathname (/, /crew?card=<id>, legacy /card/<id>) and ?all=1
   /board.json       the same board data, polled every 2s by the page; carries attention.rows
   POST /ack/<id>    clear ONE notification off the list (?undo=1 restores it)
   POST /ack/all     clear every listed notification at once (?undo=1 restores them); both writes go

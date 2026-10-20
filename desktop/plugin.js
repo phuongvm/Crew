@@ -813,7 +813,7 @@ function CardTile({ t, lane, api, onOpen }) {
     e.preventDefault();
     onOpen(t.id);
   };
-  return /* @__PURE__ */ jsxs2("a", { className: "card" + motion, "data-id": t.id, href: "/card/" + t.id, style: tone(TONE[t.status] || "var(--crew-tone-neutral)"), onClick: open2, children: [
+  return /* @__PURE__ */ jsxs2("a", { className: "card" + motion, "data-id": t.id, href: cardUrl("", t.id), style: tone(TONE[t.status] || "var(--crew-tone-neutral)"), onClick: open2, children: [
     /* @__PURE__ */ jsx2("div", { className: "ti", children: t.title || "(untitled)" }),
     t.summary ? /* @__PURE__ */ jsx2("div", { className: "su", children: t.summary }) : null,
     /* @__PURE__ */ jsxs2("div", { className: "ft", children: [
@@ -1081,7 +1081,7 @@ function Board({ api, onOpenCard, flags, onFlags, home }) {
             ] }),
             /* @__PURE__ */ jsx4("div", { id: "noterows", children: rows.length ? rows.map((r) => /* @__PURE__ */ jsxs4("div", { className: "ar" + (r.status !== "done" ? " stuck" : ""), children: [
               /* @__PURE__ */ jsx4("span", { className: "st", children: r.status }),
-              /* @__PURE__ */ jsx4("a", { className: "t", href: "/card/" + r.id, onClick: (e) => {
+              /* @__PURE__ */ jsx4("a", { className: "t", href: cardUrl("", r.id), onClick: (e) => {
                 e.preventDefault();
                 setNotesOpen(false);
                 onOpenCard(r.id);

@@ -3,6 +3,7 @@ import type { AckResult, CrewApi } from '../api'
 import { useBoard } from '../data'
 import { useCrewHost } from '../host'
 import { MARK_URI } from '../mark'
+import { cardUrl } from '../open-card'
 import { injectCss } from '../css'
 import type { AttentionRow, Board as BoardData } from '../types'
 import baseCss from '../styles/base.css'
@@ -187,7 +188,7 @@ export function Board({ api, onOpenCard, flags, onFlags, home }: Props) {
                 {rows.length ? rows.map(r => (
                   <div key={r.id} className={'ar' + (r.status !== 'done' ? ' stuck' : '')}>
                     <span className="st">{r.status}</span>
-                    <a className="t" href={'/card/' + r.id} onClick={e => { e.preventDefault(); setNotesOpen(false); onOpenCard(r.id) }}>
+                    <a className="t" href={cardUrl('', r.id)} onClick={e => { e.preventDefault(); setNotesOpen(false); onOpenCard(r.id) }}>
                       {r.id + ' - ' + (r.title || '(untitled)')}
                     </a>
                     <span className="w">{r.who || '-'}</span>
