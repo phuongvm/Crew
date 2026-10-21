@@ -15778,6 +15778,7 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
     keyRef.current = { paused, selected, reload, onBack, closePanel };
     (0, import_react12.useEffect)(() => {
       const onKey = (e) => {
+        if (!e.isTrusted) return;
         const active = document.activeElement;
         const tag = active?.tagName || "";
         if (tag === "INPUT" || tag === "TEXTAREA" || active?.isContentEditable || active?.closest?.('[contenteditable="true"]') || active?.closest?.("[contenteditable]") || e.ctrlKey || e.metaKey || e.altKey) return;

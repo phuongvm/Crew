@@ -3079,6 +3079,7 @@ function CardPage({ api, id, onBack, openChat, hash = false, boardHref = "/" }) 
   keyRef.current = { paused, selected, reload, onBack, closePanel };
   useEffect8(() => {
     const onKey = (e) => {
+      if (!e.isTrusted) return;
       const active = document.activeElement;
       const tag = active?.tagName || "";
       if (tag === "INPUT" || tag === "TEXTAREA" || active?.isContentEditable || active?.closest?.('[contenteditable="true"]') || active?.closest?.("[contenteditable]") || e.ctrlKey || e.metaKey || e.altKey) return;

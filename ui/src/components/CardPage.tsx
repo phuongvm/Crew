@@ -93,6 +93,7 @@ export function CardPage({ api, id, onBack, openChat, hash = false, boardHref = 
   keyRef.current = { paused, selected, reload, onBack, closePanel }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!e.isTrusted) return
       const active = document.activeElement as HTMLElement | null
       const tag = active?.tagName || ''
       if (
