@@ -5,7 +5,7 @@
 **You ask once. A coordinator owns the card until its proof passes.**
 
 [![Hermes plugin](https://img.shields.io/badge/Hermes-plugin-3fb950?style=flat-square)](https://github.com/NousResearch/hermes-agent)
-[![Version](https://img.shields.io/badge/version-0.10.0-3fb950?style=flat-square)](plugin.yaml)
+[![Version](https://img.shields.io/badge/version-0.10.1-3fb950?style=flat-square)](plugin.yaml)
 [![tests](https://github.com/macd2/Crew/actions/workflows/tests.yml/badge.svg)](https://github.com/macd2/Crew/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -32,6 +32,14 @@ hands the card to a **coordinator** that owns it until the proof command exits 0
 result back in the same chat, or one concrete question when it truly needs you.
 
 [![The crew dashboard: a card's graph with its running worker selected and the live transcript](assets/dashboard.webp)](https://crew.forgecoreai.com)
+
+## What's new in 0.10.1
+
+- **The installer asks, it never approves.** It no longer writes Hermes's hook allowlist at all (`--approve-hooks` is
+  gone): for a profile with a hook waiting it asks (y/N) whether to open that profile's Hermes, so Hermes asks you at
+  its own prompt, and a hook whose script changed is revoked first. Answer no, and it prints the commands to run.
+- **Desktop "Open chat"** opens the chat through the app's own session (`host.openSession`) rather than a window.
+- The README's hook text, the permission proof and the hook-consent tests describe that flow.
 
 ## What's new in 0.10.0
 
@@ -84,8 +92,9 @@ hermes -p NAME plugins doctor crew
 ```
 
 `NAME` is the profile you chat with (`default` if you do not use profiles). Running the installer twice
-changes nothing; `--check` is a dry run that prints exactly what would change. The installer never asks
-anything and never approves a shell hook for you.
+changes nothing; `--check` is a dry run that prints exactly what would change. The installer never approves
+a shell hook for you and never writes Hermes's hook allowlist: if a profile has a hook waiting, it asks (y/N)
+whether to open that profile's Hermes so Hermes itself asks you.
 
 > **On Windows?** Native Windows is supported with [Git for Windows](https://git-scm.com/download/win)
 > installed (proofs run in Git Bash). It has no systemd or cron, so the graph-http service and
@@ -126,8 +135,12 @@ Only when you ask for it:
 | `--spill-cap` | Sets `hooks.output_spill.max_chars` on your profile, so the `/crew` intake reads its brief in one tool call. |
 | `--publish` | Serves the dashboard on your tailnet with `tailscale serve` (tailnet only, never the internet). Only one tailnet login gets in (`--publish-user LOGIN`, or the tailnet's single human login; otherwise it refuses), plus devices with a tag from `--publish-tag` (a tagged device carries no login). |
 
-The installer reports shell hooks your profiles declare but you have not approved. It never approves them:
-review them with `hermes -p P hooks list` and confirm them at Hermes's own prompt.
+The installer reports shell hooks your profiles declare but you have not approved. It never approves them
+and never copies one profile's approvals into another. On a terminal it asks per profile, y/N, whether to start
+`hermes -p P chat` now: Hermes then asks you about each hook at its own prompt (a hook whose script changed since
+you approved it is revoked first with `hermes -p P hooks revoke`), and you leave with `/exit`. Answer no, or run
+without a terminal, and it prints the commands instead: review with `hermes -p P hooks list`, confirm at Hermes's
+prompt (or type `--accept-hooks` yourself), check with `hermes -p P hooks doctor`.
 
 ## Crew in Hermes Desktop
 
