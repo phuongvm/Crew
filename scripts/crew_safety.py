@@ -54,10 +54,12 @@ def _find_hermes_sources():
     seen = set()
 
     def _add(path):
+        # Only a real Hermes checkout counts: a bare dir (e.g. ~/.hermes/hermes-agent left by a failed install)
+        # would land on the proof PYTHONPATH and trip the hermes-agent tests' real-home I/O guard.
         if not path:
             return
         norm = os.path.abspath(os.path.normpath(path))
-        if norm not in seen and os.path.isdir(norm):
+        if norm not in seen and os.path.isfile(os.path.join(norm, "hermes_cli", "__init__.py")):
             seen.add(norm)
             sources.append(norm)
 

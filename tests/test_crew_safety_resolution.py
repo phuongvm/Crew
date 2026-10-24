@@ -101,6 +101,24 @@ class CrewSafetyResolutionTests(unittest.TestCase):
             self.assertIn("Hermes safety checks could not be loaded", str(ctx.exception))
             self.assertIn("Hermes venv interpreter", str(ctx.exception))
 
+    def test_find_hermes_sources_accepts_only_real_checkouts(self):
+        """A dir without hermes_cli/__init__.py (e.g. debris from a failed install) never becomes a Hermes
+        source, so proof_env() never puts it on the proof PYTHONPATH; a real checkout is still found."""
+        with tempfile.TemporaryDirectory(prefix="crew-src-test-") as td:
+            debris = os.path.join(td, "debris")
+            os.makedirs(os.path.join(debris, "venv"))
+            with open(os.path.join(debris, "half.txt"), "w") as f:
+                f.write("left from the failed install")
+            checkout = os.path.join(td, "checkout")
+            os.makedirs(os.path.join(checkout, "hermes_cli"))
+            with open(os.path.join(checkout, "hermes_cli", "__init__.py"), "w") as f:
+                f.write("")
+
+            with mock.patch.dict(os.environ, {"HERMES_AGENT_SRC": debris}):
+                self.assertNotIn(os.path.abspath(debris), crew_safety._find_hermes_sources())
+            with mock.patch.dict(os.environ, {"HERMES_AGENT_SRC": checkout}):
+                self.assertIn(os.path.abspath(checkout), crew_safety._find_hermes_sources())
+
 
 if __name__ == "__main__":
     unittest.main()
