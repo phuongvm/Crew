@@ -56,11 +56,15 @@ def _find_hermes_sources():
     def _add(path):
         # Only a real Hermes checkout counts: a bare dir (e.g. ~/.hermes/hermes-agent left by a failed install)
         # would land on the proof PYTHONPATH and trip the hermes-agent tests' real-home I/O guard.
+        # A link (<Hermes home>/hermes-agent -> the real checkout) is resolved to its target for the same reason:
+        # the lexical path sits inside the Hermes home, and the guard refuses the stat importlib.metadata makes
+        # on every sys.path entry. Resolving also lists a checkout reached by two routes once.
         if not path:
             return
-        norm = os.path.abspath(os.path.normpath(path))
-        if norm not in seen and os.path.isfile(os.path.join(norm, "hermes_cli", "__init__.py")):
-            seen.add(norm)
+        norm = os.path.realpath(path)
+        key = os.path.normcase(norm)
+        if key not in seen and os.path.isfile(os.path.join(norm, "hermes_cli", "__init__.py")):
+            seen.add(key)
             sources.append(norm)
 
     for env_var in ("HERMES_AGENT_SRC", "HERMES_AGENT_DIR", "HERMES_SRC"):

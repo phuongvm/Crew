@@ -119,6 +119,31 @@ class CrewSafetyResolutionTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"HERMES_AGENT_SRC": checkout}):
                 self.assertIn(os.path.abspath(checkout), crew_safety._find_hermes_sources())
 
+    def test_find_hermes_sources_resolves_links_to_the_real_checkout(self):
+        """A Hermes home often holds `hermes-agent` as a link to the real checkout. The source must be the
+        link's target, listed once: the lexical path sits inside the Hermes home, and on the proof PYTHONPATH the
+        hermes-agent tests' real-home I/O guard refuses it (importlib.metadata stats every sys.path entry)."""
+        with tempfile.TemporaryDirectory(prefix="crew-src-link-") as td:
+            checkout = os.path.join(td, "checkout")
+            os.makedirs(os.path.join(checkout, "hermes_cli"))
+            with open(os.path.join(checkout, "hermes_cli", "__init__.py"), "w") as f:
+                f.write("")
+            home = os.path.join(td, "home")
+            os.makedirs(home)
+            link = os.path.join(home, "hermes-agent")
+            if sys.platform == "win32":
+                import subprocess
+                subprocess.run(["cmd", "/c", "mklink", "/J", link, checkout], check=True, capture_output=True)
+            else:
+                os.symlink(checkout, link)
+            real = os.path.realpath(checkout)
+
+            with mock.patch.dict(os.environ, {"HERMES_AGENT_SRC": link, "HERMES_AGENT_DIR": checkout}):
+                sources = crew_safety._find_hermes_sources()
+            self.assertIn(real, sources)
+            self.assertNotIn(os.path.abspath(link), sources)
+            self.assertEqual(1, sum(1 for s in sources if os.path.normcase(s) == os.path.normcase(real)))
+
 
 if __name__ == "__main__":
     unittest.main()
