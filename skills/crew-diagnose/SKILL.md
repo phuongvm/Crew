@@ -1,7 +1,7 @@
 ---
 name: crew-diagnose
 description: "Use when /crew-diagnose [state]. Read-only card diagnosis."
-version: 0.10.1
+version: 0.10.2
 ---
 
 # /crew-diagnose [state] - a diagnosis per card, and how each would resume
