@@ -111,13 +111,13 @@ def _eligible(conn, db, now, window_days, card_id):
     rows, skipped = [], {}
     for task in conn.execute(sql + " order by t.completed_at", args):
         mode = _observe_mode(task["body"])
+        if not card_id and mode != "always" and (task["completed_at"] or 0) < cutoff:
+            continue                    # outside the window: silent, or a nightly pass lists every old card
         if mode == "off":
             skipped[task["id"]] = "Observe: off"
             continue
         if not crew_card.proof_snapshot(task["id"], db):
             skipped[task["id"]] = "no owner-confirmed proof command"
-            continue
-        if not card_id and mode != "always" and (task["completed_at"] or 0) < cutoff:
             continue
         rows.append(task)
     if card_id and not rows and card_id not in skipped:

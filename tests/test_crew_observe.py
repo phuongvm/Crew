@@ -191,6 +191,14 @@ class ObserveTests(BoardCase):
         self.assertNotIn(running, res["results"])
         self.assertEqual(runner.ran, [])
 
+    def test_cards_outside_the_window_are_not_reported_as_skipped(self):
+        old_no_snap = self.done_card("exit 0", age_days=30, snapshot=False)
+        res = self.observe(Runner({}))
+        self.assertNotIn(old_no_snap, res["results"])
+        self.assertNotIn(old_no_snap, res["skipped"], "out-of-window cards are silent, not SKIP noise")
+        res = self.observe(Runner({}), card_id=old_no_snap)
+        self.assertIn(old_no_snap, res["skipped"], "a requested card still says why it did not run")
+
     def test_the_snapshot_runs_not_the_edited_body_line(self):
         cid = self.done_card("exit 0")
         self.conn.execute("update tasks set body=? where id=?", (body("exit 7"), cid))
