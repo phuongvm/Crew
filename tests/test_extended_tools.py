@@ -93,10 +93,11 @@ from native_tools import (  # noqa: E402
 EXTENDED = {
     "crew_stop_card", "crew_review_handoff", "crew_request_changes", "crew_plan_split",
     "crew_worktree_create", "crew_worktree_cleanup", "crew_flow_graph", "crew_lesson_record",
+    "crew_observe",
 }
 CORE = {"crew_card_create", "crew_diagnose", "crew_verdict", "crew_status", "crew_event_subscribe"}
 # Upstream crew 0.9.13 scripts/crew_tools.py registers six tools; crew_verdict and crew_diagnose overlap CORE,
-# the other four are only there. register() exposes CORE | EXTENDED | SCRIPT_ONLY = 17 distinct tools.
+# the other four are only there. register() exposes CORE | EXTENDED | SCRIPT_ONLY = 18 distinct tools (crew_observe: OpenSpec stewardship-core-adoption).
 SCRIPT_ONLY = {"crew_progress", "crew_proof_check", "crew_lesson", "crew_plan"}
 ALL_TOOLS = CORE | EXTENDED | SCRIPT_ONLY
 
@@ -155,7 +156,7 @@ class BoardCase(unittest.TestCase):
 class RegistrationTests(unittest.TestCase):
     def test_extended_catalog_has_eight_distinct_tools(self):
         names = [n for n, _, _ in CREW_EXTENDED_TOOLS]
-        self.assertEqual(8, len(names))
+        self.assertEqual(9, len(names))  # 8 crew-extended-tools + crew_observe (stewardship-core-adoption)
         self.assertEqual(EXTENDED, set(names))
         self.assertFalse(set(names) & {n for n, _, _ in CREW_NATIVE_TOOLS})
 
@@ -181,7 +182,7 @@ class RegistrationTests(unittest.TestCase):
             self.assertIn(json.loads(out)["status"], ("error", "refused", "ok", "dry_run"))
 
     def test_plugin_register_exposes_all_thirteen_tools(self):
-        # Name kept for proof-command selection (-k); the set is now 17: 13 native + 4 from scripts/crew_tools.py.
+        # Name kept for proof-command selection (-k); the set is now 18: 14 native + 4 from scripts/crew_tools.py.
         import importlib.util
         spec = importlib.util.spec_from_file_location("crew_plugin_ext", str(REPO / "__init__.py"))
         mod = importlib.util.module_from_spec(spec)
@@ -189,7 +190,7 @@ class RegistrationTests(unittest.TestCase):
         ctx = Ctx()
         mod.register(ctx)
         names = [t["name"] for t in ctx.tools]
-        self.assertEqual(17, len(ALL_TOOLS))
+        self.assertEqual(18, len(ALL_TOOLS))
         self.assertEqual(ALL_TOOLS, set(names))
         self.assertEqual(sorted(set(names)), sorted(names), "a tool was registered twice")
         self.assertEqual({"crew"}, {t["toolset"] for t in ctx.tools})

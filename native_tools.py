@@ -1221,6 +1221,52 @@ def handle_crew_lesson_record(args: dict, **kwargs: Any) -> dict[str, Any]:
     return {"status": "ok", "result": result, "role": role, "text": text, "path": lessons.path()}
 
 
+CREW_OBSERVE_SCHEMA = {
+    "name": "crew_observe",
+    "description": (
+        "Post-delivery check: re-run the owner-confirmed proof of delivered (done) crew cards through the bounded "
+        "runner and record improved/regressed in observations.json and the card's events. A regression alerts the "
+        "owner once and never reopens the card. Without card_id: every done card of the last window_days "
+        "(or tagged `Observe: always`); `Observe: off` cards are skipped."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "card_id": {"type": "string", "description": "One delivered card to observe (default: all eligible)."},
+            "window_days": {"type": "integer", "description": "Eligibility window in days (default 14)."},
+            "timeout_s": {"type": "number", "description": "Seconds per proof run (default 60)."},
+            "dry_run": {"type": "boolean", "description": "List eligible cards; run, record and send nothing."},
+        },
+    },
+}
+
+
+def handle_crew_observe(args: dict, **kwargs: Any) -> dict[str, Any]:
+    """Handler for crew_observe: crew_observe.observe_delivered."""
+    args = _args(args)
+    card_id = _card_id_arg(args) or None
+    if card_id and not _contracts().is_valid_card_id(card_id):
+        return _err("not a card id: %r" % card_id)
+    try:
+        window = int(args.get("window_days") or 14)
+        timeout = float(args.get("timeout_s") or 60.0)
+    except (TypeError, ValueError):
+        return _err("window_days and timeout_s must be numbers")
+    if window < 1 or timeout <= 0:
+        return _err("window_days must be >= 1 and timeout_s > 0")
+    observe = _load("crew_observe")
+    if observe is None:
+        return _err("crew_observe module could not be loaded")
+    try:
+        res = observe.observe_delivered(db_path=args.get("db_path") or None, card_id=card_id, window_days=window,
+                                        timeout_s=timeout, dry_run=bool(args.get("dry_run", False)))
+    except Exception as exc:  # noqa: BLE001 - a tool answers, it never raises into the turn
+        return _err("%s: %s" % (type(exc).__name__, exc))
+    if res.get("error"):
+        return _err(res["error"])
+    return {"status": "ok", **res, "summary": observe.summary_lines(res)}
+
+
 CREW_EXTENDED_TOOLS = [
     ("crew_stop_card", CREW_STOP_CARD_SCHEMA, handle_crew_stop_card),
     ("crew_review_handoff", CREW_REVIEW_HANDOFF_SCHEMA, handle_crew_review_handoff),
@@ -1230,6 +1276,7 @@ CREW_EXTENDED_TOOLS = [
     ("crew_worktree_cleanup", CREW_WORKTREE_CLEANUP_SCHEMA, handle_crew_worktree_cleanup),
     ("crew_flow_graph", CREW_FLOW_GRAPH_SCHEMA, handle_crew_flow_graph),
     ("crew_lesson_record", CREW_LESSON_RECORD_SCHEMA, handle_crew_lesson_record),
+    ("crew_observe", CREW_OBSERVE_SCHEMA, handle_crew_observe),
 ]
 
 
@@ -1276,5 +1323,5 @@ def register_native_tools(ctx: Any) -> None:
 
 
 def register_extended_tools(ctx: Any) -> None:
-    """Register the 8 extended Crew native tools (OpenSpec change crew-extended-tools)."""
+    """Register the extended Crew native tools: the 8 of OpenSpec crew-extended-tools plus crew_observe (stewardship-core-adoption)."""
     _register(ctx, CREW_EXTENDED_TOOLS)

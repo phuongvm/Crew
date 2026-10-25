@@ -522,7 +522,8 @@ def step_spill_cap(profile, apply, enabled):
 # core-commands-first with the crew options sorted alphabetically, so /crew (a skill command, tier 2) sits
 # under the built-ins. The order here is importance: the intake, then the options typed every day, then the
 # recovery passes, then the install.
-CREW_MENU_ORDER = ["crew", "crew-status", "crew-graph", "crew-stop", "crew-unstuck", "crew-safety", "crew-proof", "crew-diagnose"]
+CREW_MENU_ORDER = ["crew", "crew-status", "crew-graph", "crew-stop", "crew-unstuck", "crew-safety", "crew-proof", "crew-observe",
+                   "crew-diagnose"]
 
 
 def _menu_names(raw):

@@ -333,6 +333,57 @@ def mark_sent(state_path, tid, key, now=None):
     save_state(state_path, state)
 
 
+# ------------------------------------------------------------------------------------ post-delivery regression
+REGRESSION_OUTPUT_CHARS = 600
+
+
+def regression_text(task, obs):
+    """The alert for a delivered card whose proof no longer passes (crew_observe): what ran, how it ended and the
+    tail of its output, bounded and with secrets redacted. The card is not reopened, the owner decides."""
+    tid, title = task["id"], short(task["title"], 120)
+    how = "timed out" if obs.get("timed_out") else "exit %s" % obs.get("exit_code")
+    lines = ["🟠 regressed · %s · %s" % (tid, title),
+             "Post-delivery check: the delivered proof no longer passes (%s). The card stays done; nothing was "
+             "reopened." % how,
+             "Proof: %s" % short(obs.get("proof_cmd") or "", 300)]
+    out = SECRET_RX.sub("[redacted]", str(obs.get("output") or "")).strip()   # redact before the cut
+    if out:
+        tail = out[-REGRESSION_OUTPUT_CHARS:]
+        lines.append("Output (tail): %s" % short(tail, REGRESSION_OUTPUT_CHARS + 1))
+    lines.append("Card: %s" % card_url(tid))
+    return "\n".join(lines)
+
+
+def notify_regression(db, task, obs, key, state_path=None, send=None, say=print):
+    """Queue one regression alert for `task` under `key` (`regressed:<card>:<event id>`), deduplicated in the same
+    notify state as every other crew message: a key already sent is never sent again. Target: the card's origin
+    chat, else the platform of the owner's newest chat origin. Returns {"sent": bool, "key", "target", "detail"}."""
+    send = send or hermes_send
+    state_path = state_path or state_file()
+    tid = task["id"]
+    if key in sent_keys(state_path, tid):
+        return {"sent": False, "key": key, "target": "", "detail": "already sent"}
+    origin, _src = resolved_origin(db, tid)
+    target = send_target(origin)
+    if not target:
+        conn = sqlite3.connect("file:%s?mode=ro" % db, uri=True, timeout=10)
+        conn.row_factory = sqlite3.Row
+        try:
+            target = last_origin_platform(conn)
+        finally:
+            conn.close()
+    if not target:
+        say("crew notify: regression %s has no chat to report into, marked" % tid)
+        mark_sent(state_path, tid, key)
+        return {"sent": False, "key": key, "target": "", "detail": "no target"}
+    ok, detail = send(target, regression_text(task, obs))
+    if ok:
+        mark_sent(state_path, tid, key)
+    else:
+        say("crew notify: regression alert for %s to %s failed: %s" % (tid, target, detail))
+    return {"sent": bool(ok), "key": key, "target": target, "detail": detail}
+
+
 # ------------------------------------------------------------------------------------ sending
 def hermes_send(target, text):
     """(ok, detail): `hermes [-p owner] send -t target --file -`. The caller's env is kept as it is: Hermes loads the

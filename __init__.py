@@ -65,7 +65,7 @@ HOME = os.environ.get("HERMES_HOME") or _default_home()
 HERE = os.path.dirname(os.path.abspath(__file__))
 USAGE = ("Usage: /crew <what you want>  (intake, asks its questions) | /crew-status"
          " | /crew-graph <card id|latest> [--watch N | --html [PATH]] | /crew-stop [<card id>] [--archive] [--dry-run] | /crew-unstuck <card id>"
-         " | /crew-diagnose [state]  (read-only)")
+         " | /crew-diagnose [state]  (read-only) | /crew-observe [<card id>]")
 
 # One slash command per option: the option lives in the command name, so /crew-status takes no
 # argument and an argument-less option is discoverable in /help instead of hidden behind a sub.
@@ -87,6 +87,8 @@ COMMANDS = [
      "How careful unattended proof commands are: no argument shows the mode, brave stops asking, safe restores it"),
     ("crew-proof", "proof", "<card> <yes|brave>",
      "Answer a card's proof question: yes accepts a proposed proof command, brave runs a blocked one"),
+    ("crew-observe", "observe", "[<card id>]",
+     "Post-delivery check: re-run delivered cards' proofs, record improved/regressed, alert once, never reopen"),
 ]
 
 
@@ -327,12 +329,37 @@ def _option_handler(action):
     """One slash command per option: the name carries the option, the text after it is its args."""
     run = {"status": _cmd_status, "graph": _cmd_graph, "unstuck": _cmd_unstuck,
            "stop": lambda rest: _cmd_maintenance("stop", rest), "safety": _cmd_safety,
-           "proof": _cmd_proof}[action]
+           "proof": _cmd_proof, "observe": _cmd_observe}[action]
 
     def handler(raw_args):
         return run((raw_args or "").strip())
 
     return handler
+
+
+_CARD_ID_RX = re.compile(r"^t_[0-9a-f]{4,32}$")
+
+
+def _cmd_observe(rest):
+    """/crew-observe [<card id>]: one post-delivery observation pass (scripts/crew_observe.py), no model call.
+    The only argument is one card id, checked before anything runs; the script's own lines are the answer."""
+    words = (rest or "").split()
+    if len(words) > 1 or (words and not _CARD_ID_RX.match(words[0])):
+        return "Usage: /crew-observe [<card id>]"
+    path = _script_path("crew_observe.py")
+    if not path:
+        return "crew_observe.py not found - run install.py --check"
+    try:
+        r = subprocess.run([sys.executable, path] + words, capture_output=True, text=True, errors="replace",
+                           timeout=1800, env=_utf8_env(), encoding="utf-8")
+    except subprocess.TimeoutExpired:
+        return "observe timed out after 1800s"
+    except Exception as exc:  # noqa: BLE001 - a pass must never break the chat turn
+        return "observe failed: %s" % exc
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
+    if not out:
+        return "observe: nothing to do (exit %d)" % r.returncode
+    return out if r.returncode == 0 else "observe (exit %d):\n%s" % (r.returncode, out)
 
 
 def _config_get(key):
