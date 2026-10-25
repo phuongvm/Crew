@@ -163,6 +163,14 @@ class ShippedListsTests(unittest.TestCase):
         missing += ["roles/" + rel for rel in CI.ROLE_FILES if not (REPO / "roles" / rel).is_file()]
         self.assertEqual([], missing)
 
+    def test_every_plugin_root_module_ships(self):
+        # __init__.py imports native_tools (crew_observe and the other native tools), runtime_events and, via
+        # crew_card, contracts from the plugin root. A root module left out of PLUGIN_FILES is never copied into
+        # a profile, so that profile runs a stale native_tools.py (no crew_observe tool) or none at all
+        # (CREW-INV-7, OpenSpec stewardship-core-adoption Ticket 04).
+        root_modules = sorted(p.name for p in REPO.glob("*.py") if p.name not in ("install.py",))
+        self.assertEqual([], [m for m in root_modules if m not in CI.PLUGIN_FILES])
+
     def test_skill_names_are_the_skill_dirs_of_the_package(self):
         self.assertEqual(sorted(p.parent.name for p in (REPO / "skills").glob("*/SKILL.md")), CI.skill_names())
 
