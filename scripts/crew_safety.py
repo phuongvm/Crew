@@ -249,7 +249,19 @@ def proof_env(extra=None):
                     extra_py_paths.append(sp)
     if extra_py_paths:
         existing_pp = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = os.pathsep.join(extra_py_paths + ([existing_pp] if existing_pp else []))
+        merged_pp = []
+        seen_pp = set()
+        for raw_p in extra_py_paths + (existing_pp.split(os.pathsep) if existing_pp else []):
+            if not raw_p:
+                continue
+            real_p = os.path.realpath(raw_p)
+            if not os.path.isdir(real_p):
+                continue
+            key_p = os.path.normcase(real_p)
+            if key_p not in seen_pp:
+                seen_pp.add(key_p)
+                merged_pp.append(real_p)
+        env["PYTHONPATH"] = os.pathsep.join(merged_pp)
     env.update(extra or {})
     return env
 
