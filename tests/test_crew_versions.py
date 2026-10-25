@@ -38,7 +38,7 @@ class VersionTests(unittest.TestCase):
 
     def test_every_registered_tool_is_documented_in_shipped_skills(self):
         tools = plugin_tools()
-        self.assertEqual(17, len(tools), "plugin.yaml must register exactly 17 tools")
+        self.assertEqual(18, len(tools), "plugin.yaml must register exactly 18 tools")
         skills = sorted((REPO / "skills").glob("*/SKILL.md"))
         skill_texts = [p.read_text(encoding="utf-8") for p in skills]
         for tool in tools:
@@ -104,7 +104,7 @@ class VersionTests(unittest.TestCase):
             if name not in schemas:
                 schemas[name] = schema
 
-        self.assertEqual(17, len(schemas), "Must have all 17 registered tool schemas")
+        self.assertEqual(18, len(schemas), "Must have all 18 registered tool schemas")
 
         skills = sorted((REPO / "skills").glob("*/SKILL.md"))
         call_pattern = re.compile(r'(crew_[a-z_]+)\(([^)]*)\)')

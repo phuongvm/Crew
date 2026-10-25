@@ -100,6 +100,7 @@ Workers utilize the following native tools:
 | `crew_flow_graph` | Generate Mermaid dependency diagram | `card_id="<id>"`, `direction="TD"`, `format="mermaid"\|"json"` | Read-only | Inspect pipeline |
 | `crew_stop_card` | Park card if unrecoverable blocker arises | `card_id="<id>"`, `archive=False`, `dry_run=False` | Mutating (parks card) | Block/handoff |
 | `crew_lesson_record` | Record operational learning with validation | `action="add"\|"show"`, `role="worker"`, `text="..."` | Mutating (appends lesson) | Finish card |
+| `crew_observe` | Post-delivery regression check of done cards (never reopens) | `card_id="<id>"`, `window_days=14`, `dry_run=False` | Records observation + alert | Coordinator decides |
 | `crew_lesson` | Quick lesson recording | `role="worker"`, `text="..."` | Mutating (appends lesson) | Finish card |
 
 ## Never
