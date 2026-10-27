@@ -51,7 +51,7 @@ class FakeCtx:
 
 
 class RegisterTests(unittest.TestCase):
-    def test_register_adds_the_six_tools_in_toolset_crew(self):
+    def test_register_adds_every_crew_tool_in_toolset_crew(self):
         if not (REPO / "scripts" / "crew_tools.py").exists():
             self.skipTest("scripts/crew_tools.py is not there yet")
         ctx = FakeCtx()
@@ -65,7 +65,7 @@ class RegisterTests(unittest.TestCase):
             P.register(ctx)
         self.assertIn(("pre_tool_call", "crew_tool_guard"), ctx.hooks)
 
-    def test_plugin_yaml_declares_the_six(self):
+    def test_plugin_yaml_declares_every_crew_tool(self):
         text = (REPO / "plugin.yaml").read_text(encoding="utf-8")
         for name in TOOLS:
             self.assertRegex(text, r"(?m)^  - %s$" % name)

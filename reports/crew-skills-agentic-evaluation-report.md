@@ -126,9 +126,9 @@ Use the "crew-no-spec" skill. The user ask is: /crew-no-spec Fix the broken watc
 
 #### Observed Tool Sequence:
 1. `tool_describe(names=["crew_card_create", "crew_proof_check"])` *(Tier 2: schema-loaded)*
-2. `terminal(command="ls -la O:/workspaces/oss/hermes-agent/gateway/shutdown_watchdog.py ...")` *(Tier 4: accepted preflight)*
+2. `terminal(command="ls -la <hermes-agent-repo>/gateway/shutdown_watchdog.py ...")` *(Tier 4: accepted preflight)*
 3. `tool_call(calls=[{"name": "crew_proof_check", "arguments": {"command": "pytest tests/gateway/test_shutdown_watchdog.py"}}])` *(Tier 4: accepted)*
-4. `tool_call(calls=[{"name": "crew_card_create", "arguments": {"title": "Fix broken watchdog stderr logging in gateway/shutdown_watchdog.py", "role": "worker", "assignee": "coder", "verify": "proof", "proof_cmd": "pytest tests/gateway/test_shutdown_watchdog.py", "done_when": "Watchdog stderr logging in gateway/shutdown_watchdog.py is fixed and pytest passes cleanly", "artifact": "gateway/shutdown_watchdog.py", "lands": "O:/workspaces/oss/hermes-agent"}}])` *(Tier 4 & 5: accepted & card created)*
+4. `tool_call(calls=[{"name": "crew_card_create", "arguments": {"title": "Fix broken watchdog stderr logging in gateway/shutdown_watchdog.py", "role": "worker", "assignee": "coder", "verify": "proof", "proof_cmd": "pytest tests/gateway/test_shutdown_watchdog.py", "done_when": "Watchdog stderr logging in gateway/shutdown_watchdog.py is fixed and pytest passes cleanly", "artifact": "gateway/shutdown_watchdog.py", "lands": "<hermes-agent-repo>"}}])` *(Tier 4 & 5: accepted & card created)*
    - Output: Created live card **`t_fe05d8fa`**!
 5. `kanban_create(parents=["t_fe05d8fa"], board="crew", title="[review] Independent review of...", assignee="reviewer")` *(Tier 5: chained review card `t_e5d7a46f` created)*
 
@@ -182,19 +182,19 @@ Use the "crew-role-worker" skill. You are assigned as worker on card t_c12f3b30.
 ```
 
 #### Live Observed Tool Sequence:
-1. `read_file(path="O:/workspaces/rules/AGENTS.md")`: Checked Intellectual Integrity rules.
+1. `read_file(path="<workspace>/rules/AGENTS.md")`: Checked Intellectual Integrity rules.
 2. `kanban_show(task_id="t_c12f3b30")`: Read card contract:
-   - Role: `worker`, Verify: `proof`, Lands at: `O:/workspaces/oss/crew`
+   - Role: `worker`, Verify: `proof`, Lands at: `<crew-repo>`
    - Goal: `Implement fixture helper in tests/fixtures/eval/worker_helper.py`
    - Proof command: `python -c "import os; assert os.path.exists('tests/fixtures/eval/worker_helper.py')"`
 3. `tool_describe(names=["crew_verdict"])`: Dynamically retrieved schema for `crew_verdict`.
-4. `write_file(path="O:/workspaces/oss/crew/tests/fixtures/eval/worker_helper.py", content=...)`:
+4. `write_file(path="<crew-repo>/tests/fixtures/eval/worker_helper.py", content=...)`:
    - Authored deliverable file (528 bytes). Verified written to disk (`verified: true`).
 5. `tool_call(calls=[{"name": "crew_verdict", "arguments": {"card_id": "t_c12f3b30"}}])`:
    - Executed proof command via native tool handler.
    - Result: `{"status": "ok", "verdict": "PASS", "card_id": "t_c12f3b30", "exit_code": 0}`.
-   - Appended immutable PASS record to `O:/workspaces/_config/agent4070/hermes/crew/verdicts/t_c12f3b30.jsonl`.
-6. `kanban_complete(task_id="t_c12f3b30", artifacts=["O:/workspaces/oss/crew/tests/fixtures/eval/worker_helper.py"], ...)`:
+   - Appended immutable PASS record to `$HERMES_HOME/crew/verdicts/t_c12f3b30.jsonl`.
+6. `kanban_complete(task_id="t_c12f3b30", artifacts=["<crew-repo>/tests/fixtures/eval/worker_helper.py"], ...)`:
    - Successfully marked card `done` with `result: "PASS"`.
 7. `kanban_show(task_id="t_c12f3b30")`: Confirmed card status transitioned to `done`.
 
@@ -224,18 +224,18 @@ Use the "crew-verifier" skill. You are assigned as verifier on card t_e81a32c3 w
 
 #### Live Observed Tool Sequence:
 1. `kanban_show(task_id="t_e81a32c3")`: Read verification contract:
-   - Role: `verifier`, Verify: `agent`, Lands at: `O:/workspaces/oss/crew`
+   - Role: `verifier`, Verify: `agent`, Lands at: `<crew-repo>`
    - Goal: `Audit and verify worker deliverable in tests/fixtures/eval/worker_helper.py and record review findings`
    - Artifact: `reviews/findings-eval-fixture.md`
    - Proof command: `python -c "import os; assert os.path.exists('reviews/findings-eval-fixture.md') and os.path.getsize('reviews/findings-eval-fixture.md') > 0"`
 2. `tool_call(calls=[{"name": "crew_progress", "arguments": {"card": "t_e81a32c3"}}])`: Queried progress metrics.
-3. `write_file(path="O:/workspaces/oss/crew/reviews/findings-eval-fixture.md", content=...)`:
+3. `write_file(path="<crew-repo>/reviews/findings-eval-fixture.md", content=...)`:
    - Delivered comprehensive findings document (3,570 bytes, 82 lines) with explicit verdict: `APPROVED`.
 4. `tool_call(calls=[{"name": "crew_verdict", "arguments": {"card_id": "t_e81a32c3", "by": "reviewer"}}])`:
    - Executed proof command via native tool handler.
    - Result: `{"status": "ok", "verdict": "PASS", "card_id": "t_e81a32c3", "exit_code": 0}`.
-   - Appended immutable PASS record to `O:/workspaces/_config/agent4070/hermes/crew/verdicts/t_e81a32c3.jsonl`.
-5. `read_file(path="O:/workspaces/oss/crew/reviews/findings-eval-fixture.md")`:
+   - Appended immutable PASS record to `$HERMES_HOME/crew/verdicts/t_e81a32c3.jsonl`.
+5. `read_file(path="<crew-repo>/reviews/findings-eval-fixture.md")`:
    - **Mandatory Extra Check**: Performed exactly ONE substantive read-only check on the review artifact.
 6. Verified Zero-Checkout branch invariant across production checkouts.
 7. `kanban_complete(...)`: Transitioned card `t_e81a32c3` to terminal status `done`.
@@ -264,21 +264,21 @@ Use the "crew-role-content" skill. You are assigned as content creator on card t
 ```
 
 #### Live Observed Tool Sequence:
-1. `read_file(path="O:/workspaces/rules/AGENTS.md")`: Checked Intellectual Integrity rules.
+1. `read_file(path="<workspace>/rules/AGENTS.md")`: Checked Intellectual Integrity rules.
 2. `kanban_show(task_id="t_4e881f0d")`: Read content creation contract:
-   - Role: `content`, Verify: `dual`, Lands at: `O:/workspaces/oss/crew`
+   - Role: `content`, Verify: `dual`, Lands at: `<crew-repo>`
    - Goal: `Author telemetry overview document in reports/telemetry-eval-fixture.md with verified statistics`
    - Proof command: `python -c "import os; assert os.path.exists('reports/telemetry-eval-fixture.md') and os.path.getsize('reports/telemetry-eval-fixture.md') > 0"`
 3. `tool_describe(names=["crew_verdict", "crew_review_handoff"])`: Retrieved schemas for verdict and dual handoff tools.
-4. `search_files(path="O:/workspaces/oss/crew/reports", ...)`: Checked existing report formats.
-5. `terminal(command="pytest O:/workspaces/oss/crew/tests/test_crew_card.py -q")` & line counts:
+4. `search_files(path="<crew-repo>/reports", ...)`: Checked existing report formats.
+5. `terminal(command="pytest <crew-repo>/tests/test_crew_card.py -q")` & line counts:
    - Computed real, non-hallucinated statistics (105 tests passed, 2,932 lines in `crew_card.py`, 13 registered handlers).
-6. `write_file(path="O:/workspaces/oss/crew/reports/telemetry-eval-fixture.md", content=...)`:
+6. `write_file(path="<crew-repo>/reports/telemetry-eval-fixture.md", content=...)`:
    - Delivered formatted telemetry report (5,953 bytes) with verified numbers.
 7. `tool_call(calls=[{"name": "crew_verdict", "arguments": {"card_id": "t_4e881f0d"}}])`:
    - Executed proof command via native tool handler.
    - Result: `{"status": "ok", "verdict": "PASS", "card_id": "t_4e881f0d", "exit_code": 0}`.
-   - Appended immutable PASS record to `O:/workspaces/_config/agent4070/hermes/crew/verdicts/t_4e881f0d.jsonl`.
+   - Appended immutable PASS record to `$HERMES_HOME/crew/verdicts/t_4e881f0d.jsonl`.
 8. `tool_call(calls=[{"name": "crew_review_handoff", "arguments": {"card_id": "t_4e881f0d", "summary": "Authored telemetry overview document at reports/telemetry-eval-fixture.md with verified operational statistics...", "reviewer": "reviewer", "verify": "dual"}}])`:
    - Result: `{"status": "ok", "card_id": "t_4e881f0d", "verify": "dual", "reviewer": "reviewer", "moved_to_review": true}`.
 9. `kanban_show(task_id="t_4e881f0d")`: Verified card successfully transitioned to `status: "review"` assigned to `reviewer`.
@@ -360,10 +360,10 @@ To ensure mathematical transparency and independent reproducibility, the 100-poi
 
 ### 6.1 Persisted Test Harness & Scripts
 All evaluation runners and harness scripts are tracked in the repository:
-1. `O:/workspaces/oss/crew/scripts/run_remediation_evals.py`: Automated runner for remediation evaluation of worker, verifier, and content roles with direct `state.db` telemetry extraction.
-2. `O:/workspaces/oss/crew/scripts/run_content_eval.py`: Dedicated runner for content creation lifecycle and dual verification testing.
-3. `O:/workspaces/oss/crew/scripts/run_probe.py`: Worker probe runner for isolated subagent execution.
-4. `O:/workspaces/oss/crew/reports/crew-skills-remediation-raw-results.json`: Complete, machine-readable JSON execution receipts bundle (12,582 bytes).
+1. `<crew-repo>/scripts/run_remediation_evals.py`: Automated runner for remediation evaluation of worker, verifier, and content roles with direct `state.db` telemetry extraction.
+2. `<crew-repo>/scripts/run_content_eval.py`: Dedicated runner for content creation lifecycle and dual verification testing.
+3. `<crew-repo>/scripts/run_probe.py`: Worker probe runner for isolated subagent execution.
+4. `<crew-repo>/reports/crew-skills-remediation-raw-results.json`: Complete, machine-readable JSON execution receipts bundle (12,582 bytes).
 
 ### 6.2 Isolated Test Fixture Manifest
 
@@ -378,10 +378,10 @@ To satisfy the production-seam invariant, all four production repositories were 
 
 | Repository Path | Expected Branch | Observed Branch | Working Tree State | Invariant Status |
 |---|:---:|:---:|---|:---:|
-| `O:/workspaces` | `main` | `main` | Clean (No branch switch) | **PASS** |
-| `O:/workspaces/oss/crew` | `main` | `main` | Clean (No branch switch) | **PASS** |
-| `O:/workspaces/oss/hermes-agent` | `main` | `main` | Clean (No branch switch) | **PASS** |
-| `O:/workspaces/oss/hermes-nerve` | `main` | `main` | Clean (No branch switch) | **PASS** |
+| `<workspace>` | `main` | `main` | Clean (No branch switch) | **PASS** |
+| `<crew-repo>` | `main` | `main` | Clean (No branch switch) | **PASS** |
+| `<hermes-agent-repo>` | `main` | `main` | Clean (No branch switch) | **PASS** |
+| `<hermes-nerve-repo>` | `main` | `main` | Clean (No branch switch) | **PASS** |
 
 ---
 
@@ -406,8 +406,8 @@ test -s "reports/crew-skills-agentic-evaluation-report.md"
 
 - **Execution Command**: `test -s "reports/crew-skills-agentic-evaluation-report.md"`
 - **Target Paths**:
-  - `O:/workspaces/oss/crew/reports/crew-skills-agentic-evaluation-report.md` (Primary repository artifact)
-  - `O:/workspaces/_config/agent4070/hermes/kanban/boards/crew/workspaces/t_2a064920/reports/crew-skills-agentic-evaluation-report.md` (Workspace artifact)
+  - `<crew-repo>/reports/crew-skills-agentic-evaluation-report.md` (Primary repository artifact)
+  - `$HERMES_HOME/kanban/boards/crew/workspaces/t_2a064920/reports/crew-skills-agentic-evaluation-report.md` (Workspace artifact)
 - **Exit Code**: `0` (PASS)
 
 ### 8.2 Database Session Receipts (`state.db`)
@@ -419,9 +419,9 @@ test -s "reports/crew-skills-agentic-evaluation-report.md"
 - **`crew-role-content`**: `local-c0c6b7e870e733ada7c55958378b4aa3bcb66365faa998bd7b43c2d63c911125` & `local-0c853afafd0833a0f5e712338d60297f994cd163fcf118544ba0784260ecbe4` (59 messages, rc=0)
 
 ### 8.3 JSONL Verdict Log Receipts
-- `O:/workspaces/_config/agent4070/hermes/crew/verdicts/t_c12f3b30.jsonl`: `PASS` (rc=0, duration: 0.224s)
-- `O:/workspaces/_config/agent4070/hermes/crew/verdicts/t_e81a32c3.jsonl`: `PASS` (rc=0, duration: 0.222s)
-- `O:/workspaces/_config/agent4070/hermes/crew/verdicts/t_4e881f0d.jsonl`: `PASS` (rc=0, duration: 0.204s)
+- `$HERMES_HOME/crew/verdicts/t_c12f3b30.jsonl`: `PASS` (rc=0, duration: 0.224s)
+- `$HERMES_HOME/crew/verdicts/t_e81a32c3.jsonl`: `PASS` (rc=0, duration: 0.222s)
+- `$HERMES_HOME/crew/verdicts/t_4e881f0d.jsonl`: `PASS` (rc=0, duration: 0.204s)
 
 ---
 *Report generated and validated by Agent Coder. Delivered for independent review by `@reviewer` under audit task `t_5a2e3a95`.*
@@ -431,7 +431,7 @@ test -s "reports/crew-skills-agentic-evaluation-report.md"
 ## 9. Crew 0.10.2 Re-Evaluation: Isolated Live Execution Traces (Card `t_5059c6ba`, 2026-10-27)
 
 > **Author**: `@coder` · **Crew**: 0.10.2 (oss/crew `890ace9`) · **Harness**: `run_isolated_skill_evals.py`
-> (card workspace `O:/workspaces/_config/agent4070/hermes/kanban/boards/crew/workspaces/t_5059c6ba/`), raw bundle `eval_results.json` (102,336 bytes) in the same folder.
+> (card workspace `<card-workspace>/` of `t_5059c6ba`), raw bundle `eval_results.json` (102,336 bytes) in the same folder.
 > This section supersedes the 100/100 scorecard of §1.2 for 0.10.2. Every figure below is copied from `state.db`, the scratch board, or the verdict JSONL. None is estimated.
 
 ### 9.1 Regression fixes that precede the evaluation
@@ -439,7 +439,7 @@ test -s "reports/crew-skills-agentic-evaluation-report.md"
 | Test | Failure on `be364d5` | Fix (`890ace9`) |
 |---|---|---|
 | `test_crew_versions.test_every_shipped_skill_carries_the_plugin_version` | `'0.10.2' != '0.10.0' : crew-no-spec/SKILL.md version` | `skills/crew-no-spec/SKILL.md` frontmatter `version: 0.10.2` |
-| `test_crew_tools_guard.test_register_adds_the_six_tools_in_toolset_crew` | `register()` returned 18 tools; `TOOLS` listed 17 (missing `crew_observe`, Ticket 03) | `crew_observe` added to `TOOLS` |
+| `test_crew_tools_guard.test_register_adds_every_crew_tool_in_toolset_crew (renamed from `..._the_six_tools_...`)` | `register()` returned 18 tools; `TOOLS` listed 17 (missing `crew_observe`, Ticket 03) | `crew_observe` added to `TOOLS` |
 | `test_crew_versions.test_installed_skills_byte_identical_parity` (surfaced after the bump) | runtime `skills/crew/crew-no-spec/SKILL.md` sha256 `8338fd7a…` ≠ repo `a12f4ca4…` | runtime sync: the 14 copies under root + 6 profiles (`skills/crew/` and `plugins/crew/skills/`) that were byte-identical to the pre-bump file were replaced; `install.py --check` no longer reports a skills/parity diff |
 
 Proof command result: `Ran 127 tests … OK`, rc=0.
@@ -458,7 +458,7 @@ The full suite (`unittest discover`, 1,100 tests) reports `failures=13, errors=9
   - `crew_card_create` from `/crew-no-spec` opened **`t_cbe1a2fe` on the live `crew` board**. The dispatcher ran it as `coder`, and it was completed against `fixture/nospec/cli.py` only. Its verdict was PASS (`profiles/coder/crew/verdicts/t_cbe1a2fe.jsonl`), and the coordinator audited it as `crew_decision: pass`. It touched nothing outside the fixture folder. It is a stray live card, kept as evidence and not archived by this worker.
 - **Agent workaround**: the 3 role agents worked around ISO-1 by re-exporting the pins in a `terminal` subprocess. They called `crew_card.py verdict`, `crew_card.run_verdict`, `native_tools.handle_crew_verdict`/`handle_crew_review_handoff` and `kanban_db.complete_task` directly. The board transitions below are real, but they came through that path, not through the registered tools.
 
-### 9.3 Per-skill live traces (sessions in `O:/workspaces/_config/agent4070/hermes/state.db`)
+### 9.3 Per-skill live traces (sessions in `$HERMES_HOME/state.db`)
 
 | Skill | Session | Prompt (verbatim) | Msgs / calls | Wall | Outcome (evidence) |
 |---|---|---|---|---|---|
