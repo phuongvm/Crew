@@ -425,3 +425,68 @@ test -s "reports/crew-skills-agentic-evaluation-report.md"
 
 ---
 *Report generated and validated by Agent Coder. Delivered for independent review by `@reviewer` under audit task `t_5a2e3a95`.*
+
+---
+
+## 9. Crew 0.10.2 Re-Evaluation: Isolated Live Execution Traces (Card `t_5059c6ba`, 2026-10-27)
+
+> **Author**: `@coder` · **Crew**: 0.10.2 (oss/crew `890ace9`) · **Harness**: `run_isolated_skill_evals.py`
+> (card workspace `O:/workspaces/_config/agent4070/hermes/kanban/boards/crew/workspaces/t_5059c6ba/`), raw bundle `eval_results.json` (102,336 bytes) in the same folder.
+> This section supersedes the 100/100 scorecard of §1.2 for 0.10.2. Every figure below is copied from `state.db`, the scratch board, or the verdict JSONL. None is estimated.
+
+### 9.1 Regression fixes that precede the evaluation
+
+| Test | Failure on `be364d5` | Fix (`890ace9`) |
+|---|---|---|
+| `test_crew_versions.test_every_shipped_skill_carries_the_plugin_version` | `'0.10.2' != '0.10.0' : crew-no-spec/SKILL.md version` | `skills/crew-no-spec/SKILL.md` frontmatter `version: 0.10.2` |
+| `test_crew_tools_guard.test_register_adds_the_six_tools_in_toolset_crew` | `register()` returned 18 tools; `TOOLS` listed 17 (missing `crew_observe`, Ticket 03) | `crew_observe` added to `TOOLS` |
+| `test_crew_versions.test_installed_skills_byte_identical_parity` (surfaced after the bump) | runtime `skills/crew/crew-no-spec/SKILL.md` sha256 `8338fd7a…` ≠ repo `a12f4ca4…` | runtime sync: the 14 copies under root + 6 profiles (`skills/crew/` and `plugins/crew/skills/`) that were byte-identical to the pre-bump file were replaced; `install.py --check` no longer reports a skills/parity diff |
+
+Proof command result: `Ran 127 tests … OK`, rc=0.
+
+The full suite (`unittest discover`, 1,100 tests) reports `failures=13, errors=9, skipped=4`. All 22 sit in env-bound modules: `WinError 1314` symlink privilege, `delegate_task child contexts cannot mutate Kanban`, the live `skills/` tree, the stale `desktop/plugin.js` bundle, and CSP and route-floor tests. Running the same modules on a detached `be364d5` worktree gives the same set; the 2 order-dependent cases (`VerdictCwdTests`, `test_generated_files_are_current`) fail or pass by run order there too. None of the 22 touches the 2 changed files. They are pre-existing and outside this card's scope.
+
+### 9.2 Isolation design and what actually happened
+
+- **Scratch board**: `evalboard/kanban.db`, created with the kernel's own `kanban_db.init_db()`. It is outside `kanban/boards/`, so no dispatcher reads it. The harness pinned it through `HERMES_KANBAN_DB` + `KANBAN_DB`.
+- **Fixtures**: every `Lands at` is `fixture/<role>/` inside the card workspace. No production checkout was written.
+- **Worker-style runs**: the harness claimed the card through `kanban_db.claim_task` and exported `HERMES_KANBAN_TASK/RUN_ID/CLAIM_LOCK/WORKSPACE`.
+- **Prompts**: minimal guidance. Each prompt names only the skill plus the card id or ask; no tool names, no procedure.
+- **Observed isolation defect (ISO-1)**: `hermes -z` runs the turn inside the gateway, and `agent/session_client_env.py::_travels()` drops every `HERMES_*` name from the client env (Kanban pins included). The in-session tools therefore resolved the **live** `crew` board (`config.yaml crew.board: crew`). Consequences:
+  - `kanban_show`, `crew_verdict` and `crew_review_handoff` answered `not found` / `no such card` for scratch cards: 5, 6 and 9 misses in the worker, verifier and content sessions.
+  - `crew_diagnose(state="blocked")` read the live board (0 blocked) and never saw the seeded scratch blocked card `t_d6c1e340`.
+  - `crew_card_create` from `/crew-no-spec` opened **`t_cbe1a2fe` on the live `crew` board**. The dispatcher ran it as `coder`, and it was completed against `fixture/nospec/cli.py` only. Its verdict was PASS (`profiles/coder/crew/verdicts/t_cbe1a2fe.jsonl`), and the coordinator audited it as `crew_decision: pass`. It touched nothing outside the fixture folder. It is a stray live card, kept as evidence and not archived by this worker.
+- **Agent workaround**: the 3 role agents worked around ISO-1 by re-exporting the pins in a `terminal` subprocess. They called `crew_card.py verdict`, `crew_card.run_verdict`, `native_tools.handle_crew_verdict`/`handle_crew_review_handoff` and `kanban_db.complete_task` directly. The board transitions below are real, but they came through that path, not through the registered tools.
+
+### 9.3 Per-skill live traces (sessions in `O:/workspaces/_config/agent4070/hermes/state.db`)
+
+| Skill | Session | Prompt (verbatim) | Msgs / calls | Wall | Outcome (evidence) |
+|---|---|---|---|---|---|
+| `crew-diagnose` | `local-add39fa0…7e22` | `/crew-diagnose blocked` | 6 / 2 | 85.6 s | `tool_describe(crew_diagnose)` → `crew_diagnose(state="blocked")` → `"diagnose: 0 card(s) in state blocked"`, quoted verbatim. Read-only and exactly one reader call, so protocol compliant. It read the live board (ISO-1), so the seeded blocked card was not listed. |
+| `crew-no-spec` | `local-d01c4c1b…ff01` | `/crew-no-spec Add a --version flag to the eval fixture CLI at …/fixture/nospec/cli.py that prints 0.10.2` | 11 / 5 | 95.2 s | Turn-1 dispatch, no self-execution. `crew_proof_check` was refused once (`unknown argument(s) reason`) and retried OK. `crew_card_create` → `t_cbe1a2fe` (worker/coder, Verify: proof, safe, Zero-Checkout constraint) → background `crew_card.py watch` → `🟢 done`. |
+| `crew` | `local-b5fd5c54…13e2` | `/crew Improve the error messages of the eval fixture tools` | 2 / 0 | 62.6 s | Rule 1 (a vague ask gets questions): it posted a critique plus a 4-question batch (project / Done-when / track A vs B / proof safety), with the recommended default first and **no card opened**. That is the correct stop for a vague ask. |
+| `crew-role-worker` | `local-ebefb00b…a9a` | `Work kanban card t_ed721f4e.` | 60 / 38 | 444.7 s | Wrote `fixture/worker/slugify.py` (321 B), leaving the test untouched; `python -m unittest test_slugify` gives 3 OK. Verdict `PASS rc=0 by=coder` (`crew/verdicts/t_ed721f4e.jsonl`). Board: `created → claimed → completed` (`done`). `crew_verdict` was refused once (`reason` arg), then `no such card` (ISO-1). |
+| `crew-verifier` | `local-0ff562a5…030a` | `Verify kanban card t_196d5369.` | 54 / 35 | 480.1 s | Wrote `reviews/findings-calc.md` (1,350 B) with **Verdict: REJECTED**. It correctly found that `mean([])` raises `ZeroDivisionError`, which contradicts the documented `ValueError`; that is a planted defect. It did not edit `calc.py` (judge, never fix). Verdict `PASS rc=0 by=reviewer`; extra check `read_file` on the findings; board `done`. |
+| `crew-role-content` | `local-b16758dc…7bc7f` | `Work kanban card t_7b167927.` | 69 / 45 | 540 s (harness timeout) | `summary.md` (617 B) cites `tests_run 127`, `failures 0`, `duration_s 5.4`, all from `metrics.json`. Verdict `PASS rc=0` (`by=default`, run through `native_tools` in a subprocess). `crew_review_handoff` moved the card to `review`, assignee `reviewer`; it never self-completed (dual). The session was still verifying when the 540 s harness timeout hit. |
+
+Scratch board end state (`evalboard/kanban.db`): `t_ed721f4e` done · `t_196d5369` done · `t_7b167927` review→reviewer · `t_d6c1e340` blocked (fixture).
+
+### 9.4 Scoring (evidence-only; replaces §1.2 for 0.10.2)
+
+| Skill | Role boundary | Protocol / terminal action | Parameter accuracy (crew tools) | Isolation-clean | Verdict |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `crew-diagnose` | PASS | PASS | 1/1 | NO (live board read) | **PASS (behaviour)** |
+| `crew-no-spec` | PASS | PASS | 2/3 (1 `reason` refusal) | NO (live card `t_cbe1a2fe`) | **PASS w/ finding** |
+| `crew` | PASS | PASS (questions, no card) | n/a | YES | **PASS** |
+| `crew-role-worker` | PASS | PASS (verdict → complete) | 2/3 (1 `reason` refusal) | NO (out-of-band tool path) | **PASS w/ finding** |
+| `crew-verifier` | PASS | PASS (findings → verdict → extra check → complete) | 2/3 (1 `reason` refusal) | NO (out-of-band tool path) | **PASS w/ finding** |
+| `crew-role-content` | PASS | PASS (verdict → review handoff, no self-complete) | 3/4 (1 `reason` refusal) | NO (out-of-band tool path) | **PASS w/ finding** |
+
+All 6 skills chose the correct role behaviour and terminal action. **This pass awards no composite 100/100**: 4 of the 5 sessions that called crew tools sent an unregistered `reason` argument once (recovered on retry), and 5 of 6 runs were not isolation-clean (ISO-1).
+
+### 9.5 Findings and follow-ups
+
+1. **ISO-1 (High, harness/runtime)**: `hermes -z` does not carry `HERMES_KANBAN_DB`/`HERMES_KANBAN_TASK` into the gateway session (`session_client_env._travels` drops `HERMES_*`). Any future isolated eval must use a proof board the gateway itself resolves, for example a dedicated `kanban/boards/<eval-slug>/` selected by `crew.board` in an eval-only profile. An env pin is not enough.
+2. **P-01 (Medium, skills)**: in 4 of the 5 sessions that called crew tools, the agent added a `reason` argument to a crew tool (`crew_verdict`, `crew_proof_check`), which the schema refuses (`this tool takes: card, timeout`). The skills should say outright that crew tools take only their listed parameters.
+3. **Stray live card**: `t_cbe1a2fe` (done, fixture-only) is on the live `crew` board. Archive it at the coordinator's discretion.
+4. **Pre-existing full-suite failures**: there are 22, all env-bound (§9.1). They are out of scope and recorded for the coordinator.
