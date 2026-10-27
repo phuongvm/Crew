@@ -1,11 +1,9 @@
 # Spec: Hermes Desktop Flow Graph Extension Pane
 
-## Spec Summary
+## Purpose
 Adds a native Hermes Desktop extension pane (`PANES_AREA`) that embeds the Crew Live Flow Graph inside `<SandboxedFrame />` while preserving the existing full-tile view (`asTile: true`) on route `/crew`.
 
----
-
-## REQUIREMENTS
+## Requirements
 
 ### Requirement 1: Dual-Mode Plugin Registration
 The Desktop plugin MUST register both the legacy tile contribution and the new extension pane contribution simultaneously.

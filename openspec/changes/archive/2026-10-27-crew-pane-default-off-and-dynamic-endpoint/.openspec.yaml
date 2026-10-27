@@ -1,4 +1,4 @@
-schema: change
+schema: spec-driven
 id: crew-pane-default-off-and-dynamic-endpoint
 title: Crew Desktop Pane Default OFF & Dynamic Dashboard Endpoint Detection
 status: proposed
