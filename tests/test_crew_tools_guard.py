@@ -25,7 +25,7 @@ spec.loader.exec_module(P)
 
 TOOLS = [
     "crew_card_create", "crew_diagnose", "crew_event_subscribe", "crew_flow_graph",
-    "crew_lesson", "crew_lesson_record", "crew_plan", "crew_plan_split",
+    "crew_lesson", "crew_lesson_record", "crew_observe", "crew_plan", "crew_plan_split",
     "crew_progress", "crew_proof_check", "crew_request_changes", "crew_review_handoff",
     "crew_status", "crew_stop_card", "crew_verdict", "crew_worktree_cleanup",
     "crew_worktree_create",

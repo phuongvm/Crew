@@ -1,7 +1,7 @@
 ---
 name: crew-no-spec
 description: "Use when /crew-no-spec <ask>. Fast-track direct card intake."
-version: 0.10.0
+version: 0.10.2
 ---
 
 # /crew-no-spec - fast-track coordinator intake
