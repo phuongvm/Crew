@@ -112,6 +112,47 @@ function cardUrl(dashLink, id) {
   const tab = base.endsWith(CREW_ROUTE) ? base : base + CREW_ROUTE;
   return tab + "?card=" + encodeURIComponent(id);
 }
+function cardFromHref(href) {
+  const raw = (href || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("#")) return cardFromHash(raw);
+  let url;
+  try {
+    url = new URL(raw, "http://crew.invalid");
+  } catch {
+    return "";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+  const p = url.pathname.replace(/\/+$/, "");
+  if (p !== CREW_ROUTE && !p.endsWith(CREW_ROUTE)) return "";
+  return cardFromSearch(url.search);
+}
+var pendingCard = "";
+var openListeners = /* @__PURE__ */ new Set();
+function openCardRoute(path, navigate) {
+  const id = cardFromHash(path) || cardFromHref(path);
+  if (id) {
+    pendingCard = id;
+    openListeners.forEach((fn) => {
+      try {
+        fn(id);
+      } catch {
+      }
+    });
+  }
+  navigate?.(path);
+}
+function takePendingCard() {
+  const id = pendingCard;
+  pendingCard = "";
+  return id;
+}
+function onOpenCard(fn) {
+  openListeners.add(fn);
+  return () => {
+    openListeners.delete(fn);
+  };
+}
 
 // src/card-open.ts
 var open = false;
@@ -848,7 +889,7 @@ function LaneBody({ laneKey, children }) {
   }, [laneKey]);
   return /* @__PURE__ */ jsx3("div", { className: "lbody", ref, onScroll: (e) => store("scroll." + laneKey, String(e.currentTarget.scrollTop)), children });
 }
-function Lane({ lane: l, api, archivedOpen, older, onToggleArchived, onOlder, onOpenCard }) {
+function Lane({ lane: l, api, archivedOpen, older, onToggleArchived, onOlder, onOpenCard: onOpenCard2 }) {
   const tone4 = { "--tone": TONE[l.key] || "var(--crew-tone-neutral)" };
   const n = l.tiles.length + (l.hidden || 0);
   const key = (fn) => (e) => {
@@ -897,7 +938,7 @@ function Lane({ lane: l, api, archivedOpen, older, onToggleArchived, onOlder, on
       }
     ),
     /* @__PURE__ */ jsxs3(LaneBody, { laneKey: l.key, children: [
-      l.tiles.map((t) => /* @__PURE__ */ jsx3(CardTile, { t, lane: l.key, api, onOpen: onOpenCard }, t.id)),
+      l.tiles.map((t) => /* @__PURE__ */ jsx3(CardTile, { t, lane: l.key, api, onOpen: onOpenCard2 }, t.id)),
       l.hidden && l.key === "done" ? /* @__PURE__ */ jsxs3("button", { className: "more", "data-older": "1", onClick: () => onOlder(true), children: [
         "Show ",
         +l.hidden || 0,
@@ -961,7 +1002,7 @@ function useDashboardLink(serverUrl) {
     basePath: typeof w?.__HERMES_BASE_PATH__ === "string" ? w.__HERMES_BASE_PATH__ : ""
   });
 }
-function Board({ api, onOpenCard, flags, onFlags, home }) {
+function Board({ api, onOpenCard: onOpenCard2, flags, onFlags, home }) {
   injectCss("base", base_default);
   injectCss("board", board_default);
   const { kanbanRow } = useCrewHost();
@@ -1085,7 +1126,7 @@ function Board({ api, onOpenCard, flags, onFlags, home }) {
               /* @__PURE__ */ jsx4("a", { className: "t", href: cardUrl("", r.id), onClick: (e) => {
                 e.preventDefault();
                 setNotesOpen(false);
-                onOpenCard(r.id);
+                onOpenCard2(r.id);
               }, children: r.id + " - " + (r.title || "(untitled)") }),
               /* @__PURE__ */ jsx4("span", { className: "w", children: r.who || "-" }),
               /* @__PURE__ */ jsx4("span", { className: "ag", children: fmt(+r.age_s) }),
@@ -1113,7 +1154,7 @@ function Board({ api, onOpenCard, flags, onFlags, home }) {
         older,
         onToggleArchived: toggleArchived,
         onOlder: setOlderFlag,
-        onOpenCard
+        onOpenCard: onOpenCard2
       },
       l.key
     )) })
@@ -3303,15 +3344,22 @@ function CrewPage({ api }) {
   const { theme, renderedMode } = useTheme();
   const [route, setRoute] = useState11({ page: "board", all: false });
   useEffect10(() => {
+    const open2 = (id) => setRoute({ page: "card", id });
     const go = () => {
       const id = cardFromHash(window.location.hash);
-      if (id) setRoute({ page: "card", id });
+      if (id) open2(id);
     };
-    const shared = cardFromSearch(window.location.search);
-    if (shared) setRoute({ page: "card", id: shared });
-    go();
+    const first = takePendingCard() || cardFromHash(window.location.hash) || cardFromSearch(window.location.search);
+    if (first) open2(first);
+    const off = onOpenCard((id) => {
+      takePendingCard();
+      open2(id);
+    });
     window.addEventListener("hashchange", go);
-    return () => window.removeEventListener("hashchange", go);
+    return () => {
+      off();
+      window.removeEventListener("hashchange", go);
+    };
   }, []);
   const back = () => setRoute({ page: "board", all: false });
   const host3 = sdk.host;
@@ -3485,9 +3533,12 @@ function FlowPane({ api, navigate, cardLink: cardLink2, boardLink }) {
 
 // src/desktop.tsx
 import { jsx as jsx21, jsxs as jsxs20 } from "react/jsx-runtime";
+var hostNavigate = (path) => {
+  openCardRoute(path, (p) => sdk2.host?.navigate?.(p));
+};
 function Pane({ api }) {
   const { theme, renderedMode } = useTheme2();
-  return /* @__PURE__ */ jsx21("div", { style: { ...crewVarsFromTheme(theme, renderedMode), background: "var(--crew-bg)", color: "var(--crew-fg)", height: "100%" }, children: /* @__PURE__ */ jsx21(FlowPane, { api, navigate: (path) => sdk2.host?.navigate?.(path), cardLink, boardLink: CREW_ROUTE }) });
+  return /* @__PURE__ */ jsx21("div", { style: { ...crewVarsFromTheme(theme, renderedMode), background: "var(--crew-bg)", color: "var(--crew-fg)", height: "100%" }, children: /* @__PURE__ */ jsx21(FlowPane, { api, navigate: hostNavigate, cardLink, boardLink: CREW_ROUTE }) });
 }
 function Host({ api, kanban, children }) {
   const [ask, setAsk] = useState13(null);
@@ -3558,7 +3609,7 @@ function watchBlocked(ctx, api) {
       title: "Crew: a card needs you",
       message: t.message,
       detail: t.detail,
-      action: { label: "Open in Crew", onClick: () => host3.navigate?.(cardLink(t.id)) }
+      action: { label: "Open in Crew", onClick: () => hostNavigate(cardLink(t.id)) }
     });
     try {
       ctx.os?.notify({ title: "Crew: a card needs you", body: t.message + "\n" + t.detail });
@@ -3570,6 +3621,32 @@ function watchBlocked(ctx, api) {
     void tick();
   }, WATCH_MS);
 }
+var CARD_LINKS = "__crewCardLinks";
+var MD_BLOCK = ".aui-md, .stub-md, .md";
+function watchCardLinks(doc = document) {
+  const slot = doc;
+  slot[CARD_LINKS]?.();
+  const onClick = (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const navigate = sdk2.host?.navigate;
+    if (typeof navigate !== "function") return;
+    const t = e.target;
+    const a = t && typeof t.closest === "function" ? t.closest("a[href]") : null;
+    if (!a) return;
+    if (a.closest(".crew-scope") && !a.closest(MD_BLOCK)) return;
+    const id = cardFromHref(a.getAttribute("href") || "");
+    if (!id) return;
+    e.preventDefault();
+    openCardRoute(cardLink(id), (p) => sdk2.host?.navigate?.(p));
+  };
+  doc.addEventListener("click", onClick, true);
+  const off = () => {
+    doc.removeEventListener("click", onClick, true);
+    if (slot[CARD_LINKS] === off) slot[CARD_LINKS] = void 0;
+  };
+  slot[CARD_LINKS] = off;
+  return off;
+}
 var desktop_default = {
   id: "crew",
   name: "Crew",
@@ -3578,7 +3655,6 @@ var desktop_default = {
     const kanban = kanbanRowSwitch(ctx);
     ctx.registerMany([
       { id: "page", area: ROUTES_AREA, data: { path: "/crew" }, render: () => /* @__PURE__ */ jsx21(Host, { api, kanban, children: /* @__PURE__ */ jsx21(CrewPage, { api }) }) },
-      // Fallback local daemon probe: http://127.0.0.1:8799/healthz
       { id: "nav", area: SIDEBAR_NAV_AREA, data: { path: "/crew", label: "Crew", codicon: "organization", asTile: true } },
       {
         id: "flow",
@@ -3589,10 +3665,19 @@ var desktop_default = {
       }
     ]);
     watchBlocked(ctx, api);
+    if (typeof sdk2.host?.navigate === "function" && typeof document !== "undefined") {
+      const off = watchCardLinks(document);
+      if (typeof ctx.onDispose === "function") ctx.onDispose(off);
+    }
   }
 };
 export {
   KANBAN_ROW_ID,
+  cardFromHref,
   desktop_default as default,
-  kanbanRowSwitch
+  kanbanRowSwitch,
+  onOpenCard,
+  openCardRoute,
+  takePendingCard,
+  watchCardLinks
 };
