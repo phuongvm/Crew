@@ -1,89 +1,91 @@
-# Independent Review — ASUS-VB Crew Configuration and Parity
+# Independent Re-Review — ASUS-VB Crew Configuration and Parity
 
-**Card:** `t_a45fe168`  
-**Reviewer:** Agent Reviewer  
-**Target:** `O:/workspaces/_config/asus-vb/hermes`  
-**Required baselines:** `O:/workspaces/_config/agent4070/hermes` and `O:/workspaces/oss/crew` at `3757fde`  
-**Verdict:** **REJECTED**
+**Card:** `t_f5c35edc`
+**Remediation reviewed:** `t_3964b75f`
+**Reviewer:** Agent Reviewer
+**Targets:** `O:/workspaces/_config/asus-vb/hermes`, `O:/workspaces/_config/agent4070/hermes`, and `O:/workspaces/oss/crew`
+**Verdict:** **APPROVED**
 
 ## Executive finding
 
-ASUS-VB has the expected 12 configured profile homes and all 1,236 unique Crew files are present, tracked, and internally consistent. Its root Crew/Kanban configuration, cutover guard structure, and scoped Git tracking pass inspection. Acceptance nevertheless fails against both contracted references: a fresh byte comparison finds **132 profile-file mismatches** against the current agent4070 root baseline (11 unique destinations repeated across 12 configured homes) and **492 profile-file mismatches** against immutable `oss/crew@3757fde` (41 unique destinations repeated across 12 homes). The ASUS-VB desktop plugin matches `3757fde` byte-for-byte but differs from current agent4070. The live `oss/crew` checkout is `1507553b2a8285d04702a93106365cc29cd74885`, while the card and root Git gitlink require `3757fdefa02a922ced1447108fdc31912510e85c`; it is also dirty with tracked and untracked concurrent changes, so only the branch-position portion of Zero-Checkout passes.
+The remediation resolves the prior rejection. A fresh, read-only SHA-256 sweep derived from the current `install.py` manifest found **103 unique installed destinations**, **12 configured ASUS-VB homes (1,236/1,236 files)**, and **7 configured agent4070 homes (721/721 files)**. There are zero missing source or deployed files and zero deployed-file mismatches against current clean Crew `main` / `origin/main` at `41dfbd98a28f04f06d9eb3b807ddc2e8dae25c4b`. ASUS-VB also has zero mismatches against the agent4070 root deployment. The desktop plugin SHA-256 is identical across Crew, ASUS-VB, and agent4070: `a6a2191d4c5fa6c551052c9bb99366dfe61dd767ff2a8b281fc9a72a7b0f09a7`.
+
+Both node-local cutover scripts now parameterize the SSH identity with `-GitSshKey` / `$env:HERMES_GIT_SSH_KEY`, contain no `id_rsa_phuongvm`, and retain the contracted main-branch, tracked-clean, immutable SHA, SHA-256, manifest, dry-run, profile-count, desktop-sync, and Commander-only restart gates. Root Crew configuration and scoped Git tracking pass. The production Crew checkout was independently observed clean on `main`, with `HEAD == origin/main == 41dfbd9` before this review artifact was authored in an isolated worktree.
 
 ## Scope and method
 
-The audit was performed read-only against:
+The audit was read-only against the two deployed Hermes trees, root `.gitignore`, Git tracking state, and the Crew checkout. Inventory was derived from current `install.py` (`PLUGIN_FILES`, `ROLE_FILES`, and `skill_names()`), deduplicated by destination. Files were compared as raw bytes with SHA-256. Audited configurations were not modified. This report and the required Updates Log entry were authored only in `O:/workspaces/.worktrees/wt-crew-parity-rereview` to preserve the Zero-Checkout invariant.
 
-- `O:/workspaces/_config/asus-vb/hermes`
-- `O:/workspaces/_config/agent4070/hermes`
-- `O:/workspaces/oss/crew`
-- `O:/workspaces/.gitignore`
-
-The profile/file inventory was derived from `install.py` (`PLUGIN_FILES`, `skill_names()`, and `ROLE_FILES`), deduplicated by destination path. SHA-256 comparisons read the files as bytes. No audited configuration was modified.
+Required governance files `code-review-mandate/spec.md`, a project `AGENTS.md`, and a project `lessons-learned.md` are absent after bounded tracked-file search. The review therefore used the card contract, `CONTRIBUTING.md`, `openspec/specs/worktree-isolation-governance/spec.md`, the available native-tools architecture exploration, the current source/configuration, and the remediation report.
 
 ## Contract results
 
-| Clause | Result | Evidence |
+| Clause | Result | Independent evidence |
 |---|---:|---|
-| 12 configured profile homes | PASS | Root default plus `aziz`, `coder`, `designer`, `lambert`, `leader`, `nazla`, `productservices`, `pupu`, `qa`, `researcher`, and `reviewer` = 12. `profiles/default` has no `config.yaml` and is correctly excluded as an unconfigured stub directory. |
-| 103 unique Crew files per profile, 1,236 total | PASS | `unique_manifest_files=103`; `12 × 103 = 1236`; `missing=0`. |
-| SHA-256 parity with agent4070 | **FAIL** | Fresh comparison across all 12 configured homes × 103 files finds `MISMATCHES=132`: 11 unique destinations differ in all 12 homes. |
-| SHA-256 parity with `oss/crew@3757fde` | **FAIL** | Direct immutable-tree comparison finds `MISMATCHES=492`: 41 unique destinations differ in all 12 homes. |
-| Desktop plugin parity | **PARTIAL** | ASUS-VB: `5aca7f06bf70ae8c48ab699b6f34e1b16b8d488d8ec22da6507e85dd66721314`; agent4070: `8588873da80aaa3d93c17656565f80acb7ef593270294d76fc2c8467c3939eb7`; immutable `3757fde`: `5aca7f06bf70ae8c48ab699b6f34e1b16b8d488d8ec22da6507e85dd66721314`. ASUS-VB matches the immutable baseline but not current agent4070. |
-| Crew checkout identity | **FAIL** | Live `oss/crew` HEAD is `1507553b2a8285d04702a93106365cc29cd74885`; the card and root Git gitlink still identify `3757fdefa02a922ced1447108fdc31912510e85c`. |
-| Git tracking | PASS | All 1,236 expected profile artifacts are tracked (`missing_tracked=0`); Crew-containing paths total 1,240, comprising the profile artifacts plus desktop plugin, marker, and cutover references. Root `config.yaml`, desktop plugin/marker, and cutover script are tracked. Scoped Git status is clean (`HEAD == origin/main == 0fa7dd22`). |
-| Root `config.yaml` | PASS | `plugins.enabled` contains `crew`; `plugins.entries.crew.allow_tool_override=false`; `crew.roles_path`, `crew.source_dir`, and `crew.board` resolve to ASUS-VB/Crew; dispatch/review/orchestrator settings are enabled as contracted. |
-| Cutover script | PASS | Structural checks found all required gates: main branch, tracked-clean check, `merge --ff-only`, `ExpectedSha`, SHA-256, expected 12 profiles, manifest-derived file list, desktop sync, dry-run, and no automatic Gateway/Dashboard restart. `apply-live-crew-cutover.ps1` correctly reflects 12 profiles. |
-| Zero-Checkout invariant | **PARTIAL / FAIL** | All four protected repositories report branch `main`, but `O:/workspaces/oss/crew` is dirty with 10 tracked modifications and several untracked concurrent artifacts. The branch-position gate passes; the clean-production-checkout requirement in `openspec/specs/worktree-isolation-governance/spec.md:15` does not. |
+| 12 configured ASUS-VB profile homes | PASS | Root default plus 11 `profiles/*` directories containing `config.yaml`; unconfigured `profiles/default` is excluded. |
+| 103 unique destinations per home; 1,236 ASUS-VB files | PASS | `manifest_unique_destinations=103`; `asus_configured_homes=12`; `asus_expected_files=1236`; `source_missing=0`; `asus_missing=0`. |
+| ASUS-VB parity with clean Crew source | PASS | `asus_vs_repo_mismatch=0` across all 1,236 destinations. |
+| agent4070 parity with clean Crew source | PASS | Seven configured homes, 721 expected files, `agent4070_missing=0`, `agent4070_vs_repo_mismatch=0`. |
+| ASUS-VB parity with agent4070 deployment | PASS | `asus_vs_agent_root_mismatch=0` across all 1,236 ASUS-VB destinations. |
+| Desktop plugin parity | PASS | Crew = ASUS-VB = agent4070 = `a6a2191d…f09a7`. |
+| ASUS-VB `config.yaml` Crew wiring | PASS | `plugins.enabled` includes `crew`; `allow_tool_override: false`; `kanban.dispatch_in_gateway`, `review_dispatch`, and orchestration settings are enabled; `crew.roles_path`, `source_dir`, and `board` are configured at lines 1481–1484. |
+| agent4070 `config.yaml` Crew wiring | PASS | Equivalent plugin/tool override, Kanban, and root `crew` wiring; root block at lines 1530–1533. |
+| Parameterized cutover scripts | PASS | Both scripts: `GitSshKey = $env:HERMES_GIT_SSH_KEY`; missing-key refusal; zero `id_rsa_phuongvm`; expected profile counts 12/7; required safety and parity gates present. |
+| Scoped Git tracking and `.gitignore` | PASS | All 1,236 expected ASUS-VB profile artifacts tracked; `tracked_crew_total=1240`; config, desktop plugin/marker, and cutover script tracked. `git check-ignore -v` confirms backup and Crew runtime-state rules at `.gitignore:86,127,131`. |
+| Clean Crew checkout on current `origin/main` | PASS | Independent pre-artifact state: branch `main`; `HEAD == origin/main == 41dfbd98…`; `status --porcelain` empty. |
+| Zero-Checkout branch gate | PASS | `O:/workspaces`, Crew, Hermes Agent, and Hermes Nerve all reported branch `main`; the review used a dedicated Crew worktree. |
 
 ## Two-axis review
 
 ### Standards / Fowler lens
 
-- **Hard standard:** `services/apply-live-crew-cutover.ps1:37` embeds a user-specific SSH key path, contrary to `CONTRIBUTING.md:53` (`Never put machine-specific strings ... in code, tests or docs`). Its node-local purpose does not override the written repository standard.
-- **Hard standard:** the production `oss/crew` checkout is dirty. `openspec/specs/worktree-isolation-governance/spec.md:15` requires the primary working tree to remain clean on `origin/main`; branch `main` alone is insufficient.
-- **Judgment-call smell — Divergent Change:** the cutover script combines repository synchronization, manifest extraction, profile deployment/backups, desktop registration, and daemon management. Dry-run and deterministic gates reduce operational risk but not the concentration of responsibilities.
+**Documented standards:** PASS for the contracted remediation. The prior hard-coded user-specific SSH-key path is removed, and the Crew primary checkout was clean on `main` / `origin/main`. The service scripts and deployment report necessarily identify the node-local Windows targets named by this infrastructure card; these paths do not enter the portable Crew plugin manifest and are treated as card-required deployment evidence rather than a new plugin portability regression.
+
+**Judgment-call smells (advisory, non-blocking):** the two 268-line node-local cutover scripts duplicate most operational logic, and each script combines repository synchronization, manifest extraction, backup/deployment, desktop synchronization, and optional daemon lifecycle. This is possible **Duplicated Code / Shotgun Surgery / Divergent Change**, but it predates and is outside the narrowly contracted parity-and-key remediation. No new abstraction was required by this card.
 
 ### Spec-fidelity lens
 
-- PASS: 12 configured homes, 103 unique destinations each, 1,236 files present, zero internal ASUS-VB drift.
-- PASS: `config.yaml`, cutover structure, scoped ASUS-VB Git tracking, and `.gitignore`.
-- **FAIL:** parity against current agent4070: 132 profile-file mismatches (11 unique destinations × 12 homes) plus desktop root mismatch.
-- **FAIL:** direct immutable-baseline parity: 492 profile-file mismatches (41 unique destinations × 12 homes) against `oss/crew@3757fde`; the desktop plugin alone matches that baseline.
-- **FAIL:** immutable Crew baseline identity: live checkout `1507553` differs from required/root-gitlink `3757fde`.
-- **FAIL:** production checkout cleanliness: `oss/crew` is on `main` but dirty.
-- **WARNING:** original proof enumerates 13 directories because it includes unconfigured `profiles/default`, and 109 entries because six skill destinations are duplicated; owner-approved revised proof now validates the review artifact rather than the malformed parity expression.
+PASS. Every acceptance clause is present and independently evidenced: 12 × 103 ASUS-VB files; 7 × 103 agent4070 files; zero SHA-256 mismatches to current Crew; zero ASUS-VB-to-agent4070 root mismatches; desktop parity; Crew config wiring; parameterized cutover; scoped tracking/ignore behavior; and a clean Crew `main` equal to `origin/main` at the audited point. No functional scope creep was found.
 
-## Critical findings and remediation
+## Operational advisories (not acceptance blockers)
 
-1. **CRITICAL — node parity is false.** The current agent4070 root differs from ASUS-VB in 11 unique destinations across all 12 configured homes. Decide the authoritative release state, deploy it to both nodes, then rerun full parity.
-2. **CRITICAL — immutable baseline parity is false.** ASUS-VB differs from `oss/crew@3757fde` in 41 unique installed destinations across all 12 homes (492 instances), even though its desktop plugin matches that baseline. Synchronize all manifest-derived artifacts from one immutable commit.
-3. **CRITICAL — baseline identity is unstable.** Pin the manifest and source blobs to one immutable commit, or rescope the card to current Crew HEAD and redeploy both node baselines.
-4. **HIGH — production checkout is dirty.** Restore the `oss/crew` primary checkout to the mandated clean-on-main state through the owner-controlled workflow; do not mutate it from this verifier task.
-5. **HIGH — machine-specific path violates repository policy.** Replace the hard-coded SSH key path with a node-local environment/config input in a separate implementation card.
-6. **WARNING — original proof command is structurally invalid.** Filter profiles by `config.yaml` and deduplicate installed destination paths; the owner-confirmed revised proof correctly limits itself to review-artifact existence and explicit verdict.
-
-## Not reviewed
-
-The mutating cutover script was not executed because the card prohibits audited configuration changes. Gateway/Dashboard restarts were not performed; those are Commander-only operations.
+1. Gateway and Dashboard were not restarted by the remediation or this review. Those remain Commander-only actions; deployed files are at parity, but running processes load them only after the Commander-approved restart.
+2. The node-local cutover script still contains `git merge --ff-only` for an owner-controlled live cutover. The active card and OpenSpec branch-position requirement are satisfied, but the newer workspace-wide governance reserves production-checkout fast-forwarding for the Commander/offline cutover workflow. Reviewers and workers must not invoke it.
+3. The root `O:/workspaces` repository contains unrelated outstanding changes and a stale Crew gitlink outside this card's Crew-cleanliness clause. This review does not classify the entire root monorepo as clean.
 
 ## Evidence receipt
 
 ```text
-VALID_PROFILE_HOMES=12 VALID_UNIQUE_FILES=1236
-ASUS_INTERNAL_DRIFT=0
-CURRENT_ASUS_VS_AGENT4070_MISMATCHES=132 UNIQUE_PATHS=11
-ASUS_VS_3757FDE_MISMATCHES=492 UNIQUE_PATHS=41
-asus_desktop_sha256=5aca7f06bf70ae8c48ab699b6f34e1b16b8d488d8ec22da6507e85dd66721314
-agent4070_desktop_sha256=8588873da80aaa3d93c17656565f80acb7ef593270294d76fc2c8467c3939eb7
-baseline_3757fde_desktop_sha256=5aca7f06bf70ae8c48ab699b6f34e1b16b8d488d8ec22da6507e85dd66721314
-branches={"O:/workspaces":"main","O:/workspaces/oss/crew":"main","O:/workspaces/oss/hermes-agent":"main","O:/workspaces/oss/hermes-nerve":"main"}
-CREW_PRIMARY_DIRTY_TRACKED=10
-CREW_HEAD=1507553b2a8285d04702a93106365cc29cd74885
-ROOT_CREW_GITLINK=3757fdefa02a922ced1447108fdc31912510e85c
-GIT_EXPECTED_PROFILE_ARTIFACTS=1236 GIT_EXPECTED_MISSING=0 GIT_CREW_TRACKED_TOTAL=1240
+CHECK manifest_103=PASS
+CHECK asus_12_homes=PASS
+CHECK asus_1236_files=PASS
+CHECK agent_7_homes=PASS
+CHECK all_sources_present=PASS
+CHECK asus_all_present=PASS
+CHECK asus_repo_parity=PASS
+CHECK asus_agent_root_parity=PASS
+CHECK agent_all_present=PASS
+CHECK agent_repo_parity=PASS
+CHECK desktop_parity=PASS
+CHECK scripts_parameterized_and_guarded=PASS
+CHECK all_expected_asus_files_tracked=PASS
+CHECK tracked_crew_total_at_least_1240=PASS
+CHECK special_files_tracked=PASS
+CHECK protected_repos_on_main=PASS
+CHECK crew_clean_equal_origin_main=PASS
+manifest_unique_destinations=103
+asus_configured_homes=12 asus_expected_files=1236 asus_missing=0
+asus_vs_repo_mismatch=0 asus_vs_agent_root_mismatch=0
+agent4070_configured_homes=7 agent4070_expected_files=721
+agent4070_missing=0 agent4070_vs_repo_mismatch=0
+desktop_sha256=a6a2191d4c5fa6c551052c9bb99366dfe61dd767ff2a8b281fc9a72a7b0f09a7
+tracked_expected=1236 tracked_missing=0 tracked_crew_total=1240
+crew_branch=main
+crew_head=41dfbd98a28f04f06d9eb3b807ddc2e8dae25c4b
+crew_origin_main=41dfbd98a28f04f06d9eb3b807ddc2e8dae25c4b
+crew_porcelain_lines=0
 ```
 
-Reproduction: `python audit_asus_vb_crew.py` from this card's Kanban scratch workspace; complete output is `audit.json` there.
+The composite audit initially printed two heuristic FAIL labels because its string checks expected nonexistent literal names (`dispatch_enabled`) and literal `.gitignore` phrases. Direct source evidence corrects those probe defects: the actual keys are `kanban.dispatch_in_gateway` / `review_dispatch`, root Crew wiring exists on both nodes, and `git check-ignore -v` proves wildcard rules at `.gitignore:86,127,131` cover backups and runtime state. These were audit-probe defects, not configuration defects.
 
-**Final verdict: REJECTED.**
+**Final verdict: APPROVED.**
