@@ -29,12 +29,13 @@ The Crew Board component SHALL dynamically detect and use the active dashboard e
 - **THEN** it SHALL resolve using the active gateway connection base URL or configured public URL.
 
 ### Requirement: Dynamic Card Detail Link
-The Crew Card Page component SHALL provide dynamic link resolution for card details matching the dashboard endpoint.
+The Crew Card Page component and all outward Python/UI card link producers SHALL provide dynamic link resolution for card details using the `/crew?card=<id>` query convention matching the dashboard endpoint, and clicking a shareable card link inside Hermes Desktop SHALL open the card inside the in-app Crew view.
 
 #### Scenario: Card detail link resolution
-- **GIVEN** the Crew Card Page component renders in a browser or web dashboard
-- **WHEN** formatting the shareable card URL
-- **THEN** the URL SHALL use the detected dashboard endpoint and append `/card/<id>` (or hosted equivalent).
+- **GIVEN** the Crew Card Page component or backend message producer formats a shareable card URL
+- **WHEN** resolving the link for `<id>`
+- **THEN** the URL SHALL use the detected dashboard endpoint and format `<dashboard>/crew?card=<id>`
+- **AND** clicking that link inside Hermes Desktop chat SHALL intercept the navigation in-app and display `<CardPage id="<id>" />` without launching an external browser.
 
 ### Requirement: Build Integrity
 Frontend bundles SHALL build cleanly without TypeScript or packaging errors.
