@@ -179,8 +179,8 @@ class CardUrlTests(CardTestCase):
         self.assertEqual("http://dash/crew?card=a%2Fb%26c", crew_card.card_url("a/b&c", "http://dash"))
 
     def test_card_md_link_is_the_id_as_a_markdown_anchor_on_the_shareable_link(self):
-        self.assertEqual("[t_d8403bb8](https://agent4070-dashboard.ptdev.vip/crew?card=t_d8403bb8)",
-                         crew_card.card_md_link("t_d8403bb8", base="https://agent4070-dashboard.ptdev.vip"))
+        self.assertEqual("[t_d8403bb8](https://crew.example.test/crew?card=t_d8403bb8)",
+                         crew_card.card_md_link("t_d8403bb8", base="https://crew.example.test"))
         os.environ["CREW_DASHBOARD_URL"] = "https://dash.example.com/"
         self.assertEqual("[t_abc123](https://dash.example.com/crew?card=t_abc123)", crew_card.card_md_link("t_abc123"))
 

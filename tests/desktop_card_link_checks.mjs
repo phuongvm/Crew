@@ -10,7 +10,7 @@ export async function cardLinkChecks({ React, createRoot, window, document, ok, 
   // --- cardFromHref: the shareable URL in its three spellings; anything else is ''
   const { cardFromHref } = withHost.mod
   ok(typeof cardFromHref === 'function', 'the bundle exports cardFromHref')
-  eq(cardFromHref('https://agent4070-dashboard.ptdev.vip/crew?card=t_d8403bb8'), 't_d8403bb8', 'a full https shareable link')
+  eq(cardFromHref('https://crew.example.test/crew?card=t_d8403bb8'), 't_d8403bb8', 'a full https shareable link')
   eq(cardFromHref('http://127.0.0.1:8799/crew?card=t_1&n=5'), 't_1', 'the local service, extra query kept apart')
   eq(cardFromHref('https://h.example:9119/api/plugins/crew?card=t_2'), 't_2', 'a path that ends in /crew')
   eq(cardFromHref('https://h.example/crew/?card=t_3'), 't_3', 'a trailing slash on /crew')
@@ -60,7 +60,7 @@ export async function cardLinkChecks({ React, createRoot, window, document, ok, 
   const chat = document.createElement('div')
   chat.className = 'aui-md'
   // static test fixture markup (no untrusted input): what Desktop's markdown renderer makes of the card-open lead
-  chat.innerHTML = '<p><strong>Card open</strong> · <a id="tl" href="https://agent4070-dashboard.ptdev.vip/crew?card=t_new1"><span id="tl-in">t_new1</span></a> · Port</p>' +
+  chat.innerHTML = '<p><strong>Card open</strong> · <a id="tl" href="https://crew.example.test/crew?card=t_new1"><span id="tl-in">t_new1</span></a> · Port</p>' +
     '<a id="other" href="https://example.com/checkout?card=t_new1">Checkout</a>'
   document.body.appendChild(chat)
   // what Desktop's ExternalLink does in its own (bubble) onClick: bail when a capture listener already took the click
@@ -80,11 +80,11 @@ export async function cardLinkChecks({ React, createRoot, window, document, ok, 
     const before = navigated.length
     const ev = await fire(document.getElementById('tl-in'), init)
     if (init.type) ok(!ev.defaultPrevented, what + ' is not taken')
-    else ok(external.length > 0 && external.at(-1) === 'https://agent4070-dashboard.ptdev.vip/crew?card=t_new1', what + ' reaches ExternalLink with the full shareable href')
+    else ok(external.length > 0 && external.at(-1) === 'https://crew.example.test/crew?card=t_new1', what + ' reaches ExternalLink with the full shareable href')
     eq(navigated.length, before, what + ' does not navigate in-app')
   }
   ok(host.querySelector('.page-board') && !rests.some(p => p.startsWith('/card/t_new1')), 'no modified click opened the card in-app')
-  eq(document.getElementById('tl').getAttribute('href'), 'https://agent4070-dashboard.ptdev.vip/crew?card=t_new1', 'the anchor keeps its full shareable href for copying')
+  eq(document.getElementById('tl').getAttribute('href'), 'https://crew.example.test/crew?card=t_new1', 'the anchor keeps its full shareable href for copying')
 
   // an unrelated link with a card query is left alone
   external.length = 0
