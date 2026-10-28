@@ -1,7 +1,7 @@
 ---
 name: crew
 description: "Use when running /crew. Coordinator intake & contract."
-version: 0.10.2
+version: 0.10.4
 ---
 
 # /crew - coordinator intake

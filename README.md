@@ -5,7 +5,7 @@
 **You ask once. A coordinator owns the card until its proof passes.**
 
 [![Hermes plugin](https://img.shields.io/badge/Hermes-plugin-3fb950?style=flat-square)](https://github.com/NousResearch/hermes-agent)
-[![Version](https://img.shields.io/badge/version-0.10.2-3fb950?style=flat-square)](plugin.yaml)
+[![Version](https://img.shields.io/badge/version-0.10.4-3fb950?style=flat-square)](plugin.yaml)
 [![tests](https://github.com/macd2/Crew/actions/workflows/tests.yml/badge.svg)](https://github.com/macd2/Crew/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -33,6 +33,21 @@ hands the card to a **coordinator** that owns it until the proof command exits 0
 result back in the same chat, or one concrete question when it truly needs you.
 
 [![The crew dashboard: a card's graph with its running worker selected and the live transcript](assets/dashboard.webp)](https://crew.forgecoreai.com)
+
+## What's new in 0.10.4
+
+- **The board and card pages poll lighter.** Desktop and every dashboard tab ask for the board and the open card every
+  2 s, and each answer rebuilt the whole graph, opening a database connection for every query (64 for the board,
+  108-118 for a card). A render now shares one read-only connection and closes it when it ends, and repeated
+  identical reads within 3 s are served from one build (a write through the dashboard clears the cache). On a
+  26-card board a card render went from 467 ms to 242 ms. The connection never outlives the render, so it cannot
+  block deleting or replacing the database on Windows (#20, #21, thanks @g0GobliN).
+
+## What's new in 0.10.3
+
+- **Space and Escape stay with the chat.** With a chat beside a crew card (a split tile or a stacked tab), typing a
+  space in the chat no longer got swallowed by the card page or the board. The card and board keys now act only
+  when the focus is inside crew (issue #19).
 
 ## What's new in 0.10.2
 

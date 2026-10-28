@@ -110,7 +110,7 @@ class DesktopAuthFallbackTests(unittest.TestCase):
     def test_desktop_plugin_carries_tile_and_health_probe(self):
         js = self._js()
         self.assertIn("asTile: true", js)
-        self.assertIn("http://127.0.0.1:8799/healthz", js)
+        self.assertIn('data: { path: "/crew"', js)
 
     def test_probe_local_daemon_in_node(self):
         node = shutil.which("node")

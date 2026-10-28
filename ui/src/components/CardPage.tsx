@@ -1,3 +1,4 @@
+import { isCrewKey } from '../key-scope'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CrewApi } from '../api'
 import { CardUiContext, type CardUi } from '../card-ui'
@@ -93,24 +94,7 @@ export function CardPage({ api, id, onBack, openChat, hash = false, boardHref = 
   keyRef.current = { paused, selected, reload, onBack, closePanel }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!e.isTrusted) return
-      const active = document.activeElement as HTMLElement | null
-      const tag = active?.tagName || ''
-      if (
-        tag === 'INPUT' ||
-        tag === 'TEXTAREA' ||
-        active?.isContentEditable ||
-        active?.closest?.('[contenteditable="true"]') ||
-        active?.closest?.('[contenteditable]') ||
-        e.ctrlKey ||
-        e.metaKey ||
-        e.altKey
-      ) return
-
-      // In Hermes Desktop or embedded environments, only intercept keys when focus
-      // is actually inside this card page's DOM tree, never stealing keys from other panes or the chat composer.
-      if (root.current && !root.current.contains(active)) return
-
+      if (e.ctrlKey || e.metaKey || e.altKey || !isCrewKey(e, root.current)) return
       const k = keyRef.current
       if (e.code === 'Space') { e.preventDefault(); setPaused(p => !p) }
       else if (e.key === 'r' || e.key === 'R') k.reload()
