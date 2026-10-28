@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { coordinatorTarget } from '../card-format'
+import { cardChatTarget } from '../card-format'
 import type { CardJson } from '../card-types'
 import type { Tile } from '../types'
 import { useCrewHost, type ActionName } from '../host'
@@ -121,7 +121,7 @@ export function ActionBar({ card, openChat, onDone }: { card: CardJson; openChat
   const [msg, show] = useFlash(card.card_id)
   if (!actions) return null
   const { Button } = actions
-  const target = coordinatorTarget(card.coordinator)
+  const target = cardChatTarget(card)
   return (
     <div id="actionbar" className="actionbar">
       <div className="abtns">

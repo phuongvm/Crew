@@ -91,6 +91,9 @@ export interface CardJson {
   card_model?: string
   card_created_at?: number | null
   coordinator?: string
+  session_id?: string
+  session_profile?: string
+  hermes_chat_url?: string
   tokens?: { ceiling?: number; used?: number; raw_total?: number; calls?: number; pct?: number }
   situation?: Situation
   report?: string

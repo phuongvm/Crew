@@ -343,58 +343,201 @@ def _origin_from_events(board_db, card_id):
     return None
 
 
+def _is_worker_or_empty_session(sid):
+    """True when `sid` is a kanban worker session or a 0-message unpersisted draft in state.db."""
+    if not sid or str(sid).startswith("local-"):
+        return True
+    prof, _, row = find_session_by_id(sid)
+    if row is not None:
+        source = str(row[2] or "").strip().lower()
+        msg_cnt = int(row[7] or 0)
+        if source == "kanban" or msg_cnt <= 0:
+            return True
+    return False
+
+
+def _session_mentions_card(db_path, sid, card_id, created_at=None):
+    """Fast indexed check (<1ms): True if session `sid` mentions `card_id` within 30s of `created_at`."""
+    if not db_path or not sid or not card_id:
+        return False
+    like = "%" + str(card_id) + "%"
+    if created_at:
+        lo, hi = float(created_at) - 5, float(created_at) + 30
+        row = qone(db_path, "select 1 from messages where session_id = ? and timestamp between ? and ? "
+                            "and (content like ? or tool_calls like ?) limit 1",
+                   (sid, lo, hi, like, like))
+    else:
+        row = qone(db_path, "select 1 from messages where session_id = ? "
+                            "and (content like ? or tool_calls like ?) limit 1",
+                   (sid, like, like))
+    return row is not None
+
+
 def _origin_from_messages(card_id, created_at, run_sessions):
     """The discussion that created the card, read from the sessions themselves: the earliest message in any
     profile's state.db that names the card id, within ORIGIN_WINDOW_S of its creation. The creator sees the
     new id first (the create call's own result), so the earliest mention is the creator; the card's own worker
-    sessions (run_sessions) are excluded so a card is never linked to itself."""
+    sessions (run_sessions) and kanban worker sessions are excluded so a card is never linked to a worker."""
     if not card_id or not created_at:
         return None
     lo, hi = float(created_at) - 5, float(created_at) + ORIGIN_WINDOW_S
     like = "%" + str(card_id) + "%"
     best = None
     for prof, db in discover_state_dbs():
-        rows = q(db, "select session_id, timestamp from messages where timestamp between ? and ? "
-                     "and (content like ? or tool_calls like ?) order by timestamp limit 8",
+        rows = q(db, "select m.session_id, m.timestamp, s.source, s.message_count from messages m "
+                     "left join sessions s on s.id = m.session_id "
+                     "where m.timestamp between ? and ? "
+                     "and (m.content like ? or m.tool_calls like ?) order by m.timestamp limit 12",
                  (lo, hi, like, like))
-        for sid, ts in rows:
-            if not sid or sid in run_sessions or not _SESSION_ID_RE.match(str(sid)):
+        for sid, ts, source, msg_cnt in rows:
+            sid_s = str(sid or "").strip()
+            if (not sid_s or sid_s in run_sessions or sid_s.startswith("local-")
+                    or not _SESSION_ID_RE.match(sid_s)):
+                continue
+            if str(source or "").strip().lower() == "kanban":
+                continue
+            if msg_cnt is not None and int(msg_cnt or 0) <= 0:
                 continue
             if best is None or (ts or 0) < best[0]:
-                best = (ts or 0, prof, str(sid))
+                best = (ts or 0, prof, sid_s)
             break
     return (best[1], best[2]) if best else None
 
 
-def find_origin_session(board_db, card_id, card_session_id=None, created_at=None):
+def _parent_card_ids(board_db, card_id):
+    """Direct parent card ids via decomposition origin, at-creation parents, or task_links."""
+    if not board_db or not card_id:
+        return []
+    out = []
+    seen = {card_id}
+    for pid in ([decompose_origin(board_db, card_id)]
+                + created_parents(board_db, card_id)
+                + [r[0] for r in q(board_db, "select parent_id from task_links where child_id = ?", (card_id,))]):
+        pid = str(pid or "").strip()
+        if pid and pid not in seen:
+            seen.add(pid)
+            out.append(pid)
+    return out
+
+
+def find_origin_session(board_db, card_id, card_session_id=None, created_at=None, _seen=None):
     """The discussion a card came from, as (profile, session_id), or ("", "") when none can be shown.
 
-    In order: the card row's tasks.session_id (kanban_create from a chat, a plan child inheriting it), the
-    origin crew_card stamped when it opened the card, then the state.db sessions that named the card right
-    after it was created (a `hermes kanban create` from a terminal stamps neither). Found answers are cached
-    for the process; a miss is retried after ORIGIN_MISS_TTL_S.
+    Verifies candidate session IDs against state.db (`message_count > 0`, `source != 'kanban'`) and prefers
+    the non-worker session whose messages actually contain the card creation receipt within ORIGIN_WINDOW_S
+    whenever `tasks.session_id` / `origin` was clobbered by a background draft session in `os.environ`.
+    Child/decomposed cards without their own discussion session inherit from their parent card.
     """
-    sid = str(card_session_id or "").strip()
-    if sid and sid != "no-session" and _SESSION_ID_RE.match(sid):
-        return find_session_by_id(sid)[0] or "", sid
-    if not card_id:
-        return "", ""
-    hit = _ORIGIN_CACHE.get(card_id)
-    if hit and (hit[2] or time.time() - hit[3] < ORIGIN_MISS_TTL_S):
-        return hit[0], hit[1]
-    found = _origin_from_events(board_db, card_id)
-    if not found:
-        run_sessions = set()
+    if card_id:
+        hit = _ORIGIN_CACHE.get(card_id)
+        if hit and (hit[2] or time.time() - hit[3] < ORIGIN_MISS_TTL_S):
+            return hit[0], hit[1]
+
+    run_sessions = set()
+    if board_db and card_id:
         for (payload,) in q(board_db, "select payload from task_events where task_id = ? and kind = 'session'",
                             (card_id,)):
             try:
                 run_sessions.add(str(json.loads(payload or "{}").get("session") or ""))
             except Exception:
                 pass
+        if created_at is None:
+            trow = qone(board_db, "select session_id, created_at from tasks where id = ?", (card_id,))
+            if trow:
+                if not card_session_id:
+                    card_session_id = trow[0]
+                created_at = trow[1]
+
+    # 1. Candidate from tasks.session_id or task_events(kind='origin')
+    cand_prof, cand_sid = "", ""
+    sid = str(card_session_id or "").strip()
+    if sid and sid != "no-session" and _SESSION_ID_RE.match(sid) and sid not in run_sessions:
+        cand_prof, cand_sid = find_session_by_id(sid)[0] or "", sid
+    if not cand_sid and board_db and card_id:
+        ev_found = _origin_from_events(board_db, card_id)
+        if ev_found and ev_found[1] not in run_sessions:
+            cand_prof, cand_sid = ev_found
+
+    found = None
+    has_state_dbs = bool(discover_state_dbs())
+    if cand_sid:
+        prof_in_db, db_in_db, row_in_db = find_session_by_id(cand_sid)
+        if row_in_db is not None and not _is_worker_or_empty_session(cand_sid):
+            # Fast path (<1ms): if the candidate session itself mentions this card near creation, it is verified ground truth
+            if not card_id or _session_mentions_card(db_in_db, cand_sid, card_id, created_at):
+                found = (prof_in_db or cand_prof, cand_sid)
+        elif row_in_db is None and not has_state_dbs and not str(cand_sid).startswith("local-"):
+            # Unit-test or headless environment with no state.db files on disk: trust the stamped candidate
+            found = (cand_prof, cand_sid)
+
+    # 2. If card has no stamped candidate of its own and is a decomposed/linked child card, inherit parent's origin first
+    if not found and not cand_sid and board_db and card_id:
+        seen = set(_seen or ())
+        seen.add(card_id)
+        for pid in _parent_card_ids(board_db, card_id):
+            if pid in seen:
+                continue
+            p_prof, p_sid = find_origin_session(board_db, pid, _seen=seen)
+            if p_sid:
+                found = (p_prof, p_sid)
+                break
+
+    # 3. Ground-truth message scan across state.db when candidate is missing, empty, or clobbered
+    if not found and card_id and has_state_dbs:
         found = _origin_from_messages(card_id, created_at, run_sessions)
+        if not found and cand_sid:
+            prof_in_db, _, row_in_db = find_session_by_id(cand_sid)
+            if row_in_db is not None and not _is_worker_or_empty_session(cand_sid):
+                found = (prof_in_db or cand_prof, cand_sid)
+
+    # 4. Ancestor fallback when a child card had a poisoned candidate that failed message scan
+    if not found and board_db and card_id:
+        seen = set(_seen or ())
+        seen.add(card_id)
+        for pid in _parent_card_ids(board_db, card_id):
+            if pid in seen:
+                continue
+            p_prof, p_sid = find_origin_session(board_db, pid, _seen=seen)
+            if p_sid:
+                found = (p_prof, p_sid)
+                break
+
     prof, osid = found or ("", "")
-    _ORIGIN_CACHE[card_id] = (prof, osid, bool(osid), time.time())
+    if has_state_dbs and osid and board_db and card_id and cand_sid and cand_sid != osid:
+        _heal_task_session_in_db(board_db, card_id, prof or "default", osid)
+    if card_id:
+        _ORIGIN_CACHE[card_id] = (prof, osid, bool(osid), time.time())
     return prof, osid
+
+
+def _heal_task_session_in_db(board_db, card_id, prof, osid):
+    """Persist the verified origin session back to tasks.session_id and Coordinator: in tasks.body when the row was
+    stamped with a poisoned draft session."""
+    try:
+        conn = sqlite3.connect(board_db, timeout=2)
+        try:
+            row = conn.execute("select session_id, body from tasks where id = ?", (card_id,)).fetchone()
+            if not row:
+                return
+            cur_sid, body = row[0], row[1] or ""
+            new_body = body
+            if re.search(r"(?im)^Coordinator:\s*.*$", new_body):
+                new_body = re.sub(
+                    r"(?im)^Coordinator:\s*.*$",
+                    "Coordinator: %s/%s" % (prof or "default", osid),
+                    new_body,
+                    count=1,
+                )
+            if cur_sid != osid or new_body != body:
+                conn.execute(
+                    "update tasks set session_id = ?, body = ? where id = ?",
+                    (osid, new_body, card_id),
+                )
+                conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
 
 
 def exact_session_for_run(board_db, card_id, run_id):
@@ -1640,16 +1783,19 @@ class _Builder(object):
         writer_role = card_role(body, skills)
         cstatus = card_status(tstatus, [run_status(r[2], r[3]) for r in runs])
         coordinator = body_field(body, "Coordinator")
-        # the discussion the card came from: the row's session_id, else crew's origin record, else the state.db
-        # session that named the card as it was created (a CLI-created card carries neither)
+        # the discussion the card came from: verified against state.db / origin record / ancestor cards
         origin_profile, origin_sid = find_origin_session(self.db, cid, card_session_id, created_at)
+        if origin_sid:
+            c_prof, sep, c_sid = str(coordinator or "").strip().partition("/")
+            if not sep or c_sid.strip() != origin_sid:
+                coordinator = "%s/%s" % (origin_profile or c_prof.strip() or "default", origin_sid)
         card_ev = {
             "assignee": assignee, "result": result, "model_override": model_override,
             "provider_override": provider_override,
             "status": tstatus, "block_kind": block_kind, "created_at": created_at,
             "run_count": len(runs), "writer_role": writer_role,
             "coordinator": coordinator,
-            "session_id": card_session_id or origin_sid or "",
+            "session_id": origin_sid or card_session_id or "",
             "session_profile": origin_profile or "",
             "verifier": body_field(body, "Verifier"),
             "done_when": body_field(body, "Done when"),

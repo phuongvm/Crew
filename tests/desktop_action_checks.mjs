@@ -59,7 +59,7 @@ export async function actionChecks({ tmp, React, createRoot, window, document, o
   ok(m.host.querySelector('#act-stop').dataset.variant === 'destructive', 'Stop is the destructive Button variant')
   ok(!m.host.querySelector('#cardCoOpen'), 'the bar replaces the old open-chat chip')
   await click(m.host.querySelector('#act-chat'))
-  eq(opened, [['20261018_abcdef', { profile: 'default' }]], 'Open chat opens the coordinator session')
+  eq(opened, [['20261018_abcdef', { profile: 'default', intent: 'tab', awaitHydration: true, forceResume: true }]], 'Open chat opens the coordinator session')
   // Unstuck posts /action/unstuck with the card id, shows the answer, polls again
   const polls = rests.filter(r => r.path.startsWith('/card/')).length
   await click(m.host.querySelector('#act-unstuck'))

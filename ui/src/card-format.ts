@@ -148,6 +148,24 @@ export function coordinatorTarget(value: unknown): { profile: string; session: s
   return { profile: m[1], session: m[2] }
 }
 
+// Resolves { profile, session } from verified session_id / session_profile or coordinator.
+export function cardChatTarget(
+  card: { coordinator?: unknown; session_id?: unknown; session_profile?: unknown } | null | undefined
+): { profile: string; session: string } | null {
+  if (!card) return null
+  const direct = coordinatorTarget(card.coordinator)
+  const sid = String(card.session_id || '').trim()
+  if (sid && sid !== 'no-session' && /^[A-Za-z0-9_-]{1,128}$/.test(sid)) {
+    const sprof = String(card.session_profile || '').trim()
+    const cprof = String(card.coordinator || '').split('/')[0].trim()
+    const prof = (sprof && /^[A-Za-z0-9_.-]{1,64}$/.test(sprof) ? sprof : '')
+      || (direct ? direct.profile : '')
+      || (cprof && /^[A-Za-z0-9_.-]{1,64}$/.test(cprof) ? cprof : 'default')
+    return { profile: prof, session: sid }
+  }
+  return direct
+}
+
 export function copyText(text: string, done: (ok: boolean) => void): void {
   try {
     if (navigator.clipboard && window.isSecureContext) {

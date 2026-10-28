@@ -655,6 +655,18 @@ function coordinatorTarget(value) {
   if (!/^[A-Za-z0-9_.-]{1,64}$/.test(m[1]) || !/^[A-Za-z0-9_-]{1,128}$/.test(m[2])) return null;
   return { profile: m[1], session: m[2] };
 }
+function cardChatTarget(card) {
+  if (!card) return null;
+  const direct = coordinatorTarget(card.coordinator);
+  const sid = String(card.session_id || "").trim();
+  if (sid && sid !== "no-session" && /^[A-Za-z0-9_-]{1,128}$/.test(sid)) {
+    const sprof = String(card.session_profile || "").trim();
+    const cprof = String(card.coordinator || "").split("/")[0].trim();
+    const prof = (sprof && /^[A-Za-z0-9_.-]{1,64}$/.test(sprof) ? sprof : "") || (direct ? direct.profile : "") || (cprof && /^[A-Za-z0-9_.-]{1,64}$/.test(cprof) ? cprof : "default");
+    return { profile: prof, session: sid };
+  }
+  return direct;
+}
 function copyText(text, done2) {
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -782,7 +794,7 @@ function ActionBar({ card, openChat, onDone }) {
   const [msg, show] = useFlash(card.card_id);
   if (!actions) return null;
   const { Button: Button2 } = actions;
-  const target = coordinatorTarget(card.coordinator);
+  const target = cardChatTarget(card);
   return /* @__PURE__ */ jsxs("div", { id: "actionbar", className: "actionbar", children: [
     /* @__PURE__ */ jsxs("div", { className: "abtns", children: [
       /* @__PURE__ */ jsx(ActionButtons, { subject: cardSubject(card), card: card.card_id, onResult: show, onDone }),
@@ -2968,7 +2980,13 @@ function TopArea({ card, openChat, onAction }) {
   const fp = s.first_pass || {};
   const un = s.units || {};
   const kids = (s.children || []).length;
-  const target = coordinatorTarget(card.coordinator);
+  const target = cardChatTarget(card);
+  const coordValue = target ? target.profile + "/" + target.session : card.coordinator || "";
+  const chatOpen = openChat || (!actions && card.hermes_chat_url ? (profile, session) => {
+    const base = String(card.hermes_chat_url || "").replace(/\/+$/, "");
+    const q = "resume=" + encodeURIComponent(session) + (profile && profile !== "default" ? "&profile=" + encodeURIComponent(profile) : "");
+    window.open(base + "/chat?" + q, "_blank", "noopener");
+  } : void 0);
   const report = card.card_status === "done" ? card.report || "" : "";
   const reason = report || s.reason || s.why || "";
   const you = (s.reason_actor || (s.reason ? "nobody" : "")) === "you" || cls === "blocked";
@@ -2992,8 +3010,8 @@ function TopArea({ card, openChat, onAction }) {
         /* @__PURE__ */ jsx16(Field, { label: "model", value: card.card_model || "" }),
         card.card_created_at ? /* @__PURE__ */ jsx16(Field, { label: "started", value: fmtAge(Date.now() / 1e3 - card.card_created_at) }) : null,
         /* @__PURE__ */ jsx16(Field, { label: "kanban id", value: card.card_id || "", copy: { id: "cardIdCopy", title: "copy the kanban id" } }),
-        /* @__PURE__ */ jsx16(Field, { label: "coordinator", value: card.coordinator || "", copy: { id: "cardCoCopy", title: "copy the coordinator session" } }),
-        target && openChat && !actions ? /* @__PURE__ */ jsxs15(Fragment8, { children: [
+        /* @__PURE__ */ jsx16(Field, { label: "coordinator", value: coordValue, copy: { id: "cardCoCopy", title: "copy the coordinator session" } }),
+        target && chatOpen && !actions ? /* @__PURE__ */ jsxs15(Fragment8, { children: [
           /* @__PURE__ */ jsx16("span", { className: "brk" }),
           /* @__PURE__ */ jsx16("span", { className: "fp openrow", children: /* @__PURE__ */ jsx16(
             "button",
@@ -3005,7 +3023,7 @@ function TopArea({ card, openChat, onAction }) {
               "aria-label": "open the chat this card came from",
               onClick: (e) => {
                 e.stopPropagation();
-                openChat(target.profile, target.session);
+                chatOpen(target.profile, target.session);
               },
               children: "open chat \u2197"
             }
@@ -3365,7 +3383,12 @@ function CrewPage({ api }) {
   const host3 = sdk.host;
   const openSession = host3?.openSession;
   const openChat = typeof openSession === "function" ? (profile, session) => {
-    void openSession.call(host3, session, { profile });
+    void openSession.call(host3, session, {
+      profile,
+      intent: "tab",
+      awaitHydration: true,
+      forceResume: true
+    });
   } : void 0;
   const [splash] = useState11(() => !splashShown);
   useEffect10(() => {

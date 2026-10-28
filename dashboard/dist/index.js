@@ -43,12 +43,17 @@
     return appReady;
   }
 
-  // The SDK has no navigate call, so a full navigation to the chat page is the robust way.
+  // Navigate to the dashboard chat tab for the target session.
   function openChat(profile, session) {
-    if (typeof profile === "string" && typeof session === "string" && PROFILE_RE.test(profile) && SESSION_RE.test(session)) {
-      window.location.assign((window.__HERMES_BASE_PATH__ || "") + "/chat?resume=" + encodeURIComponent(session) +
-        "&profile=" + encodeURIComponent(profile));
+    var prof = typeof profile === "string" ? profile.trim() : "";
+    if (typeof session !== "string" || !SESSION_RE.test(session)) return;
+    if (prof && !PROFILE_RE.test(prof)) return;
+    var activeProf = String(window.__HERMES_DASHBOARD_PROFILE__ || "default").trim() || "default";
+    var url = (window.__HERMES_BASE_PATH__ || "") + "/chat?resume=" + encodeURIComponent(session);
+    if (prof && prof !== activeProf) {
+      url += "&profile=" + encodeURIComponent(prof);
     }
+    window.location.assign(url);
   }
 
   function CrewPage() {

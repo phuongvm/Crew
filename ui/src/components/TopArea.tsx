@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { copyText, coordinatorTarget, fmtAge, toneVar } from '../card-format'
+import { cardChatTarget, copyText, fmtAge, toneVar } from '../card-format'
 import type { CardJson } from '../card-types'
 import { useCrewHost } from '../host'
 import { ActionBar } from './ActionBar'
@@ -52,7 +52,16 @@ export function TopArea({ card, openChat, onAction }: { card: CardJson; openChat
   const fp = s.first_pass || {}
   const un = s.units || {}
   const kids = (s.children || []).length
-  const target = coordinatorTarget(card.coordinator)
+  const target = cardChatTarget(card)
+  const coordValue = target ? target.profile + '/' + target.session : (card.coordinator || '')
+  const chatOpen: OpenChat | undefined = openChat || (!actions && card.hermes_chat_url
+    ? (profile: string, session: string) => {
+        const base = String(card.hermes_chat_url || '').replace(/\/+$/, '')
+        const q = 'resume=' + encodeURIComponent(session)
+          + (profile && profile !== 'default' ? '&profile=' + encodeURIComponent(profile) : '')
+        window.open(base + '/chat?' + q, '_blank', 'noopener')
+      }
+    : undefined)
 
   // A done card shows its done report (the text the owner is sent); any other card its pending reason.
   const report = card.card_status === 'done' ? card.report || '' : ''
@@ -87,9 +96,9 @@ export function TopArea({ card, openChat, onAction }: { card: CardJson; openChat
           {/* fmtAge takes an AGE in seconds, not a timestamp: created_at straight in reads as 20000 days. */}
           {card.card_created_at ? <Field label="started" value={fmtAge(Date.now() / 1000 - card.card_created_at)} /> : null}
           <Field label="kanban id" value={card.card_id || ''} copy={{ id: 'cardIdCopy', title: 'copy the kanban id' }} />
-          <Field label="coordinator" value={card.coordinator || ''} copy={{ id: 'cardCoCopy', title: 'copy the coordinator session' }} />
+          <Field label="coordinator" value={coordValue} copy={{ id: 'cardCoCopy', title: 'copy the coordinator session' }} />
           {/* The open chat button, on its own row, exists only where the host offers a chat to open. */}
-          {target && openChat && !actions ? (
+          {target && chatOpen && !actions ? (
             <>
               <span className="brk" />
               <span className="fp openrow">
@@ -99,7 +108,7 @@ export function TopArea({ card, openChat, onAction }: { card: CardJson; openChat
                   id="cardCoOpen"
                   title="open the chat this card came from"
                   aria-label="open the chat this card came from"
-                  onClick={e => { e.stopPropagation(); openChat(target.profile, target.session) }}
+                  onClick={e => { e.stopPropagation(); chatOpen(target.profile, target.session) }}
                 >{'open chat ↗'}</button>
               </span>
             </>

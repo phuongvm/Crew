@@ -744,6 +744,23 @@ def contract_gaps(c, allow_no_proof=False):
     return gaps
 
 
+def _live_session_get(name):
+    """Read a per-session variable from the gateway ContextVar first, then os.environ.
+
+    Inside a multiplexed gateway process (`tui_gateway` / `serve`), `AIAgent.__init__` overwrites
+    `os.environ["HERMES_SESSION_ID"]` whenever a blank draft session is pre-warmed, while the active
+    turn's true session variables live in `gateway.session_context`.
+    """
+    try:
+        from gateway.session_context import get_session_env
+        val = (get_session_env(name) or "").strip()
+        if val:
+            return val
+    except Exception:
+        pass
+    return (os.environ.get(name) or "").strip()
+
+
 def coordinator_id(session=None):
     """The coordinator that opened the card: profile plus the session it ran in.
 
@@ -751,7 +768,7 @@ def coordinator_id(session=None):
     just the role name. `session` is the session id when the caller knows it better than this process's
     environment (the plugin hook runs inside the gateway, where the session is a context variable).
     """
-    sid = (session or os.environ.get("HERMES_SESSION_ID") or os.environ.get("HERMES_SESSION_KEY") or "").strip()
+    sid = (session or _live_session_get("HERMES_SESSION_ID") or _live_session_get("HERMES_SESSION_KEY") or "").strip()
     return "%s/%s" % (current_profile(), sid or "no-session")
 
 
@@ -804,6 +821,9 @@ def stamp_session(card_id, session, db=None):
         return False
     finally:
         conn.close()
+
+
+DESKTOP_LINE = "Open it in Crew: the Crew entry in the sidebar, or preview it with Ctrl+J"
 
 
 def origin_id(value):
@@ -1431,7 +1451,7 @@ def session_env(get=None):
 
     `get(name)` replaces the process environment as the source (the plugin hook passes the gateway's
     per-request session variables, which are not in os.environ)."""
-    get = get or (lambda name: os.environ.get(name))
+    get = get or _live_session_get
     plat = (get("HERMES_SESSION_PLATFORM") or "").strip()
     chat = (get("HERMES_SESSION_CHAT_ID") or "").strip()
     sess = (get("HERMES_SESSION_ID") or get("HERMES_SESSION") or "").strip()
@@ -1699,7 +1719,7 @@ def run_plan(spec, dry_run=False, closeout_proof=None):
     goal = spec.get("goal") or spec.get("title") or "crew plan"
     pbody = ("Role: coordinator\nCoordinator: %s\n\nGOAL: %s\n\nDone when: %s\n\n"
              "Parent contract card. Children run in parallel, one writer each, each verified by %s.\n"
-             % (current_profile(), goal, spec.get("done_when") or "every child card is done with a PASS verdict",
+             % (discussion, goal, spec.get("done_when") or "every child card is done with a PASS verdict",
                 profile_prefix() + "verifier"))
     parent = create_card(spec.get("title") or goal, pbody, coord, initial_status="blocked", dry_run=dry_run)
     if not dry_run:
@@ -1723,7 +1743,7 @@ def run_plan(spec, dry_run=False, closeout_proof=None):
     cbody = ("Role: coordinator\nCoordinator: %s\n\nGOAL: close out %s\n\n%s"
              "Done when: every child card is done and %s.\n\n"
              "proof command: %s\n\n%s\n"
-             % (current_profile(), parent.get("id") or "PARENT", "Verify: independent\n\n" if independent else "",
+             % (discussion, parent.get("id") or "PARENT", "Verify: independent\n\n" if independent else "",
                 "the split card's own proof exits 0" if closeout_proof else "its latest verdict line is PASS",
                 cproof, finish))
     closeout = create_card("close-out: " + (spec.get("title") or goal), cbody, coord,
@@ -3051,6 +3071,11 @@ def main():
             print(crew_safety.permanent_mode())
             return 0
         if args.cmd == "watch":
+            try:
+                import crew_graph
+                crew_graph.find_origin_session(kanban_db(), args.card)
+            except Exception:
+                pass
             import crew_watch
             return crew_watch.main(["--card", args.card] + (["--poll", str(args.poll)] if args.poll else [])
                                    + (["--lifetime", str(args.lifetime)] if args.lifetime else [])

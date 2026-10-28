@@ -31,11 +31,18 @@ export function CrewPage({ api }: { api: CrewApi }) {
     return () => { off(); window.removeEventListener('hashchange', go) }
   }, [])
   const back = () => setRoute({ page: 'board', all: false })
-  // Desktop opens a chat through the plugin SDK's host contract: host.openSession(session, { profile }).
+  // Desktop opens a chat through the plugin SDK's host contract: host.openSession(session, { profile, intent: 'tab' }).
   const host = sdk.host
   const openSession = host?.openSession
   const openChat = typeof openSession === 'function'
-    ? (profile: string, session: string) => { void openSession.call(host, session, { profile }) }
+    ? (profile: string, session: string) => {
+        void openSession.call(host, session, {
+          profile,
+          intent: 'tab',
+          awaitHydration: true,
+          forceResume: true,
+        })
+      }
     : undefined
   // Once per app session: the flag lives in this module, so it survives the page remounting on every route change
   // (Desktop unmounts /crew when you leave it) and resets when the app restarts. It is set in an effect, not in the
