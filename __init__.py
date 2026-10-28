@@ -1548,8 +1548,10 @@ def _banner_open(platform=""):
         tail = ("Hermes Desktop renders markdown. Write the card-open reply EXACTLY in this shape (<id> and <title> filled in):\n\n"
                 "**Card open** · `<id>` · <title>\n\nI'll notify you here when it's done or if it needs you.\n\n> %s\n\n"
                 "The quote line is the LAST line, after the \"I'll notify you here...\" line, and nothing follows it. Start the watcher "
-                "with `--md` after `watch --card <id>`; when its ending comes back, send it to the owner as it is (it is already "
-                "markdown, ending with the same pointer), do not reword it.\n\n" % link) + SAFETY_QUESTION_DESKTOP
+                "with `--md` after `watch --card <id>`; when its ending comes back, include its markdown block (with the pointer) and "
+                "immediately append a **Self-Contained Executive Debrief** (`Done / Not Done / Blocked`, `Evidence`, and `Next Action`) "
+                "across the session's tasks in the active profile's conversational language from `SOUL.md` (keeping technical commands, "
+                "paths, SHAs, and logs in English).\n\n" % link) + SAFETY_QUESTION_DESKTOP
     else:
         tail = ("The card-open reply's LAST line, after the \"I'll notify you here...\" line, is this one, with <id> (if any) replaced "
                 "by the card id, verbatim otherwise: %s\n\n" % link) if link else ""

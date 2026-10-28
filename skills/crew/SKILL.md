@@ -381,8 +381,14 @@ I'll notify you here when it's done or if it needs you.
 > Open it in Crew: the Crew entry in the sidebar, or preview it with Ctrl+J
 ```
 
-When that watcher's ending comes back, send it on as it is: it is already markdown (bold status lead, short list, the
-same quoted pointer last). Everywhere else the plain three lines above stay. The link line is the LAST line of the reply, after the "I'll notify you here..." line, and nothing follows it. The preload
+When that watcher's ending comes back, include its markdown status block (bold status lead, summary/extra list, and the
+same quoted pointer) and immediately append a **Self-Contained Executive Debrief** complying with `commander-communication-protocol`:
+- **Conversational Language (`SOUL.md`)**: Write conversational synthesis in the active profile's resolved language from `SOUL.md` (e.g. Vietnamese for Commander; default English if unspecified), while keeping all technical commands, paths, commit SHAs, and logs in English.
+- **Done / Not Done / Blocked**: Explicitly state what is Done, Not Done, and Blocked across both this card and the overall session mission (never write "see previous report" or "as reported before").
+- **Evidence**: State the exact proof command, exit code (`rc=0`), commit SHAs, and artifact paths.
+- **Next Action**: State clearly what the owner needs to do next (`0 Action Required` if all session work is complete, or the exact decision options and recommended choice if `Needs you`).
+
+Everywhere else the plain three lines above stay for the card-open reply. The link line is the LAST line of the reply, after the "I'll notify you here..." line, and nothing follows it. The preload
 gives it verbatim: `Open it in Crew: the Crew entry in the sidebar, or preview it with Ctrl+J` in Hermes Desktop, `Crew Dashboard: <dashboard URL>/crew?card=<id>`
 in the terminal and on every other surface. Replace `<id>` (terminal line only) with the card id and change nothing else. Leave the line out only
 when the preload gave none. When the preload says the gateway is not running, add the one line it gives (the card will not
@@ -390,7 +396,7 @@ start until the gateway runs, with the command) right after the "I'll notify you
 link line, verbatim; otherwise add nothing.
 
 The watcher only reads the board; it exits when the card is done and audited, needs the owner, or was abandoned, and
-its output comes back into this session as a new turn: relay it to the owner in one or two lines, nothing more.
+its output comes back into this session as a new turn: present the watcher's card block followed by the **Self-Contained Executive Debrief** (`Done / Not Done / Blocked`, `Evidence`, `Next Action`).
 No other waiting, no follow-up card, no extra writer, no retry. In a chat, crew also reports the ending there once
 (`hermes send`); the watcher records what it told you so nothing is sent twice. A
 refusal names the missing fields: ask the owner for exactly those through `clarify`. Independent parts

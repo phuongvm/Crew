@@ -84,6 +84,16 @@ A. The card's proof command runs a script in a `.crew/` folder (`python "<folder
    - PASS: invoke native `kanban_complete` with the raw output and extra check evidence.
    - FAIL: invoke `crew_request_changes(card_id="<card id>", reason="<reason>")` (or `kanban_request_changes`) naming the exact failed criteria and missing items. Then end the turn.
 
+## Structured Handoff & Completion Summary Mandate
+
+Every call to `kanban_complete`, `crew_request_changes`, or `kanban_block` MUST format its `summary` (or `reason`) as a structured multi-line block so the coordinator and owner receive complete, self-contained verification receipts:
+
+```text
+- Done: <verified deliverables, review artifact path (if Verify: agent), and passed contract clauses>
+- Not done: <failed contract clauses, missing items, or "none">
+- Evidence: <crew_verdict outcome (PASS/FAIL, rc=0) plus the exact read-only extra check command and raw output>
+```
+
 ## Verifier Tool Guidance
 
 Verifiers utilize the following native tools:

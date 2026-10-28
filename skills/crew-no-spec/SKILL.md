@@ -176,3 +176,9 @@ And reply with EXACTLY these lines:
 Card open: <id> - <title>
 I'll notify you here when it's done or if it needs you.
 ```
+
+When the watcher's ending returns to the session, include its card status block and immediately append a **Self-Contained Executive Debrief** complying with `commander-communication-protocol`:
+- **Conversational Language (`SOUL.md`)**: Write conversational synthesis in the active profile's resolved language from `SOUL.md` (keeping technical commands, paths, commit SHAs, and logs in English).
+- **Done / Not Done / Blocked**: Explicitly state what is Done, Not Done, and Blocked across both this card and the overall session mission (never reference "previous report").
+- **Evidence**: State the exact proof command, exit code (`rc=0`), commit SHAs, and artifact paths.
+- **Next Action**: State clearly what the owner needs to do next (`0 Action Required` if all session tasks are complete, or the exact decision options and recommended choice if `Needs you`).

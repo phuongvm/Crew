@@ -488,3 +488,20 @@ class BannerTests(unittest.TestCase):
     def test_an_ordinary_turn_gets_no_banner(self):
         self.assertIsNone(self.plug.crew_intake_preload(
             user_message="what about the menu?", session_id="SB3", turn_id="T"))
+
+    def test_watcher_ending_preload_and_skills_mandate_self_contained_debrief_and_structured_handoff(self):
+        ctx = self.ctx_for("desktop", "SB_DEBRIEF")
+        self.assertNotIn("do not reword it", ctx)
+        for needle in ("Self-Contained Executive Debrief", "Done / Not Done / Blocked", "Evidence", "Next Action", "SOUL.md"):
+            self.assertIn(needle, ctx)
+        for skill_rel in ("skills/crew/SKILL.md", "skills/crew-no-spec/SKILL.md"):
+            text = (REPO / skill_rel).read_text(encoding="utf-8")
+            self.assertNotIn("do not reword it", text)
+            self.assertIn("Self-Contained Executive Debrief", text)
+            self.assertIn("Done / Not Done / Blocked", text)
+        for role_skill in ("skills/crew-role-worker/SKILL.md", "skills/crew-role-content/SKILL.md", "skills/crew-verifier/SKILL.md"):
+            text = (REPO / role_skill).read_text(encoding="utf-8")
+            self.assertIn("Structured Handoff & Completion Summary Mandate", text)
+            self.assertIn("- Done:", text)
+            self.assertIn("- Not done:", text)
+            self.assertIn("- Evidence:", text)

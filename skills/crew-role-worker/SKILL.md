@@ -48,6 +48,18 @@ Loaded on a crew card whose role is worker. You are the only writer on this card
      paths. The close-out card runs the split card's proof once every part is done.
 5. A FAIL: fix the work and run the tool again. Two FAILs stop you: call `kanban_block` and end.
 
+## Structured Handoff & Completion Summary Mandate
+
+Every call to `kanban_complete`, `crew_review_handoff`, or `kanban_block` MUST format its `summary` (or `reason`) as a structured multi-line block so the coordinator and owner receive complete, self-contained progress and verification receipts:
+
+```text
+- Done: <concrete deliverables, modified files, and commit SHAs>
+- Not done: <any deferred, skipped, or out-of-scope items, or "none">
+- Evidence: <crew_verdict outcome (PASS/FAIL, rc=0), proof metrics, and key check outputs>
+```
+
+When calling `kanban_block`, also append `- Decision needed: <exact question or action required from coordinator/owner>`.
+
 ## Verification Taxonomy: Canonical 5-Mode State Table
 
 Workers must determine their execution and handoff workflow based on the card's `Verify:` line:

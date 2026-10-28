@@ -34,6 +34,18 @@ Loaded on a crew card whose role is content (posts, reports, video, pages, every
      `Verify: agent` is reserved exclusively for standalone cognitive review cards assigned directly to `@reviewer` (`Role: verifier`). A content card must never be `Verify: agent`. If an active content card is configured with `Verify: agent`, it is misrouted: do NOT attempt `kanban_request_review` or `crew_review_handoff` (the kernel review guard will refuse it). Instead, call `kanban_block(kind="needs_input", reason="misrouted card: Verify: agent is a standalone verifier card (Role: verifier assigned to @reviewer), not a content task. Reconfigure to Verify: dual for content tasks requiring independent reviewer audit.")` and stop.
    - `Verify: closeout` - (a part of a split, no proof of its own) `kanban_complete` with the paths.
 
+## Structured Handoff & Completion Summary Mandate
+
+Every call to `kanban_complete`, `crew_review_handoff`, or `kanban_block` MUST format its `summary` (or `reason`) as a structured multi-line block so the coordinator and owner receive complete, self-contained progress and verification receipts:
+
+```text
+- Done: <rendered artifact path, raw source path, and deliverables completed>
+- Not done: <any deferred, skipped, or out-of-scope items, or "none">
+- Evidence: <crew_verdict outcome (PASS/FAIL, rc=0) and render/source verification metrics>
+```
+
+When calling `kanban_block`, also append `- Decision needed: <exact question or action required from coordinator/owner>`.
+
 ## Verification Taxonomy: Canonical 5-Mode State Table
 
 Content creators determine their delivery and handoff workflow based on the card's `Verify:` line:

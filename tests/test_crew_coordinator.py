@@ -866,6 +866,29 @@ class ApplyDecisionTests(unittest.TestCase):
         self.assertFalse(any(c[0] == "unblock" for c in self.cli))
         self.assertIn("touch /tmp/elsewhere", self.cli[-1][2])
 
+    def test_a_rescope_with_long_proof_commands_surfaces_why_and_the_exact_diff_span(self):
+        card = self.card()
+        old_cmd = (
+            "python -c \"import os,subprocess; g=lambda *a:subprocess.check_output(['git','-C','O:/workspaces',*a],"
+            "text=True,encoding='utf-8').strip(); assert g('rev-list','--left-right','--count','HEAD...origin/main')"
+            ".split()==['0','0']; log=g('log','--oneline','551e8496..HEAD').splitlines(); assert len(log)==5 and "
+            "any('advance oss/langfuse' in x for x in log)\""
+        )
+        new_cmd = old_cmd.replace("assert len(log)==5", "assert len(log)>=5")
+        cc.crew_card.record_origin("t_1", env={"origin": "", "session": "s"}, proof_cmd=old_cmd)
+        dec = {
+            "decision": "rescope",
+            "why": "sibling card t_10c10af2 pushed 2 commits to origin/main so 551e8496..HEAD has 7 commits",
+            "proof_cmd": new_cmd,
+        }
+        ok, _ = cc.apply_decision(self.ctx, card, [], dec)
+        self.assertTrue(ok)
+        self.assertEqual("ask_owner", dec["decision"])
+        self.assertIn("sibling card t_10c10af2 pushed 2 commits", dec["question"])
+        self.assertIn("len(log)==5", dec["question"])
+        self.assertIn("len(log)>=5", dec["question"])
+        self.assertIn("len(log)>=5", self.cli[-1][2])
+
     def test_a_rescope_that_keeps_the_snapshot_proof_applies_as_before(self):
         card = self.card()
         cc.crew_card.record_origin("t_1", env={"origin": "", "session": "s"}, proof_cmd="false")
