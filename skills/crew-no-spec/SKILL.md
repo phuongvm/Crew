@@ -177,6 +177,18 @@ Card open: <id> - <title>
 I'll notify you here when it's done or if it needs you.
 ```
 
+In Hermes Desktop (the preload says "Hermes Desktop renders markdown") the reply is markdown in exactly this shape, and the
+watch command gets ` --md` appended at its end (`watch --card <id> --md`):
+
+```
+**Card open** · [<id>](<dashboard URL>/crew?card=<id>) · <title>
+
+I'll notify you here when it's done or if it needs you.
+```
+
+The ticket id is the shareable link (`<dashboard URL>` is the one the preload gives, `<id>` filled in both places): a click
+opens the card in the in-app Crew tab, right-click copies the URL. Nothing follows the "I'll notify you here..." line.
+
 When the watcher's ending returns to the session, include its card status block and immediately append a **Self-Contained Executive Debrief** complying with `commander-communication-protocol`:
 - **Conversational Language (`SOUL.md`)**: Write conversational synthesis in the active profile's resolved language from `SOUL.md` (keeping technical commands, paths, commit SHAs, and logs in English).
 - **Done / Not Done / Blocked**: Explicitly state what is Done, Not Done, and Blocked across both this card and the overall session mission (never reference "previous report").

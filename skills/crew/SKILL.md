@@ -374,26 +374,28 @@ In Hermes Desktop (the preload says "Hermes Desktop renders markdown") the reply
 watch command gets ` --md` appended at its end (`watch --card <id> --md`):
 
 ```
-**Card open** · `<id>` · <title>
+**Card open** · [<id>](<dashboard URL>/crew?card=<id>) · <title>
 
 I'll notify you here when it's done or if it needs you.
-
-> Open it in Crew: the Crew entry in the sidebar, or preview it with Ctrl+J
 ```
 
-When that watcher's ending comes back, include its markdown status block (bold status lead, summary/extra list, and the
-same quoted pointer) and immediately append a **Self-Contained Executive Debrief** complying with `commander-communication-protocol`:
+The ticket id is the shareable link (`<dashboard URL>` is the one the preload gives, `<id>` filled in both places): a click
+opens the card in the in-app Crew tab, right-click copies the URL. The "I'll notify you here..." line is the last line;
+no pointer or quote follows it.
+
+When that watcher's ending comes back, include its markdown status block (bold status lead whose ticket id is the same
+shareable link, and the summary/extra list) and immediately append a **Self-Contained Executive Debrief** complying with `commander-communication-protocol`:
 - **Conversational Language (`SOUL.md`)**: Write conversational synthesis in the active profile's resolved language from `SOUL.md` (e.g. Vietnamese for Commander; default English if unspecified), while keeping all technical commands, paths, commit SHAs, and logs in English.
 - **Done / Not Done / Blocked**: Explicitly state what is Done, Not Done, and Blocked across both this card and the overall session mission (never write "see previous report" or "as reported before").
 - **Evidence**: State the exact proof command, exit code (`rc=0`), commit SHAs, and artifact paths.
 - **Next Action**: State clearly what the owner needs to do next (`0 Action Required` if all session work is complete, or the exact decision options and recommended choice if `Needs you`).
 
 Everywhere else the plain three lines above stay for the card-open reply. The link line is the LAST line of the reply, after the "I'll notify you here..." line, and nothing follows it. The preload
-gives it verbatim: `Open it in Crew: the Crew entry in the sidebar, or preview it with Ctrl+J` in Hermes Desktop, `Crew Dashboard: <dashboard URL>/crew?card=<id>`
-in the terminal and on every other surface. Replace `<id>` (terminal line only) with the card id and change nothing else. Leave the line out only
+gives it verbatim: `Crew Dashboard: <dashboard URL>/crew?card=<id>` in the terminal and on every other surface (Hermes Desktop has
+no link line: its ticket id is the link). Replace `<id>` with the card id and change nothing else. Leave the line out only
 when the preload gave none. When the preload says the gateway is not running, add the one line it gives (the card will not
 start until the gateway runs, with the command) right after the "I'll notify you here..." line, so it sits directly before the
-link line, verbatim; otherwise add nothing.
+link line (in Hermes Desktop it is then the last line), verbatim; otherwise add nothing.
 
 The watcher only reads the board; it exits when the card is done and audited, needs the owner, or was abandoned, and
 its output comes back into this session as a new turn: present the watcher's card block followed by the **Self-Contained Executive Debrief** (`Done / Not Done / Blocked`, `Evidence`, `Next Action`).

@@ -99,7 +99,10 @@ class ShellServerTests(RealBoardCase):
         csp = hdr["content-security-policy"]
         self.assertIn("script-src 'self';", csp)
         self.assertNotIn("nonce", csp)
-        self.assertIn("frame-ancestors 'none'", csp)
+        # Desktop and loopback hosts may frame the shell (1b281e2); no external origin may
+        self.assertIn("frame-ancestors 'self' file: app: vscode-file: vscode-webview: http://127.0.0.1:* http://localhost:*", csp)
+        for external in ("https://*", "http://*", "*;"):
+            self.assertNotIn("frame-ancestors " + external, csp)
         self.assertIn("connect-src 'self'", csp)
         self.assertEqual(csp, self.serve.CSP)
 
@@ -121,7 +124,7 @@ class ShellServerTests(RealBoardCase):
         self.assertEqual((code, hdr["content-type"]), (200, "image/svg+xml"))
         code, _hdr, body = self.req("/healthz")
         self.assertEqual(code, 200)
-        self.assertTrue(body.startswith(b"ok crew board cards="))
+        self.assertRegex(body, rb"^ok .+ cards=\d+ live=\d+\n$")   # the live board name leads (eedd749)
 
     def test_acks_are_unchanged(self):
         self.assertEqual(self.req("/ack/all")[0], 405)
