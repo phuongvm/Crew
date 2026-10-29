@@ -1,22 +1,70 @@
 ---
 name: crew-no-spec
 description: "Use when /crew-no-spec <ask>. Fast-track direct card intake."
-version: 0.10.2
+version: 0.10.5
 ---
 
-# /crew-no-spec - fast-track coordinator intake
+# /crew-no-spec - adaptive exploration & fast-track coordinator intake
 
-Fast-track coordinator intake for operational tasks, runtime environment troubleshooting, configuration/script fixes, urgent hotfixes, ad-hoc investigations, or standalone reviews.
+Adaptive coordinator intake for bugfixes, deployments, new features, refactors, operational tasks, or standalone reviews that **bypasses formal OpenSpec change artifacts (`proposal.md`, `specs/`, `design.md`, `tasks.md`, `sync-specs`, `archive`)** while automatically combining the full power of **Matt Pocock's engineering skills**, **OpenSpec Exploration persistence**, **Graphify MCP codebase intelligence**, and **Crew's verified Kanban execution**.
 
-**Bypasses OpenSpec workflow and artifact creation entirely.**
+## 1. Adaptive Dual-Entry Intake (Exploration-Backed Fast-Path vs. Guided Discovery Loop)
 
-## 1. Turn-1 Dispatch Mandate (Zero Autonomous Chat Execution)
+You are the **intake & exploration coordinator**, NOT the implementation worker or reviewer.
+- You are **STRICTLY FORBIDDEN** from editing production application source code, running git commits on code, or self-reviewing implementation work in the chat session.
+- When invoked via `/crew-no-spec <ask>`, determine which entry mode applies based on whether exploration is already complete:
 
-You are the **intake coordinator**, NOT the worker or reviewer.
-- When invoked via `/crew-no-spec <ask>`, you are **STRICTLY FORBIDDEN** from investigating, diagnosing, testing, writing code, reading deep project files, or performing the task yourself in the chat session.
-- At most 1-2 cheap existence checks (`test -f <file>`, `ls <dir>`) are permitted if a concrete path was named.
-- You are **STRICTLY FORBIDDEN** from self-reviewing your own work or answering review requests conversationally in chat.
-- You MUST formulate the contract card and invoke `crew_card_create` (or `kanban_create`) in Turn 1!
+### Mode 1: Exploration-Backed or Clear-Target Fast-Path (Turn-1 Dispatch)
+- **When it applies**:
+  1. You and the Commander **already explored the issue/topic in chat** and produced (or settled) an Exploration Document (`<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>-exploration.md`) or clear architectural decisions, **OR**
+  2. The `/crew-no-spec <ask>` command already names a concrete target (file, service, repo, script) and a measurable end state (`Done when`) requiring no further discovery.
+- **What you do in Turn 1**:
+  - Do NOT re-interview or re-explore. Perform at most 1–2 cheap existence checks (`test -f <file>`, `ls <dir>`).
+  - If an Exploration Document exists in the active project (`<project>/openspec/workspace/explorations/...`), **automatically pass its absolute path in the card's `Inputs:` field** so `@coder` and `@reviewer` execute and verify directly against it.
+  - If the work is a single cohesive unit, call `crew_card_create` (or `kanban_create`) in Turn 1 (using Single-Card Dual or Two-Card Chain per Section 3.1).
+  - If the Exploration Document defines multiple vertical slices, apply Matt's **`to-tickets`** rules (tracer-bullet vertical slices or expand–contract batches) and dispatch them atomically via `crew_plan_split` in Turn 1.
+
+### Mode 2: Guided Discovery & Root-Cause Loop (Explore First → Exploration Doc → Dispatch Card)
+- **When it applies**:
+  - The Commander starts `/crew-no-spec <ask>` to explore an uninvestigated bug/anomaly, research a new product or large repository, or design a feature/refactor whose root cause, public seams, or design trade-offs are not yet settled.
+- **What you do (4-Step Guided Discovery Loop)**:
+  1. **Step 1 — Project Gate (`activate-project`)**:
+     - Verify which project owns the work. If at the workspace root (`O:\workspaces`) or ambiguous, ask the Commander via `clarify` to confirm the target project path and lock `OPENSPEC_ROOT = <project>/openspec`.
+  2. **Step 2 — Fast Codebase Intelligence (`Graphify MCP`)**:
+     - On large or multi-package codebases, NEVER run blind recursive searches (`grep -r`, `find /`).
+     - Query `mcp__graphify__graph_stats`, `mcp__graphify__god_nodes`, `mcp__graphify__query_graph`, `mcp__graphify__get_neighbors`, and `mcp__graphify__shortest_path` to map call trees, hubs, and architectural seams in `< 2s`.
+  3. **Step 3 — Auto-Route Matt Pocock Cognitive Skills by Task Nature**:
+     - **Case A — Bug / Runtime Defect / Metric Anomaly (`diagnosing-bugs` + `triage`)**:
+       - Finding facts from the runtime, logs, database, and codebase is YOUR job — **never ask the Commander why a bug or metric is broken**.
+       - Build and execute a deterministic `< 5s` read-only or ephemeral reproduction probe to prove the failure mechanism empirically and isolate the primary defect from coincidental vectors.
+       - Immediately clean up any temporary reproduction probe file before concluding exploration so the working tree stays clean.
+     - **Case B — Feature / Refactor / Architecture / New Repo Research (`grilling` + `codebase-design` + `domain-modeling` + `prototype` + `wayfinder`)**:
+       - Gather all codebase facts yourself first. Frame modules using **`codebase-design`** (**deep modules** with rich behavior behind a small **interface** at a clean **seam**; apply the deletion test) and **`domain-modeling`** (check/update `GLOSSARY.md` and `docs/adr/`).
+       - Interview the Commander using **`grilling`**: map unsettled decisions as a design tree and present the current **frontier** in rounds (`❓ **Q1** - **<title>**: <context & options>\n➡️ <recommended answer>`), worded so "yes" accepts your recommendation.
+       - If a UI layout or tricky state machine needs visual/interactive validation before building, offer a throwaway **`prototype`**. If the effort spans multiple sessions wrapped in fog, chart a **`wayfinder`** map.
+  4. **Step 4 — Persist Exploration Document (`openspec-explore` + `to-spec` synthesis) & Transition to Card Dispatch**:
+     - **Scaffold Early & Patch Incrementally**: Immediately create `<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>-exploration.md` via `write_file` and `patch` findings into it every 3–5 read/search calls (preventing `Nerve progress guard` read pauses and preserving context).
+     - Synthesize the agreed approach into the Exploration Document using Matt's **`to-spec`** structure:
+       - `## Problem Statement` & `## Empirical Root Cause / Current Architecture`
+       - `## Solution & Deep Module Interface`
+       - `## Public Testing Seams` (highest interface seam where behavior will be tested)
+       - `## Implementation Decisions` & `## Testing Decisions`
+       - `## Out of Scope`
+     - Present the crystallized contract/slices and safety choice (`clarify`) to the Commander. Once the Commander confirms ("go" / "open it"), immediately open the Crew Card(s) in that turn with `Inputs: <project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>-exploration.md` and launch the watcher!
+
+### 1.1 Automatic Cognitive & Tool Routing Matrix
+
+The coordinator and dispatched specialists automatically select the right skills and tools without needing them named in the user's prompt:
+
+| Scenario / Phase | Matt Pocock Skill(s) | OpenSpec Skill(s) | Graphify MCP / Crew Tools | When to Interact with Commander |
+|---|---|---|---|---|
+| **1. Huge Codebase / Repo Mapping** | `codebase-design`, `improve-codebase-architecture` | `activate-project`, `openspec-explore` | `mcp__graphify__graph_stats`, `god_nodes`, `query_graph`, `get_neighbors` | Only if target repo path is ambiguous; otherwise map autonomously. |
+| **2. Bug / Incident / Anomaly** | `diagnosing-bugs`, `triage` | `openspec-explore` (Exploration Doc) | `mcp__graphify__shortest_path`, `get_neighbors` | **Never ask why it's broken.** Present empirical repro proof + proposed fix contract for approval. |
+| **3. Feature / Design / Research** | `grilling`, `codebase-design`, `domain-modeling`, `prototype`, `to-spec` | `openspec-explore` (Exploration Doc) | `mcp__graphify__get_community`, `query_graph` | Ask frontier decision rounds (`❓ Q1 ... ➡️ Recommended`) until the design tree frontier is empty. |
+| **4. Multi-Task Decomposition** | `to-tickets` (vertical tracer-bullets or expand–contract batches) | — (bypasses `tasks.md` in no-spec mode) | `crew_plan_split`, `crew_flow_graph`, `crew_card_create` | Confirm slice granularity, blocking edges, and `Proof mode` before dispatch. |
+| **5. Manual Human / Secret Setup** | `wizard` (interactive stage-by-stage bash script) | `openspec-zero-trust-baseline` | `crew_proof_check` | Provide runnable wizard script when external portal/2FA/secret entry is required. |
+| **6. Worker Execution (`@coder`)** | `tdd` (Red→Green at public seam), `codebase-design`, `implement`, `pr` | `openspec-developer` (surgical edits) | `crew_worktree_create`, `crew_verdict`, `mcp__graphify__get_neighbors` | Zero interruption unless blocked by a genuine `needs_input` / `capability` wall. |
+| **7. Verifier Audit (`@reviewer`)** | `code-review` (6 perspectives), `tdd` (anti-tautology check), `retro` | `openspec-verifier`, `openspec-verify-change` (3D check vs `Inputs:`) | `crew_verdict`, `crew_request_changes`, `mcp__graphify__get_pr_impact` | Reports final verified outcome in Executive Debrief. |
 
 ## 2. Assignee & Role Selection Matrix
 
@@ -193,4 +241,4 @@ When the watcher's ending returns to the session, include its card status block 
 - **Conversational Language (`SOUL.md`)**: Write conversational synthesis in the active profile's resolved language from `SOUL.md` (keeping technical commands, paths, commit SHAs, and logs in English).
 - **Done / Not Done / Blocked**: Explicitly state what is Done, Not Done, and Blocked across both this card and the overall session mission (never reference "previous report").
 - **Evidence**: State the exact proof command, exit code (`rc=0`), commit SHAs, and artifact paths.
-- **Next Action**: State clearly what the owner needs to do next (`0 Action Required` if all session tasks are complete, or the exact decision options and recommended choice if `Needs you`).
+- **Next Action & Optional Late Spec Promotion**: State clearly what the owner needs to do next (`0 Action Required` if all session tasks are complete, or the exact decision options and recommended choice if `Needs you`). If the completed `/crew-no-spec` task introduced durable architectural behavior or an Exploration Document worth formalizing into permanent project specs, add one concise line: *"Optional Spec Sync: Run `/openspec-sync-specs` or `/crew` if you want to promote this Exploration/Implementation into permanent OpenSpec specs."*

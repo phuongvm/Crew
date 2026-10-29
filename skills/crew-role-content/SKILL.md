@@ -1,7 +1,7 @@
 ---
 name: crew-role-content
 description: "Crew content pass: posts, reports, video, pages and social on a crew card; rendered artifact plus source."
-version: 0.10.4
+version: 0.10.5
 ---
 
 # Crew content pass
@@ -11,7 +11,12 @@ Loaded on a crew card whose role is content (posts, reports, video, pages, every
 ## Do
 1. Read the card: GOAL, `Done when`, the `Verify:` line, target channel and format.
 2. Produce the artifact and keep its raw source next to it. Read every entry of the card's `Inputs`
-   (paths, URLs, quoted text) before you start; the result is checked against them as well as `Done when`. A proof
+   (paths, URLs, quoted text — including any Exploration Document under `openspec/workspace/explorations/`) before you start; the result is checked against them as well as `Done when`.
+   Apply specialized **Design & Discovery Patterns** when the deliverable matches:
+   - **Interactive Prototypes (`prototype`)**: For logic/state-machine validation, build a single self-contained HTML demo with free-play controls, guided walkthrough tabs, and live state display. For UI exploration, render switchable variants via a floating bar, clearly marked throwaway.
+   - **Visual Architecture Reports (`improve-codebase-architecture` + `codebase-design`)**: Render self-contained HTML (Tailwind + Mermaid/SVG) with side-by-side **Before / After** module-deepening diagrams, locality/leverage impact, `GLOSSARY.md` domain terms, and `Strong` / `Worth exploring` / `Speculative` badges.
+   - **Async Stakeholder Questionnaires (`to-questionnaire`)**: Group single-idea questions most-important-first under themed `##` headings with answer stubs and concise *why this matters* notes.
+   A proof
    script the proof command names (`<folder>/.crew/<card folder>/verify.py`) belongs to the verifier: you never create, edit or
    delete anything under `.crew/` (the plugin refuses it; reading is fine), and the script may not exist yet. Fix the
    work, not the proof.

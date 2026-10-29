@@ -1,7 +1,7 @@
 ---
 name: crew-verifier
 description: "Use when verifying an independent card. Proof-first review."
-version: 0.10.4
+version: 0.10.5
 ---
 
 # Crew verifier pass
@@ -73,8 +73,12 @@ A. The card's proof command runs a script in a `.crew/` folder (`python "<folder
    `needs_input` and the `blocked` reason, then end your turn). No verdict file means no verdict, whatever your
    summary says.
 1. Exactly ONE extra check the proof command does not cover (writing the script is not a check): read the artifact
-   back with native read-only tools (`read_file`, `search_files`), count the items, open the page, compare a number with its source. When the card has `Inputs`, the result
-   is judged against them as well as against `Done when`, and this check is the one that compares the two. Run it with your own read-only tool (Hermes's approvals
+   back with native read-only tools (`read_file`, `search_files`), count the items, open the page, compare a number with its source. When the card has `Inputs` (including an Exploration Document under `openspec/workspace/explorations/` or OpenSpec change specs), the result
+   is judged against them as well as against `Done when`, and this check is the one that compares the two using the **Unified Verification Lenses**:
+   - **3D Specification & Seam Audit (`openspec-verify-change` + `codebase-design`)**: Check **Completeness** (all contract/`Inputs` clauses satisfied), **Correctness** (edge cases covered), and **Coherence** (deep module public seam respected; surgical diff with zero unrelated drive-by edits).
+   - **TDD Anti-Tautology & Multi-Perspective Review (`tdd` + `code-review`)**: Evaluate across QA, Security, Lead Eng, and DevOps lenses; fail the check if tests are **tautological** (recomputing the code's own formula) or mock private internals instead of testing public seams.
+   - **Graphify Impact Check**: On multi-module code diffs, use `mcp__graphify__get_pr_impact` or `mcp__graphify__get_neighbors` (read-only) when available to verify downstream callers across the seam are unbroken.
+   Run it with your own read-only tool (Hermes's approvals
    apply to it) and quote its raw output in your verdict. `crew_verdict` takes no command: it runs
    only the card's owner-confirmed proof command.
 

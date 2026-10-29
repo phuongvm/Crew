@@ -1,7 +1,7 @@
 ---
 name: crew-role-worker
 description: "Crew worker pass: code, config, infra and web work on a crew card; one writer, proof on disk."
-version: 0.10.4
+version: 0.10.5
 ---
 
 # Crew worker pass
@@ -17,7 +17,11 @@ Loaded on a crew card whose role is worker. You are the only writer on this card
    (or `git -C <repo> worktree add O:/workspaces/.worktrees/<name> -b <branch>`). Edit, build
    and test inside that worktree only. When work is completed, clean up with `crew_worktree_cleanup(repo="<repo>", name="<name>", delete_branch=True)`.
 2. Do the work: files, config, services, pages. Stay inside the card's scope. Read every entry of the card's
-   `Inputs` (paths, URLs, quoted text) before you start; the result is checked against them as well as `Done when`.
+   `Inputs` (paths, URLs, quoted text — including any Exploration Document under `openspec/workspace/explorations/` or OpenSpec change artifacts) before you start; the result is checked against them as well as `Done when`.
+   Apply the **Unified Engineering Discipline** on code and architecture tasks:
+   - **Graphify Sibling Seam Audit**: On multi-module codebases, use `mcp__graphify__get_neighbors` or `mcp__graphify__query_graph` on modified symbols to inspect callers/callees and fix the whole defect class across sibling call paths while keeping edits strictly surgical (`openspec-developer`: zero drive-by refactors or unrelated formatting).
+   - **Deep Modules & Domain Language (`codebase-design` + `domain-modeling`)**: Place rich behavior behind a narrow public **interface** at a clean **seam**; match existing `GLOSSARY.md` terms and respect `docs/adr/`.
+   - **TDD at Public Seams (`tdd`)**: Work in vertical slices (Red → Green): write a failing behavioral test at the agreed public seam first, then minimal implementation to pass it. Never write tautological assertions (recomputing the formula under test) or implementation-coupled mocks of private internals.
    A proof script the proof command names (`<folder>/.crew/<card folder>/verify.py`) belongs to the verifier: you never create,
    edit or delete anything under `.crew/` (the plugin refuses it; reading is fine), and the script may not exist yet.
    Fix the work, not the proof.
@@ -55,7 +59,8 @@ Every call to `kanban_complete`, `crew_review_handoff`, or `kanban_block` MUST f
 ```text
 - Done: <concrete deliverables, modified files, and commit SHAs>
 - Not done: <any deferred, skipped, or out-of-scope items, or "none">
-- Evidence: <crew_verdict outcome (PASS/FAIL, rc=0), proof metrics, and key check outputs>
+- Evidence: <crew_verdict outcome (PASS/FAIL, rc=0), Before -> After test/probe output, and key check metrics>
+- Blast radius: <two-way or one-way door + affected callers/seams (`pr` discipline)>
 ```
 
 When calling `kanban_block`, also append `- Decision needed: <exact question or action required from coordinator/owner>`.

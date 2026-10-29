@@ -1,7 +1,7 @@
 ---
 name: crew
 description: "Use when running /crew. Coordinator intake & contract."
-version: 0.10.4
+version: 0.10.5
 ---
 
 # /crew - coordinator intake
@@ -39,6 +39,22 @@ Only that one reply is covered; any later ask needs `/crew`.
 
 ## 0. Two Execution Tracks: OpenSpec Governance (/crew) vs. Fast-Track Direct Card (/crew-no-spec)
 
+### 0.1 Unified Cognitive & Tool Routing Matrix (Matt Pocock + OpenSpec + Graphify MCP + Crew)
+
+Neither the Commander nor the prompt needs to name individual Matt Pocock skills, OpenSpec skills, or Graphify MCP tools. The Coordinator and dispatched roles automatically activate them based on the task context:
+
+| Task Context / Phase | Matt Pocock Skill(s) Activated | OpenSpec Skill(s) Activated | Graphify MCP / Crew Tools Activated | Human Interaction Protocol |
+|---|---|---|---|---|
+| **Large / Unfamiliar Codebase Recon** | `codebase-design`, `improve-codebase-architecture` | `activate-project`, `openspec-explore` | `mcp__graphify__graph_stats`, `god_nodes`, `query_graph`, `get_neighbors` (`< 2s`, zero blind `grep -r`) | Only ask via `clarify` if target project is ambiguous; never ask the user for facts in the repo. |
+| **Bug / Defect / Metric Anomaly** | `diagnosing-bugs`, `triage` | `openspec-explore` (persist empirical repro in Exploration Doc) | `mcp__graphify__shortest_path`, `get_neighbors` | **Never ask the user why a bug happens.** Run a `< 5s` repro probe, isolate the root cause, clean up probe files, and present proven findings. |
+| **Feature / Architecture / Product Discovery** | `grilling`, `codebase-design`, `domain-modeling`, `prototype` (UI/logic demo), `wayfinder` (multi-session map) | `openspec-explore` → `openspec-propose` (`/crew`) | `mcp__graphify__get_community`, `query_graph` | Interview in **frontier decision rounds** (`❓ Q1 - <title> ➡️ <recommended default>`), only on unsettled decisions after checking codebase facts yourself. |
+| **Synthesizing Exploration into Contract / Spec** | `to-spec` (Problem, Solution, Public Testing Seams, Decisions), `to-tickets` (vertical tracer-bullets / expand-contract) | `openspec-propose` (`/crew`) or `Inputs: <exploration_doc>` (`/crew-no-spec`) | `crew_card_create`, `crew_plan_split`, `crew_proof_check` | Confirm Phase Approval Gate (`/crew`) or safety/go-ahead (`/crew-no-spec`). |
+| **Human Credential / Cloud Dashboard Setup** | `wizard` (interactive stage-by-stage bash setup script) | `openspec-zero-trust-baseline` | `crew_proof_check` | Hand the user a runnable wizard script for steps only a human can perform (2FA, portal keys). |
+| **Worker Implementation (`@coder`)** | `tdd` (Red→Green at public seam), `codebase-design` (deep modules), `implement`, `pr` (Before/After + Blast Radius) | `openspec-developer` (surgical scope, zero drive-by) | `crew_worktree_create`, `crew_verdict`, `mcp__graphify__get_neighbors` | Autonomous execution in worktree; block only on true external blockers (`needs_input`). |
+| **Independent Verification (`@reviewer`)** | `code-review` (6 perspectives), `tdd` (reject tautological/mock-internal tests), `retro` | `openspec-verifier`, `openspec-verify-change` (Completeness, Correctness, Coherence) | `crew_verdict`, `crew_request_changes`, `mcp__graphify__get_pr_impact` | Autonomous verification; report via Executive Debrief upon completion. |
+
+---
+
 ### Track A: Standard OpenSpec Governance Track (`/crew <ask>`)
 **MANDATORY**: Whenever invoked via `/crew <ask>`, the workflow MUST strictly execute the 7-stage OpenSpec Workflow Governance:
 You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesystem exploration across arbitrary directories, or calling `kanban_create` directly!
@@ -48,14 +64,21 @@ You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesyste
 - If NO project is active, or if ambiguous: **STOP immediately**. Do NOT probe or guess paths. Invoke `/activate-project` or ask the Commander via `clarify` to choose and confirm the target project (e.g. `ai_agents/hermes-agent`, `oss/crew`).
 - Lock `OPENSPEC_ROOT = <project-path>/openspec`.
 
-#### Step 2 — Phase 1: Explore (`openspec-explore`)
-- Once the project is locked, invoke `openspec-explore` to audit the existing codebase components, conventions, and architectural seams.
-- Write an exploration report under `<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>.md`.
+#### Step 2 — Phase 1: Explore (`openspec-explore` + Graphify MCP + Matt's `diagnosing-bugs` / `grilling` / `codebase-design`)
+- **Zero-Friction Exploration Continuity**: First check if the current chat session or `<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>-exploration.md` ALREADY contains a completed Exploration Document for this topic. If it exists and all frontier decisions are settled, **reuse it directly as Phase 1 completion and advance immediately to Step 3 (`openspec-propose`)** without re-running exploration!
+- **Graphify Codebase Intelligence First**: On large or multi-module repositories, query `mcp__graphify__graph_stats`, `mcp__graphify__god_nodes`, `mcp__graphify__query_graph`, and `mcp__graphify__get_neighbors` first to map architectural seams in `< 2s` instead of running broad filesystem searches.
+- **Cognitive Skill Routing inside Explore**:
+  - **For Bugs / Regressions / Metric Anomalies**: Apply Matt's `diagnosing-bugs` + `triage`. Build and run a `< 5s` deterministic reproduction probe to prove the failure mechanism empirically before proposing any change, then delete temporary probe files so the working tree stays clean.
+  - **For Features / Refactors / New Products**: Apply Matt's `grilling` (interview the Commander in frontier rounds `❓ Q1 ... ➡️ Recommended`), `codebase-design` (design deep modules with small interfaces at clean public seams), `domain-modeling` (`GLOSSARY.md` / ADRs), and `prototype` (if UI/logic feel needs a throwaway demo).
+- **Incremental Persistence & Nerve Guard Hygiene**: Scaffold `<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>-exploration.md` early via `write_file` and incrementally `patch` findings every 3–5 read/search calls (so runtime progress guards never pause read tools). Structure the document using Matt's `to-spec` sections: `Problem Statement`, `Empirical Root Cause / Architecture Seams`, `Solution & Deep Module Interface`, `Public Testing Seams`, `Implementation Decisions`, and `Out of Scope`.
 
-#### Step 3 — Phase 2: Propose & Phase Approval Gate (`openspec-propose`)
-- Scaffold the change via `openspec-propose` or `openspec_change_create`.
+#### Step 3 — Phase 2: Propose & Phase Approval Gate (`openspec-propose` + `to-spec` + `to-tickets`)
+- Scaffold the change via `openspec-propose` or `openspec_change_create`, synthesizing directly from the Exploration Document.
 - Produce the 4 change artifacts: `proposal.md`, `specs/<change-id>/spec.md`, `design.md`, and `tasks.md`.
-- Every task in `tasks.md` MUST specify a verifiable, reproducible `Proof: <command>` returning exit code 0.
+- Apply Matt's `to-spec` and `to-tickets` principles:
+  - `design.md` defines **deep modules** and explicitly names the **Public Testing Seams** (highest possible interface seam).
+  - `tasks.md` breaks work into **vertical tracer-bullet slices** (each cutting through schema/logic/interface/tests and verifiable on its own) or **expand–contract** batches for wide refactors.
+  - Every task in `tasks.md` MUST specify a verifiable, reproducible `Proof: <command>` returning exit code 0.
 - **Independent Proposal Review**: Dispatch an independent review card to `@reviewer` (`openspec-verifier`) to audit the artifacts before execution.
 - **STOP AT THE PHASE APPROVAL GATE**: Present the change proposal, review findings, and task breakdown to the Commander. Do NOT create Kanban cards or dispatch workers until the Commander explicitly approves!
 
@@ -78,20 +101,21 @@ You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesyste
 - Card 2 auto-promotes to `ready` when Card 1 finishes, eliminating the need for manual Commander re-intake.
 
 #### Step 4 — Phase 3: Apply & Kanban Fan-Out
-- Only AFTER Commander approval, decompose the change tasks into Kanban cards.
+- Only AFTER Commander approval, decompose the change tasks into Kanban cards (using `crew_card_create` for a single slice or `crew_plan_split` for multi-slice tracer bullets per `to-tickets`).
+- If any prerequisite requires manual human setup (creating external credentials, 2FA, cloud dashboard clicks), generate an interactive setup script using Matt's `wizard` skill before or alongside card dispatch.
 - Each Kanban card corresponds to an OpenSpec task in `tasks.md`.
 - In the card contract:
-  - `Inputs:` MUST include the OpenSpec change directory (`openspec/changes/<change-id>/`).
+  - `Inputs:` MUST include the OpenSpec change directory (`openspec/changes/<change-id>/`) AND the Exploration Document path (`<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>-exploration.md`).
   - `proof command:` MUST match the exact proof command defined in `tasks.md`.
-  - `assignee:` `@coder` (`openspec-developer`).
-  - `Verifier:` `@reviewer` (`openspec-verifier`).
+  - `assignee:` `@coder` (`openspec-developer`, `crew-role-worker`).
+  - `Verifier:` `@reviewer` (`openspec-verifier`, `crew-verifier`).
   - `Constraints:` MUST carry the Zero-Checkout invariant for every codebase card: no `git checkout`/`git switch`
     of a branch in a production checkout (`O:/workspaces`, `oss/crew`, `oss/hermes-agent`, `oss/hermes-nerve` stay
     on `main`); branch work only in a dedicated worktree at `O:/workspaces/.worktrees/<name>`.
 
 #### Step 5 — Phase 4: Independent Verification
 - Upon worker completion, the card transitions to review.
-- `@reviewer` independently executes the proof command in a clean terminal session, enforcing `exit code == 0` before closing the card.
+- `@reviewer` independently executes the proof command in a clean terminal session (`exit code == 0`) and audits Completeness, Correctness, Coherence (`openspec-verify-change`), 6-perspective `code-review`, `tdd` seam/anti-tautology compliance, and `mcp__graphify__get_pr_impact` before closing the card.
 
 #### Step 6 & 7 — Phase 5 & 6: Sync & Archive
 - Sync delta specs via `openspec-sync-specs`.
@@ -99,18 +123,20 @@ You are **STRICTLY FORBIDDEN** from guessing paths, running ungrounded filesyste
 
 ---
 
-### Track B: Fast-Track Direct Card Track (`/crew-no-spec <ask>` or `/crew --no-spec <ask>`)
-**Use when**: The Commander explicitly invokes `/crew-no-spec <ask>` or `/crew --no-spec <ask>` for operational fixes, environment/virtualenv troubleshooting, config/launcher adjustments, urgent hotfixes, or ad-hoc investigations where formal OpenSpec specification artifacts are not required.
+### Track B: Adaptive Fast-Track Card Track (`/crew-no-spec <ask>` or `/crew --no-spec <ask>`)
+**Use when**: The Commander invokes `/crew-no-spec <ask>` or `/crew --no-spec <ask>` to execute bugfixes, deployments, features, refactors, or tasks **without** creating or updating formal OpenSpec change artifacts (`proposal.md`, `specs/`, `design.md`, `tasks.md`).
 
-- **Bypass OpenSpec Artifacts**: Skip `proposal.md`, `specs/`, `design.md`, and `tasks.md`.
-- **Open Single Contract Card Directly**: Immediately draft the contract in Section 2/Section 4 and call `kanban_create` directly:
-  - `Role: worker`
-  - `assignee:` `@coder` (or `crew-worker`)
+- **Dual-Entry Adaptive Intake** (see `crew-no-spec` skill for full protocol):
+  1. **Mode 1 — Exploration-Backed / Clear-Target Fast-Path (Turn-1 Dispatch)**: If an Exploration Document (`<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>-exploration.md`) was already built during prior chat exploration, OR if the ask already names the concrete target, behavior, and measurable end state, immediately attach the Exploration Document to `Inputs:` and call `crew_card_create` (or `crew_plan_split` for `to-tickets` vertical slices) in Turn 1!
+  2. **Mode 2 — Guided Discovery & Root-Cause Loop (Explore First → Exploration Doc → Dispatch Card)**: If the ask requires investigating an unknown bug root cause, researching a repo/product, or grilling design decisions first, run the shared Exploration Engine (`activate-project` + `Graphify MCP` + Matt's `diagnosing-bugs` or `grilling`/`codebase-design`), persist the Exploration Document under `<project>/openspec/workspace/explorations/YYYY-MM-DD-<topic>-exploration.md` (using `to-spec` structure), get the Commander's go-ahead, and then dispatch the Crew Card(s) with `Inputs: <exploration_doc_path>` — completely bypassing `proposal.md`, `specs/`, `design.md`, and `tasks.md`.
+- **Card Contract Requirements**:
+  - `Role: worker` (`assignee: coder`, `skills: ["crew-role-worker"]`).
+  - `Inputs:` Path to the Exploration Document (when produced) plus any Commander-supplied references.
   - `proof command:` Verifiable shell command (exit code 0 = PASS).
-  - `Verify: proof` or `Verify: independent`.
+  - `Verify:` `proof`, `independent`, or `dual` (Single-Card Dual or Two-Card Chain `Verify: proof` → `Verify: agent`).
   - `Constraints:` the same Zero-Checkout / `O:/workspaces/.worktrees/<name>` invariant as Track A for any card
     touching a git repository.
-- After `kanban_create`, launch the watcher and report the open card ID immediately as specified in Section 4.
+- After `kanban_create` / `crew_card_create`, launch the watcher and report the open card ID immediately as specified in Section 4.
 
 A card opens only when the owner has decided everything that shapes the RESULT: what is built, where it
 lands, what "done" looks like, and any choice only they can make (scope, taste, what may change, money,
