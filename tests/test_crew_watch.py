@@ -171,6 +171,7 @@ class WatchTests(unittest.TestCase):
         self.assertNotIn("Open it in Crew", md)
         self.assertFalse(md.splitlines()[-1].startswith("> "), md)
         self.assertNotIn("`%s`" % cid, md)
+        self.assertEqual(1, md.count("http://dash"))   # only the ticket id's own link carries the URL
         self.assertNotIn("**", plain)
         self.assertNotIn("> ", plain)
         self.assertEqual("Card: http://dash/crew?card=%s" % cid, plain.splitlines()[-1])
@@ -194,7 +195,7 @@ class WatchTests(unittest.TestCase):
                               "--poll", "1", "--lifetime", "5"], capture_output=True, text=True, timeout=60,
                              env=dict(os.environ), encoding="utf-8", errors="replace")
         self.assertEqual(0, out.returncode, out.stderr)
-        self.assertIn("**Done** · [%s](http://dash/crew?card=%s)" % (cid, cid), out.stdout)
+        self.assertIn("**Done** · [%s](" % cid, out.stdout)
 
     def test_the_verb_is_wired_through_crew_card(self):
         cid = self.card(proof="")
@@ -207,34 +208,25 @@ class WatchTests(unittest.TestCase):
         self.assertEqual(0, out.returncode, out.stderr)
         self.assertIn("done · %s" % cid, out.stdout)
 
-    def test_watch_surfaces_execution_trajectory_units_and_worker_progress_on_done_and_needs_you(self):
+    def test_the_endings_say_how_far_the_card_got(self):
         cid = self.card(status="blocked")
         crew_card.start_progress(cid, ["sync-worktree", "verify-main"])
         crew_card.record_progress(cid, unit="sync-worktree", result=True, evidence="b15187fa")
-        self.conn.execute(
-            "insert into task_runs (task_id, status, outcome, summary, started_at) values (?, 'blocked', 'blocked', ?, ?)",
-            (cid, "The sync is done: HEAD == origin/main == b15187fa; proof fails on len(log)==5", int(time.time())),
-        )
+        self.conn.execute("insert into task_runs (task_id, status, outcome, summary, started_at) values (?, 'blocked', 'blocked', ?, ?)",
+                          (cid, "The sync is done; the proof fails on len(log)==5", int(time.time())))
         self.conn.commit()
-        self.decide(cid, decision="ask_owner", question="Why: sibling card pushed 2 commits. Accept len(log)>=5?")
-
-        md_needs = W.check(self.db, cid, self.state, time.time(), md=True)[0]
-        self.assertIn("**Needs you** · [%s](http://dash/crew?card=%s)" % (cid, cid), md_needs)
-        self.assertIn("- **Progress:**", md_needs)
-        self.assertIn("1/2 units passed", md_needs)
-        self.assertIn("The sync is done: HEAD == origin/main == b15187fa", md_needs)
-        lines = md_needs.splitlines()
-        self.assertIn("/crew-unstuck %s" % cid, lines[-1])
-        self.assertNotIn("Open it in Crew", md_needs)
-
+        self.decide(cid, decision="ask_owner", question="Accept len(log)>=5?")
+        needs = W.check(self.db, cid, self.state, time.time(), md=True)[0]
+        self.assertIn("- **Progress:** 1/2 units passed", needs)
+        self.assertIn("The sync is done; the proof fails on len(log)==5", needs)
+        self.assertNotIn("Open it in Crew", needs)
         crew_card.record_progress(cid, unit="verify-main", result=True, evidence="rc=0")
-        ev = self.finish(cid, "- Done: synced linearly at b15187fa\n- Not done: agent_share.md (out of scope)\n- Evidence: rc=0")
+        ev = self.finish(cid, "- Done: synced at b15187fa\n- Not done: agent_share.md (out of scope)\n- Evidence: rc=0")
         self.decide(cid, decision="audit", outcome="pass", why="again", for_event=ev)
-        md_done = W.check(self.db, cid, self.state, time.time(), md=True)[0]
-        self.assertIn("- Done: synced linearly at b15187fa\n- Not done: agent_share.md (out of scope)\n- Evidence: rc=0", md_done)
-        self.assertIn("- **Progress:**", md_done)
-        self.assertIn("2/2 units passed", md_done)
-        self.assertNotIn("Open it in Crew", md_done)
+        done = W.check(self.db, cid, self.state, time.time(), md=True)[0]
+        self.assertIn("- **Progress:** 2/2 units passed", done)
+        self.assertIn("- Done: synced at b15187fa\n- Not done: agent_share.md (out of scope)\n- Evidence: rc=0", done)   # the lines stay lines
+        self.assertNotIn("Open it in Crew", done)
 
 
 if __name__ == "__main__":

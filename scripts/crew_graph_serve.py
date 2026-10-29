@@ -9,9 +9,8 @@
   POST /ack/all     clear every listed notification at once (?undo=1 restores them); both writes go
                     into <dir of the board's kanban.db>/crew/attention_acks.json (CREW_ACK_FILE overrides) - never into the board. POST only, and
                     only from a same-origin page: a GET answers 405, a cross-site Origin answers 403.
-  /crew?card=<id>   the same shell, showing one card's live flow graph (polls /card/<id>.json every 2s): the card
-                    link crew sends out (crew_card.card_url); /crew alone is the board
-  /card/<id>        the same card page, the older address (kept so links already sent still open)
+  /crew?card=<id>   the same shell on that card: the link crew sends out (crew_card.card_url); /crew alone is the board
+  /card/<id>        the same shell, showing one card's live flow graph (polls /card/<id>.json every 2s)
   /card/<id>.json   the graph, rebuilt per request
   /healthz          text probe
 
@@ -651,16 +650,11 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html", "/board"):
             return self._send(200, shell_page(), "text/html; charset=utf-8")
         if path in ("/crew", "/crew/"):
-            # the card link (crew_card.card_url): /crew?card=<id>; no card in the query is the board
+            # the link crew sends out (crew_card.card_url): /crew?card=<id> is that card's page, /crew alone the board
             card_id = (parse_qs(urlparse(self.path).query or "").get("card") or [""])[0]
             if not card_id:
                 return self._send(200, shell_page(), "text/html; charset=utf-8")
-            if not CARD_ID_RX.match(card_id):
-                return self._send(404, "not found\n", "text/plain; charset=utf-8")
-            _graph, err = CG.build_graph(card_id)
-            if err:
-                return self._send(404, "no graph for %s (%s)\n" % (card_id, err), "text/plain; charset=utf-8")
-            return self._send(200, shell_page(), "text/html; charset=utf-8")
+            path = "/card/" + card_id        # the card page below checks the id and that the card exists
         if CARD_PAGE_RX.match(path):
             # the shell for a card that exists; an id that names no card is a 404 here, not a page that fails to load
             card_id = path[len("/card/"):].strip("/")

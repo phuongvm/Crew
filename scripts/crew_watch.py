@@ -58,36 +58,30 @@ def follow(conn, db, tid, now):
 
 
 def _progress_line(conn, task, kind):
-    """Concise execution trajectory (units passed/total and latest worker progress on blocked cards)."""
-    tid = task["id"]
-    prog = crew_card.load_progress(tid) or {}
-    units = prog.get("units") or []
+    """How far the card got: units passed of total, the runs so far and, on a card that needs the owner, the worker's
+    latest handoff. "" when there is nothing to say."""
+    units = (crew_card.load_progress(task["id"]) or {}).get("units") or []
+    runs = conn.execute("select summary from task_runs where task_id=? order by id", (task["id"],)).fetchall()
     bits = []
     if units:
-        passed = sum(1 for u in units if u.get("pass") is True)
-        bits.append("%d/%d units passed" % (passed, len(units)))
-    runs = conn.execute("select outcome, summary from task_runs where task_id=? order by id", (tid,)).fetchall()
+        bits.append("%d/%d units passed" % (sum(1 for u in units if u.get("pass") is True), len(units)))
     if len(runs) > 1:
         bits.append("%d runs" % len(runs))
-    if kind == "needs" and runs:
-        latest = N.short(runs[-1]["summary"] or "", 240)
-        if latest:
-            bits.append(latest)
+    if kind == "needs" and runs and runs[-1]["summary"]:
+        bits.append(N.short(runs[-1]["summary"], 240))
     return ("Progress: %s" % " · ".join(bits)) if bits else ""
 
 
 def _extra(conn, db, kind, chain, task, dec):
     """The lines above the card link: what was delivered where, how the proof ended, what is open."""
     first = _task(conn, chain[0])
-    prog = _progress_line(conn, task, kind)
+    progress = _progress_line(conn, task, kind)
     if kind == "needs":
         reply = "Reply here to answer, or /crew-unstuck %s to put it back in the queue." % task["id"]
-        return (prog + "\n" + reply) if prog else reply
+        return (progress + "\n" + reply) if progress else reply
     if kind != "done":
         return ""
-    lines = []
-    if prog:
-        lines.append(prog)
+    lines = [progress] if progress else []
     lands = crew_card.field(first["body"], "Lands at") if first else ""
     if lands:
         lines.append("Lands at: %s" % N.short(lands, 200))

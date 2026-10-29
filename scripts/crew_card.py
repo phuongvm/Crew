@@ -168,25 +168,20 @@ def dashboard_url():
     return "http://127.0.0.1:%s" % (os.environ.get("CREW_GRAPH_PORT") or "8799")
 
 
-# The card detail route every outward link uses: "<dashboard>/crew?card=<id>". The hosted Crew tab (Hermes web
-# dashboard, Desktop's gateway) and the served shell (crew_graph_serve) all open the card from it; ui/src/open-card.ts
-# cardUrl is the same convention on the page side.
 CARD_ROUTE = "/crew?card="
 
 
 def card_url(card_id, base=None):
-    """The shareable link to one card: <base or dashboard_url()>/crew?card=<id>. A base that already ends in the
-    /crew tab gets only the query."""
+    """The one link to a card that every surface opens: <dashboard>/crew?card=<id>. The standalone page, the Hermes
+    web tab (mounted at /crew) and Desktop's Crew page all read ?card=; /card/<id> still opens on the standalone page."""
     base = (base if base is not None else dashboard_url()).strip().rstrip("/")
     if base.endswith("/crew"):
         base = base[:-len("/crew")]
-    return "%s%s%s" % (base, CARD_ROUTE, urllib.parse.quote(str(card_id), safe=""))
+    return "%s/crew?card=%s" % (base, urllib.parse.quote(str(card_id), safe=""))
 
 
 def card_md_link(card_id, base=None):
-    """The ticket id as a markdown link to its shareable card URL: "[<id>](<dashboard>/crew?card=<id>)". What the
-    Hermes Desktop card-open reply and the watcher's markdown endings print in place of a bare `<id>`: a left-click
-    opens the card in the in-app Crew tab (desktop.tsx watchCardLinks), right-click copies the shareable URL."""
+    """The ticket id as a markdown link to its shareable card URL: "[<id>](<dashboard>/crew?card=<id>)"."""
     return "[%s](%s)" % (card_id, card_url(card_id, base))
 
 
@@ -267,24 +262,19 @@ def is_batch_launcher(path):
 
 
 def hermes_exe():
-    """A real hermes.exe on Windows ("" when there is none): the checkout launcher, the installer's bin,
-    then an in-tree venv beside Hermes's python (excluding isolated PM package environments)."""
+    """A real hermes.exe on Windows ("" when there is none): the Hermes checkout's own launcher, the installer's bin, then
+    the venv beside Hermes's python. A venv under <home>\\installs\\<hash>\\ is a package-manager environment bound to a
+    build snapshot, with an install_id of its own: crew never adopts its hermes.exe."""
+    py = hermes_python()
     root = hermes_root()
-    py = hermes_python(root)
     candidates = [
         os.path.join(root, ".hermes", "bin", "hermes.exe"),
         os.path.join(root, "bin", "hermes.exe"),
         os.path.join(default_home(), "bin", "hermes.exe"),
     ]
-    if py:
-        py_dir = os.path.dirname(py)
-        # PM environments under <home>/installs/<hash>/ are bound to package build snapshots (#124627)
-        # and register foreign install_ids that trigger shared profile warnings; do not adopt them.
-        norm_py = os.path.normpath(py_dir).lower()
-        if os.sep + "installs" + os.sep not in norm_py:
-            candidates.append(os.path.join(py_dir, "hermes.exe"))
+    if py and os.sep + "installs" + os.sep not in os.path.normpath(py).lower():
+        candidates.append(os.path.join(os.path.dirname(py), "hermes.exe"))
     for cand in candidates:
-        cand = os.path.normpath(cand) if cand else ""
         if cand and os.path.isfile(cand):
             return cand
     return ""

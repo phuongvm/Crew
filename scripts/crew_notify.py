@@ -65,7 +65,7 @@ SEND_TIMEOUT_S = 90
 DONE_SUMMARY_CHARS = 2000
 NEEDS_REASON_CHARS = 2000
 COORD_RX = re.compile(r"^\s*Coordinator:\s*(\S+)", re.M)
-SECRET_RX = re.compile(r"(sk-[A-Za-z0-9_\-]{8,}|(?i:(?:api[_-]?key|token|secret|password)\s*[=:]\s*)[^\s,;)\]]+)")
+SECRET_RX = re.compile(r"(sk-[A-Za-z0-9_\-]{8,}|(?i:(?:api[_-]?key|token|secret|password)\s*[=:]\s*)\S+)")
 
 
 def short(text, n):
@@ -74,12 +74,11 @@ def short(text, n):
 
 
 def short_multiline(text, n):
-    """Preserve line breaks for structured summaries (Done / Not done / Evidence) while redacting secrets and
-    bounding total length."""
-    lines = [" ".join(ln.split()) for ln in str(text or "").splitlines()]
-    cleaned = "\n".join(ln for ln in lines if ln)
-    cleaned = SECRET_RX.sub("[redacted]", cleaned)
-    return cleaned if len(cleaned) <= n else cleaned[: n - 1] + "…"
+    """short() that keeps the line breaks of a structured summary (Done / Not done / Evidence) and the long rescope ask,
+    with the same secret redaction; n bounds the whole."""
+    lines = (" ".join(ln.split()) for ln in str(text or "").splitlines())
+    text = SECRET_RX.sub("[redacted]", "\n".join(ln for ln in lines if ln))
+    return text if len(text) <= n else text[: n - 1] + "…"
 
 
 def card_url(tid):
@@ -192,8 +191,8 @@ def _md_extra(extra):
 
 def _text_md(conn, task, kind, src, question="", extra=""):
     """The same message as `_text`, as markdown for a Hermes Desktop chat: a bold status lead whose ticket id is the
-    shareable card link ([<id>](<dashboard>/crew?card=<id>): a left-click opens it in the in-app Crew tab, right-click
-    copies it), the body, and the contract-style list. No trailing pointer: the link is the way in."""
+    shareable card link ([<id>](<dashboard>/crew?card=<id>)), the body, and the contract-style list. No trailing pointer:
+    the link is the way in."""
     tid, title = task["id"], short(task["title"], 120)
     lead = {"done": "**Done**", "abandoned": "**Abandoned**", "needs": "**Needs you**"}[kind]
     parts = ["%s · %s · %s" % (lead, card_md(tid), title)]

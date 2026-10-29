@@ -4,8 +4,8 @@ import { fetchApi, type CrewApi } from './api'
 import { Board } from './components/Board'
 import { CardPage } from './components/CardPage'
 import type { OpenChat } from './components/TopArea'
-import { hrefFor, parseLocation, type Route } from './route'
 import { cardFromSearch } from './open-card'
+import { hrefFor, parseLocation, type Route } from './route'
 
 // How a host page wires the app in. The served shell passes nothing (same origin, the address bar is the route).
 // The Hermes web dashboard tab passes `base` (its plugin API prefix), the SDK's authed `fetch` and an `openChat`.
@@ -33,13 +33,10 @@ function App({ opts }: { opts: MountOptions }) {
   const snap = (window as any).__CREW_SNAPSHOT
   const hosted = !!opts.base
   const api = useMemo(() => snap ? snapshotApi(snap) : fetchApi(opts.base || '', opts.fetch, !hosted), [snap, opts.base, opts.fetch, hosted])
-  const start = (): Route => {
-    if (snap) return { page: 'card', id: snap.card_id }
-    if (!hosted) return parseLocation(window.location.pathname, window.location.search)
-    // hosted: a shareable card link to the tab ("<dashboard>/crew?card=<id>", open-card.cardUrl) opens that card
-    const shared = cardFromSearch(window.location.search)
-    return shared ? { page: 'card', id: shared } : { page: 'board', all: false }
-  }
+  const shared = cardFromSearch(window.location.search)   // a shared card link ("/crew?card=<id>") opens that card
+  const start = (): Route => snap ? { page: 'card', id: snap.card_id }
+    : hosted ? (shared ? { page: 'card', id: shared } : { page: 'board', all: false })
+    : parseLocation(window.location.pathname, window.location.search)
   const [route, setRoute] = useState<Route>(start)
   useEffect(() => {
     if (snap || hosted) return

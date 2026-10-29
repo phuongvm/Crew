@@ -170,6 +170,8 @@ class CardUrlTests(CardTestCase):
 
     def test_an_explicit_base_wins_and_a_base_already_on_the_crew_tab_gets_only_the_query(self):
         self.assertEqual("http://dash/crew?card=t_1", crew_card.card_url("t_1", "http://dash"))
+        self.assertEqual("http://dash/crew?card=t_1", crew_card.card_url("t_1", "http://dash/"))
+        self.assertEqual("http://dash/crew?card=t_1", crew_card.card_url("t_1", "http://dash/crew"))
         self.assertEqual("https://h.example:9119/crew?card=t_1", crew_card.card_url("t_1", "https://h.example:9119/crew/"))
 
     def test_the_local_service_is_the_fallback_and_the_id_is_quoted(self):

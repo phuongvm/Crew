@@ -266,6 +266,14 @@ class NotifyTests(unittest.TestCase):
         self.assertNotIn("`%s`" % child, md)
 
     # ---- the sender
+    def test_a_structured_summary_keeps_its_lines_and_a_secret_is_cut_to_the_end_of_its_word(self):
+        self.assertEqual("- Done: a\n- Evidence: rc=0", N.short_multiline("- Done:   a\n\n- Evidence: rc=0", 200))
+        # a password holding ; , ) ] must not leak its tail
+        for secret, tail in (("ab;cd9!x", "cd9!x"), ("s3cr,et,tail", "tail"), ("abc)def123", "def123")):
+            out = N.short_multiline("deploy ok password=%s\nnext" % secret, 200)
+            self.assertNotIn(tail, out)
+            self.assertTrue(out.endswith("\nnext"), out)
+
     def test_hermes_send_calls_the_public_sender_for_the_owner_profile_with_the_text_on_stdin(self):
         with mock.patch.object(N.subprocess, "run") as run:
             run.return_value = mock.Mock(returncode=0, stdout="sent", stderr="")
@@ -288,7 +296,8 @@ class NotifyTests(unittest.TestCase):
         self.assertEqual(1, len(s.calls))
         sent_text = s.calls[0][1]
         self.assertIn("- Done: synced main and origin/main at b15187fa\n- Not done: agent_share.md skipped", sent_text)
-        self.assertIn("\n- Evidence: verdict PASS, rc=0 ([redacted])", sent_text)
+        self.assertNotIn("supersecret123", sent_text)
+        self.assertIn("\n- Evidence: verdict PASS, rc=0 ([redacted]", sent_text)
 
         blocked_id = self.card(status="blocked", origin=ORIGIN)
         long_q = ("Why: sibling card pushed 2 commits. " + ("x" * 350)

@@ -73,3 +73,4 @@ export function onOpenCard(fn: (id: string) => void): () => void {
   openListeners.add(fn)
   return () => { openListeners.delete(fn) }
 }
+

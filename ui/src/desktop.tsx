@@ -163,7 +163,7 @@ type WatchCtx = {
 export default {
   id: 'crew',
   name: 'Crew',
-  register(ctx: RestCtx & PrefsCtx & WatchCtx & { registerMany(items: unknown[]): void }) {
+  register(ctx: RestCtx & PrefsCtx & WatchCtx & { registerMany(items: unknown[]): void; onDispose?(fn: () => void): void }) {
     const api = restApi(ctx)
     const kanban = kanbanRowSwitch(ctx)
     // Fallback local daemon probe: http://127.0.0.1:8799/healthz

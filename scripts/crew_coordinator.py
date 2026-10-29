@@ -556,58 +556,44 @@ def proof_blocked_ask(card_id, cmd, reason):
                       "to stop being asked.\nRecord the answer: %s" % (cmd, reason, answer_line(card_id, "--brave"))}
 
 
-def proof_diff_span(old, new, context=24, max_span=120):
-    """Extract the minimal differing window (`...old_span...`, `...new_span...`) when `old` and `new` share a prefix
-    that would hide the real change under head-truncation. Returns None when no shared prefix obscures the delta."""
-    old_s, new_s = str(old or ""), str(new or "")
-    if not old_s or not new_s or old_s == new_s:
+def proof_diff_span(old, new, context=24, cap=120):
+    """Where two long proof commands differ, as (old window, new window): a shared head would hide a changed assertion
+    under head-truncation. None when they are equal or differ within the first 20 characters."""
+    old, new = str(old or ""), str(new or "")
+    pre = 0
+    while pre < min(len(old), len(new)) and old[pre] == new[pre]:
+        pre += 1
+    if old == new or pre < 20:
         return None
-    prefix = 0
-    limit = min(len(old_s), len(new_s))
-    while prefix < limit and old_s[prefix] == new_s[prefix]:
-        prefix += 1
-    if prefix < 20:
-        return None
-    suffix = 0
-    while (suffix < (len(old_s) - prefix)
-           and suffix < (len(new_s) - prefix)
-           and old_s[len(old_s) - 1 - suffix] == new_s[len(new_s) - 1 - suffix]):
-        suffix += 1
-    start = max(0, prefix - context)
-    old_end = min(len(old_s), max(prefix + 1, len(old_s) - suffix) + context)
-    new_end = min(len(new_s), max(prefix + 1, len(new_s) - suffix) + context)
-    lead = "..." if start > 0 else ""
-    old_tail = "..." if old_end < len(old_s) else ""
-    new_tail = "..." if new_end < len(new_s) else ""
-    return (lead + old_s[start:old_end] + old_tail)[:max_span], (lead + new_s[start:new_end] + new_tail)[:max_span]
+    suf = 0
+    while suf < min(len(old), len(new)) - pre and old[-1 - suf] == new[-1 - suf]:
+        suf += 1
+    start = max(0, pre - context)
+
+    def window(text):
+        return ("..." if start else "") + text[start:len(text) - suf + context][:cap]
+    return window(old), window(new)
 
 
 def proof_change_ask(card_id, old, new, why=""):
     """The ask_owner decision for a coordinator rescope that names a different proof command. Models propose,
-    the owner confirms: nothing runs until `/crew-proof <card> yes` writes the new snapshot."""
-    why_clean = " ".join(str(why or "").split())[:240]
-    why_prefix = ("Why: %s. " % why_clean.rstrip(".")) if why_clean else ""
+    the owner confirms: nothing runs until `/crew-proof <card> yes` writes the new snapshot. The command and its diff
+    come first; the model's own reason follows, labelled as its claim, so it cannot steer the yes."""
+    why = " ".join(str(why or "").split())[:240]
+    reason = (" Coordinator's reason: %s." % why.rstrip(".")) if why else ""
     span = proof_diff_span(old, new)
-    detail_lines = []
-    if why_clean:
-        detail_lines.append("Why: %s" % why_clean)
     if span:
-        detail_lines.append("Changed: `%s` -> `%s`" % span)
-    detail_lines.extend([
-        "Proposed proof command: %s" % new,
-        "Current: %s" % (old or "(none)"),
-        "Accept: %s (or answer `/crew-proof %s brave` to also skip Hermes's dangerous-command check for this card)"
-        % (answer_line(card_id, "--yes"), card_id),
-    ])
-    if span:
-        question = ("%sThe coordinator proposes a new proof command [diff: `%s` -> `%s`]: `%s` (was: `%s`). "
-                    "Reply yes to accept it." % (why_prefix, span[0], span[1], new[:600], span[0]))
+        question = ("The coordinator proposes a new proof command [diff: `%s` -> `%s`]: `%s`. Reply yes to accept it.%s"
+                    % (span[0], span[1], new[:600], reason))
     else:
-        question = ("%sThe coordinator proposes a new proof command: `%s` (now: `%s`). Reply yes to accept it."
-                    % (why_prefix, new[:500], (old or "none")[:500]))
+        question = ("The coordinator proposes a new proof command: `%s` (now: `%s`). Reply yes to accept it.%s"
+                    % (new[:500], (old or "none")[:500], reason))
     return {"decision": "ask_owner", "proof_ask": {"kind": "rescope", "proposed": new},
             "question": question,
-            "detail": "\n".join(detail_lines)}
+            "detail": "Proposed proof command: %s\nCurrent: %s\n%sAccept: %s (or answer `/crew-proof %s brave` to also skip "
+                      "Hermes's dangerous-command check for this card)" % (new, old or "(none)",
+                                                                          ("Coordinator's reason: %s\n" % why) if why else "",
+                                                                          answer_line(card_id, "--yes"), card_id)}
 
 
 def blocked_ask_for(card, out=""):
@@ -798,8 +784,7 @@ def apply_decision(ctx, card, decisions, dec):
                 body = crew_card.rewrite_line(body, label, dec[key])
         if body != (card.get("body") or ""):
             set_body(card["id"], body)
-        why = str(dec.get("why") or dec.get("fix") or "").strip()
-        dec.update(proof_change_ask(card["id"], old, new, why=why))     # recorded as the ask it became
+        dec.update(proof_change_ask(card["id"], old, new, why=str(dec.get("why") or dec.get("fix") or "")))     # recorded as the ask it became
         return apply_ask_owner(ctx, card, dec["question"], dec["detail"])
     if kind == "split":
         return apply_split(ctx, card, dec)
