@@ -23,6 +23,8 @@ script on a card records its sha256 on the card, and a later run of a changed sc
 refusal (`SCRIPT_CHANGED`) and the coordinator decides (crew_coordinator `revise_script`: it may accept the script or
 have the verifier rewrite it, with a reason on record); the writer never writes or changes a proof script.
 """
+import contextlib
+import contextvars
 import hashlib
 import os
 import re
@@ -216,7 +218,111 @@ def _home_vars(env):
     return env
 
 
-def proof_env(extra=None):
+_ACTIVE_PROOF_CMD = contextvars.ContextVar("crew_active_proof_cmd", default=None)
+_PYVENV_VER_RX = re.compile(r"^\s*(?:version|version_info)\s*=\s*(\d+)\.(\d+)", re.MULTILINE)
+_POSIX_SP_VER_RX = re.compile(r"[/\\]python(\d+)\.(\d+)[/\\]site-packages(?:[/\\]+)?$", re.IGNORECASE)
+_EXT_TAG_VER_RX = re.compile(r"\.(?:cp|cpython-)(\d)(\d{1,2})(?:m|t)?[-.]", re.IGNORECASE)
+_PY_CMD_TOKEN_RX = re.compile(r'"([^"]+)"|\'([^\']+)\'|([^\s"\'|&;()]+)')
+_PY_BASENAME_RX = re.compile(r"^(?:python(\d+(?:\.\d+)?)?|py|pytest)(?:\.exe)?$", re.IGNORECASE)
+_PATH_VER_RX = re.compile(r"(?:cpython-|python-)(\d+)\.(\d+)|[/\\]Python(\d)(\d{1,2})(?:[/\\]|$)", re.IGNORECASE)
+
+
+@contextlib.contextmanager
+def proof_cmd_scope(cmd):
+    token = _ACTIVE_PROOF_CMD.set(cmd)
+    try:
+        yield
+    finally:
+        _ACTIVE_PROOF_CMD.reset(token)
+
+
+def _pyvenv_cfg_version(cfg_path):
+    try:
+        with open(cfg_path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read(4096)
+    except OSError:
+        return None
+    m = _PYVENV_VER_RX.search(text)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def _site_packages_py_version(sp_dir):
+    m = _POSIX_SP_VER_RX.search(sp_dir or "")
+    if m:
+        return (int(m.group(1)), int(m.group(2)))
+    p1 = os.path.dirname(os.path.dirname(os.path.abspath(sp_dir)))
+    p2 = os.path.dirname(p1)
+    for root in (p1, p2):
+        ver = _pyvenv_cfg_version(os.path.join(root, "pyvenv.cfg"))
+        if ver:
+            return ver
+    try:
+        for entry in os.scandir(sp_dir):
+            em = _EXT_TAG_VER_RX.search(entry.name)
+            if em:
+                return (int(em.group(1)), int(em.group(2)))
+    except OSError:
+        pass
+    return None
+
+
+def _exe_py_version(exe_path):
+    if not exe_path or "windowsapps" in exe_path.lower():
+        return None
+    norm = os.path.abspath(_script_file(exe_path))
+    for root in (os.path.dirname(norm), os.path.dirname(os.path.dirname(norm))):
+        ver = _pyvenv_cfg_version(os.path.join(root, "pyvenv.cfg"))
+        if ver:
+            return ver
+    bm = _PY_BASENAME_RX.match(os.path.basename(norm))
+    if bm and bm.group(1) and "." in bm.group(1):
+        maj, min_s = bm.group(1).split(".", 1)
+        return (int(maj), int(min_s))
+    real = os.path.realpath(norm)
+    for root in (os.path.dirname(real), os.path.dirname(os.path.dirname(real))):
+        ver = _pyvenv_cfg_version(os.path.join(root, "pyvenv.cfg"))
+        if ver:
+            return ver
+    pm = _PATH_VER_RX.search(real)
+    if pm:
+        return (int(pm.group(1) or pm.group(3)), int(pm.group(2) or pm.group(4)))
+    if os.path.isfile(norm):
+        try:
+            proc = subprocess.run(
+                [norm, "-E", "-c", "import sys; print('%d.%d' % sys.version_info[:2])"],
+                capture_output=True, text=True, timeout=2, check=False,
+            )
+            parts = (proc.stdout or "").strip().split(".")
+            if proc.returncode == 0 and len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                return (int(parts[0]), int(parts[1]))
+        except Exception:  # noqa: BLE001
+            pass
+    return None
+
+
+def _proof_python_version(cmd=None, env=None):
+    path_env = (env or {}).get("PATH") or os.environ.get("PATH")
+    if cmd:
+        for m in _PY_CMD_TOKEN_RX.finditer(str(cmd)):
+            tok = m.group(1) or m.group(2) or m.group(3) or ""
+            if not tok or ("=" in tok and not os.path.isfile(_script_file(tok))):
+                continue
+            cand = _script_file(tok)
+            if not _PY_BASENAME_RX.match(os.path.basename(cand)):
+                continue
+            resolved = cand if ("/" in cand or "\\" in cand) else (shutil.which(cand, path=path_env) or "")
+            ver = _exe_py_version(resolved)
+            if ver:
+                return ver
+    return (sys.version_info[0], sys.version_info[1])
+
+
+def _site_packages_compatible(sp_dir, target_ver):
+    sp_ver = _site_packages_py_version(sp_dir)
+    return sp_ver is None or sp_ver == target_ver
+
+
+def proof_env(extra=None, *, cmd=None):
     """The environment a proof (and the coordinator's own subprocesses) runs with: Hermes's scrubbed child env,
     plus the few variables the crew scripts need to find the board. Never os.environ as it is."""
     try:
@@ -228,13 +334,15 @@ def proof_env(extra=None):
     env.update({k: os.environ[k] for k in ENV_KEEP if k in os.environ})
     _home_vars(env)
     import glob
+    effective_cmd = cmd if cmd is not None else _ACTIVE_PROOF_CMD.get()
+    target_py_ver = _proof_python_version(effective_cmd, env)
     base = _base_home()
     extra_py_paths = []
     for sp in glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "Lib", "site-packages")):
-        if sp not in extra_py_paths:
+        if os.path.isdir(sp) and _site_packages_compatible(sp, target_py_ver) and sp not in extra_py_paths:
             extra_py_paths.append(sp)
     for sp in glob.glob(os.path.join(base, "installs", "*", "environments", "*", "venv", "lib", "python*", "site-packages")):
-        if sp not in extra_py_paths:
+        if os.path.isdir(sp) and _site_packages_compatible(sp, target_py_ver) and sp not in extra_py_paths:
             extra_py_paths.append(sp)
     for src in _find_hermes_sources():
         if src and os.path.isdir(src) and src not in extra_py_paths:
@@ -245,7 +353,7 @@ def proof_env(extra=None):
                 os.path.join(vdir, "Lib", "site-packages"),
                 *glob.glob(os.path.join(vdir, "lib", "python*", "site-packages")),
             ):
-                if os.path.isdir(sp) and sp not in extra_py_paths:
+                if os.path.isdir(sp) and _site_packages_compatible(sp, target_py_ver) and sp not in extra_py_paths:
                     extra_py_paths.append(sp)
     if extra_py_paths:
         existing_pp = env.get("PYTHONPATH", "")
@@ -642,7 +750,7 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
         argv = [bash, "-c", cmd]
     try:
         done = subprocess.run(argv, shell=not IS_WINDOWS, capture_output=True, text=True, timeout=timeout, cwd=cwd,
-                              env=proof_env(), encoding="utf-8", errors="replace", stdin=stdin)
+                              env=proof_env(cmd=cmd), encoding="utf-8", errors="replace", stdin=stdin)
         return Result(done.returncode, (done.stdout or "") + (done.stderr or ""), "")
     except subprocess.TimeoutExpired:
         return Result(124, "proof command timed out after %ss" % timeout, "")

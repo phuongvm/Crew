@@ -96,7 +96,8 @@ def _default_runner(cmd, *, cwd=None, timeout_s=60.0, card_id=None, db=None):
         argv = [bash, "-c", cmd]
     else:
         argv = ["/bin/sh", "-c", cmd]
-    return crew_proc.run_bounded(argv, timeout_s=timeout_s, cwd=cwd, env=crew_safety.proof_env())
+    with crew_safety.proof_cmd_scope(cmd):
+        return crew_proc.run_bounded(argv, timeout_s=timeout_s, cwd=cwd, env=crew_safety.proof_env())
 
 
 def _eligible(conn, db, now, window_days, card_id):

@@ -144,6 +144,64 @@ class CrewSafetyResolutionTests(unittest.TestCase):
             self.assertNotIn(os.path.abspath(link), sources)
             self.assertEqual(1, sum(1 for s in sources if os.path.normcase(s) == os.path.normcase(real)))
 
+    def test_proof_env_adds_only_site_packages_matching_proof_python_version(self):
+        """proof_env(cmd=...) keeps pure-Python Hermes source checkouts on PYTHONPATH for any interpreter,
+        includes site-packages whose pyvenv.cfg version matches the proof interpreter, and excludes
+        site-packages from mismatched Python minor versions (e.g. cp314 vs cp312)."""
+        with tempfile.TemporaryDirectory(prefix="crew-pyver-") as td:
+            home = os.path.join(td, "home")
+            env314_v = os.path.join(home, "installs", "i1", "environments", "e314", "venv")
+            sp314 = os.path.join(env314_v, "Lib", "site-packages")
+            os.makedirs(sp314)
+            with open(os.path.join(env314_v, "pyvenv.cfg"), "w", encoding="utf-8") as fh:
+                fh.write("version_info = 3.14.9\n")
+
+            env312_v = os.path.join(home, "installs", "i1", "environments", "e312", "venv")
+            sp312 = os.path.join(env312_v, "Lib", "site-packages")
+            os.makedirs(sp312)
+            with open(os.path.join(env312_v, "pyvenv.cfg"), "w", encoding="utf-8") as fh:
+                fh.write("version_info = 3.12.11\n")
+
+            checkout = os.path.join(td, "hermes-src")
+            os.makedirs(os.path.join(checkout, "hermes_cli"))
+            with open(os.path.join(checkout, "hermes_cli", "__init__.py"), "w", encoding="utf-8") as fh:
+                fh.write("")
+            src_venv314 = os.path.join(checkout, "venv")
+            src_sp314 = os.path.join(src_venv314, "Lib", "site-packages")
+            os.makedirs(src_sp314)
+            with open(os.path.join(src_venv314, "pyvenv.cfg"), "w", encoding="utf-8") as fh:
+                fh.write("version = 3.14.2\n")
+
+            proof_venv = os.path.join(td, "proj-venv")
+            proof_scripts = os.path.join(proof_venv, "Scripts")
+            os.makedirs(proof_scripts)
+            with open(os.path.join(proof_venv, "pyvenv.cfg"), "w", encoding="utf-8") as fh:
+                fh.write("version_info = 3.12.11\n")
+            proof_py = os.path.join(proof_scripts, "python.exe")
+            with open(proof_py, "w", encoding="utf-8") as fh:
+                fh.write("")
+
+            with mock.patch.dict(os.environ, {"HERMES_HOME": home, "HERMES_AGENT_SRC": checkout}), \
+                 mock.patch.object(crew_safety, "_hermes", side_effect=ImportError("isolated")):
+                env_312 = crew_safety.proof_env(cmd='"%s" -m pytest tests -q' % proof_py.replace("\\", "/"))
+                pp_312 = [os.path.normcase(p) for p in env_312.get("PYTHONPATH", "").split(os.pathsep) if p]
+                self.assertIn(os.path.normcase(os.path.realpath(checkout)), pp_312)
+                self.assertIn(os.path.normcase(os.path.realpath(sp312)), pp_312)
+                self.assertNotIn(os.path.normcase(os.path.realpath(sp314)), pp_312)
+                self.assertNotIn(os.path.normcase(os.path.realpath(src_sp314)), pp_312)
+
+                proof_py314 = os.path.join(env314_v, "Scripts", "python.exe")
+                os.makedirs(os.path.dirname(proof_py314), exist_ok=True)
+                with open(proof_py314, "w", encoding="utf-8") as fh:
+                    fh.write("")
+                with crew_safety.proof_cmd_scope('"%s" -m pytest -q' % proof_py314):
+                    env_314 = crew_safety.proof_env()
+                pp_314 = [os.path.normcase(p) for p in env_314.get("PYTHONPATH", "").split(os.pathsep) if p]
+                self.assertIn(os.path.normcase(os.path.realpath(checkout)), pp_314)
+                self.assertIn(os.path.normcase(os.path.realpath(sp314)), pp_314)
+                self.assertIn(os.path.normcase(os.path.realpath(src_sp314)), pp_314)
+                self.assertNotIn(os.path.normcase(os.path.realpath(sp312)), pp_314)
+
 
 if __name__ == "__main__":
     unittest.main()
