@@ -1,0 +1,134 @@
+<svg viewBox="0 0 1000 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="crew-pillars-title crew-pillars-desc">
+  <title id="crew-pillars-title">Four-Pillar Unified Skill Architecture (CREW-INV-8)</title>
+  <desc id="crew-pillars-desc">Architecture diagram illustrating how Matt Pocock Engineering Skills, OpenSpec Governance, and Graphify MCP Codebase Intelligence converge into the five Crew Plugin skills and synchronize across all seven Hermes profiles.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+    </marker>
+    <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/>
+    </marker>
+    <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+  <!-- =================================================================
+       ARROWS FIRST (Orthogonal r=8, >=6px mask gap, fanned attach points)
+       ================================================================= -->
+
+  <!-- Pillar 1 (Matt Skills, bottom x=180, y=156) -> Coordinator Hub (top-left attach x=420, y=220) -->
+  <path d="M 180 156 L 180 180 Q 180 188 188 188 L 412 188 Q 420 188 420 196 L 420 220" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+  <rect x="240" y="168" width="120" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="300" y="176" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">COGNITIVE DISCIPLINE</text>
+
+  <!-- Pillar 2 (OpenSpec, bottom x=500, y=156) -> Coordinator Hub (top-center attach x=500, y=220) -->
+  <line x1="500" y1="156" x2="500" y2="220" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- Pillar 3 (Graphify MCP, bottom x=820, y=156) -> Coordinator Hub (top-right attach x=580, y=220) -->
+  <path d="M 820 156 L 820 180 Q 820 188 812 188 L 588 188 Q 580 188 580 196 L 580 220" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+  <rect x="648" y="168" width="112" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="704" y="176" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">AST &amp; CALL GRAPH</text>
+
+  <!-- Coordinator Hub (bottom-left attach x=420, y=316) -> Worker/Content Box (top x=260, y=368) -->
+  <path d="M 420 316 L 420 332 Q 420 340 412 340 L 268 340 Q 260 340 260 348 L 260 368" fill="none" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+  <rect x="292" y="320" width="96" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="340" y="328" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CONTRACT CARD</text>
+
+  <!-- Coordinator Hub (bottom-right attach x=580, y=316) -> Verifier Box (top x=740, y=368) -->
+  <path d="M 580 316 L 580 332 Q 580 340 588 340 L 732 340 Q 740 340 740 348 L 740 368" fill="none" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+  <rect x="612" y="320" width="96" height="12" rx="2" fill="#f5f5f5"/>
+  <text x="660" y="328" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PROOF + INPUTS</text>
+
+  <!-- Worker Box (bottom x=260, y=456) -> Cutover Bar (top-left x=260, y=488) -->
+  <line x1="260" y1="456" x2="260" y2="488" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- Verifier Box (bottom x=740, y=456) -> Cutover Bar (top-right x=740, y=488) -->
+  <line x1="740" y1="456" x2="740" y2="488" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- =================================================================
+       NODES (7 nodes total, 4px grid, max 2 coral focal elements)
+       ================================================================= -->
+
+  <!-- Pillar 1: Matt Pocock Engineering & Productivity Skills (x=40, y=44, w=280, h=112) -->
+  <rect x="40" y="44" width="280" height="112" rx="6" fill="#f5f5f5"/>
+  <rect x="40" y="44" width="280" height="112" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+  <rect x="48" y="52" width="60" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+  <text x="78" y="60" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PILLAR 1</text>
+  <text x="180" y="80" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Matt Pocock Skills (18)</text>
+  <text x="180" y="96" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Discovery: diagnosing-bugs, grilling, triage</text>
+  <text x="180" y="112" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Design: codebase-design, domain-modeling</text>
+  <text x="180" y="128" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Build: to-spec, to-tickets, tdd, pr, wizard</text>
+
+  <!-- Pillar 2: OpenSpec Workflow Governance (x=360, y=44, w=280, h=112) -->
+  <rect x="360" y="44" width="280" height="112" rx="6" fill="#f5f5f5"/>
+  <rect x="360" y="44" width="280" height="112" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+  <rect x="368" y="52" width="60" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+  <text x="398" y="60" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PILLAR 2</text>
+  <text x="500" y="80" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">OpenSpec Governance (11)</text>
+  <text x="500" y="96" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Gate 0: activate-project (locks OPENSPEC_ROOT)</text>
+  <text x="500" y="112" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Artifact: openspec/workspace/explorations/*.md</text>
+  <text x="500" y="128" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Lifecycle: explore, propose, verify, sync, archive</text>
+
+  <!-- Pillar 3: Graphify MCP Codebase Intelligence (x=680, y=44, w=280, h=112) -->
+  <rect x="680" y="44" width="280" height="112" rx="6" fill="#f5f5f5"/>
+  <rect x="680" y="44" width="280" height="112" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+  <rect x="688" y="52" width="60" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+  <text x="718" y="60" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PILLAR 3</text>
+  <text x="820" y="80" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Graphify MCP Intelligence (12)</text>
+  <text x="820" y="96" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Macro: graph_stats, god_nodes, get_community</text>
+  <text x="820" y="112" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Seam Trace: query_graph, shortest_path (&lt;2s)</text>
+  <text x="820" y="128" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Impact: get_neighbors, get_pr_impact</text>
+
+  <!-- Central Focal Hub: Crew Coordinator Skills (x=320, y=220, w=360, h=96) -->
+  <rect x="320" y="220" width="360" height="96" rx="6" fill="#f5f5f5"/>
+  <rect x="320" y="220" width="360" height="96" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+  <rect x="328" y="228" width="84" height="12" rx="2" fill="transparent" stroke="rgba(235,108,54,0.50)" stroke-width="0.8"/>
+  <text x="370" y="236" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">COORDINATOR</text>
+  <text x="500" y="256" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Crew Intake Skills: /crew &amp; /crew-no-spec (v0.10.5)</text>
+  <text x="500" y="272" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Adaptive Dual-Entry Intake (Mode 1 Fast-Path | Mode 2 Discovery)</text>
+  <text x="500" y="288" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Unified Cognitive &amp; Tool Routing Matrix + ContractCard Validation</text>
+  <text x="500" y="304" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Zero-Checkout Governance (O:/workspaces/.worktrees/&lt;name&gt;)</text>
+
+  <!-- Specialist Execution Box: Worker & Content (x=80, y=368, w=360, h=88) -->
+  <rect x="80" y="368" width="360" height="88" rx="6" fill="#f5f5f5"/>
+  <rect x="80" y="368" width="360" height="88" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+  <rect x="88" y="376" width="68" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+  <text x="122" y="384" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WRITERS</text>
+  <text x="260" y="404" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">crew-role-worker (@coder) &amp; crew-role-content (@designer)</text>
+  <text x="260" y="420" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Worker: TDD at Public Seams + Deep Modules + Sibling Seam Audit</text>
+  <text x="260" y="436" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Content: Interactive HTML Prototypes + Architecture Before/After</text>
+
+  <!-- Specialist Verification Box: Verifier (x=560, y=368, w=360, h=88) -->
+  <rect x="560" y="368" width="360" height="88" rx="6" fill="#f5f5f5"/>
+  <rect x="560" y="368" width="360" height="88" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+  <rect x="568" y="376" width="68" height="12" rx="2" fill="transparent" stroke="rgba(235,108,54,0.50)" stroke-width="0.8"/>
+  <text x="602" y="384" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">VERIFIER</text>
+  <text x="740" y="404" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">crew-verifier (@reviewer) + crew-diagnose</text>
+  <text x="740" y="420" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">BoundedRunner crew_verdict (rc=0) + Zero-Checkout Boundary Gate</text>
+  <text x="740" y="436" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">3D Spec Audit + TDD Anti-Tautology + Graphify PR Impact</text>
+
+  <!-- Foundation Bar: CREW-INV-1..8 & 7-Profile Cutover (x=80, y=488, w=840, h=48) -->
+  <rect x="80" y="488" width="840" height="48" rx="6" fill="#f5f5f5"/>
+  <rect x="80" y="488" width="840" height="48" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+  <text x="500" y="508" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Hermetic Invariant Gate (CREW-INV-1..8: 51 Anchors, 95 Tests) &amp; 7-Profile Cutover</text>
+  <text x="500" y="524" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Synced across: default | coder | designer | leader | qa | researcher | reviewer (SHA-256 Parity)</text>
+
+  <!-- =================================================================
+       LEGEND STRIP (Bottom horizontal strip, y=552..592)
+       ================================================================= -->
+  <line x1="40" y1="552" x2="960" y2="552" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+  <text x="40" y="576" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+
+  <rect x="120" y="568" width="16" height="12" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+  <text x="144" y="576" fill="#4f5d75" font-size="12" font-family="'Geist', sans-serif">Focal Unified Coordinator &amp; Verifier</text>
+
+  <rect x="408" y="568" width="16" height="12" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+  <text x="432" y="576" fill="#4f5d75" font-size="12" font-family="'Geist', sans-serif">Capability Pillar / Writer Role</text>
+
+  <rect x="652" y="568" width="16" height="12" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+  <text x="676" y="576" fill="#4f5d75" font-size="12" font-family="'Geist', sans-serif">7-Profile Sync &amp; Invariant Gate</text>
+</svg>
