@@ -363,6 +363,11 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
   // reduced motion: the injected CSS disables the radar animation
   {
     const css = document.head.querySelector('style[data-crew="chip"]')?.textContent || ''
+    const chipRule = (css.match(/\.crew-chip \{([^}]*)\}/) || [])[1] || ''
+    const afterRule = (css.match(/\.crew-chip\.live::after \{([^}]*)\}/) || [])[1] || ''
+    ok(chipRule.includes('align-self: center') && chipRule.includes('height: 16px') && chipRule.includes('margin: 0 2px') && chipRule.includes('box-sizing: border-box'), 'chip: geometry centres a 16px chip with 2px margin inside the 20px status bar')
+    ok(/\.crew-chip\.live \{[^}]*box-shadow: inset 0 0 0 1px/.test(css), 'chip: live chip has a 4-sided inset 0 0 0 1px base ring')
+    ok(/inset: 0;/.test(afterRule) && !afterRule.includes('inset: -1px'), 'chip: radar ::after uses inset: 0 (no clipped bottom/left edges)')
     ok(css.includes('@keyframes crewarc'), 'chip: the radar sweep is @keyframes crewarc')
     ok(css.includes('linear-gradient(rgb(0 0 0 / 0.78) 0 0) content-box') && css.includes('content-box exclude'),
       'chip: radar ::after uses a translucent content-box mask (interior conic fill + border sweep)')
