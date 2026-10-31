@@ -4,6 +4,8 @@ declare module '@hermes/plugin-sdk' {
   export const ROUTES_AREA: string
   export const SIDEBAR_NAV_AREA: string
   export const PANES_AREA: string
+  export const STATUSBAR_AREAS: { right: string } | undefined   // the status bar areas; optional in older shells
+  export const Codicon: ComponentType<{ name: string; size?: string }> | undefined   // the app's icon font
   export interface DesktopThemeColors {
     background: string; foreground: string; card: string; cardForeground: string; muted: string
     mutedForeground: string; primary: string; primaryForeground: string; accent: string

@@ -6,6 +6,7 @@ import type { Board } from './types'
 import { blockedWatch } from './blocked-watch'
 import { CrewPage } from './components/CrewPage'
 import { FlowPane } from './components/FlowPane'
+import { CrewStatusChip } from './components/StatusChip'
 import { CrewHostContext, type CrewHost, type KanbanRow } from './host'
 import { CREW_ROUTE, cardFromHref, cardLink, openCardRoute } from './open-card'
 
@@ -150,7 +151,7 @@ export function watchCardLinks(doc: Document = document): () => void {
   return off
 }
 
-// Hermes Desktop loads the generated desktop/plugin.js: a page at /crew, a sidebar row, and the right-hand flow pane.
+// Hermes Desktop loads the generated desktop/plugin.js: a page at /crew, a sidebar row, the right-hand flow pane and the status bar chip.
 // hideOnly keeps a close verb off the pane (closing the only plugin pane disables the plugin; track-model.ts:76-80).
 // defaultCollapsed: the pane arrives minimized on the right rail (pane-shell/tree/store.ts adoptMissingPanes); it only
 // seeds the first arrival, so an owner who opens it keeps it open with the saved layout.
@@ -176,7 +177,9 @@ export default {
         title: 'Crew flow',
         data: { placement: 'right', width: '260px', hideOnly: true, collapsible: true, defaultCollapsed: true },
         render: () => <Pane api={api} />
-      }
+      },
+      // The global status bar chip (open ticket count, radar while a ticket runs); a shell without the area gets 'statusBar.right'.
+      { id: 'chip', area: sdk.STATUSBAR_AREAS?.right || 'statusBar.right', order: 110, render: () => <CrewStatusChip api={api} navigate={hostNavigate} /> }
     ])
     watchBlocked(ctx, api)
     if (typeof sdk.host?.navigate === 'function' && typeof document !== 'undefined') {

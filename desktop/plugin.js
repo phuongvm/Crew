@@ -2,7 +2,7 @@
 
 // src/desktop.tsx
 import { useMemo as useMemo4, useState as useState13 } from "react";
-import * as sdk2 from "@hermes/plugin-sdk";
+import * as sdk3 from "@hermes/plugin-sdk";
 import { PANES_AREA, ROUTES_AREA, SIDEBAR_NAV_AREA, useTheme as useTheme2 } from "@hermes/plugin-sdk";
 
 // src/avatars.ts
@@ -3566,29 +3566,89 @@ function FlowPane({ api, navigate, cardLink: cardLink2, boardLink }) {
   ] });
 }
 
-// src/desktop.tsx
+// src/components/StatusChip.tsx
+import * as sdk2 from "@hermes/plugin-sdk";
+
+// src/types.ts
+function liveTiles(board) {
+  const out = [];
+  for (const lane of board?.lanes ?? []) for (const t of lane.tiles) if (t.active) out.push(t);
+  return out;
+}
+
+// src/components/StatusChip.tsx
 import { jsx as jsx21, jsxs as jsxs20 } from "react/jsx-runtime";
+var CLOSED = ["done", "archived"];
+function openTickets(board) {
+  const counts = board.counts ?? {};
+  if (Object.keys(counts).length)
+    return Object.entries(counts).reduce((n, [status, c]) => n + (CLOSED.includes(status) ? 0 : Number(c) || 0), 0);
+  return (board.lanes ?? []).reduce((n, lane) => n + (CLOSED.includes(lane.key) ? 0 : lane.tiles.filter((t) => !CLOSED.includes(t.status)).length), 0);
+}
+function crewChipState(board) {
+  if (!board) return { visible: false, count: 0, running: 0, radar: false, title: "Crew" };
+  const open2 = openTickets(board);
+  const running = Math.max(board.counts?.running ?? 0, board.live ?? 0, liveTiles(board).length);
+  const count = Math.max(open2, running);
+  const title = "Crew: " + count + " open ticket" + (count === 1 ? "" : "s") + (running ? " \xB7 " + running + " running" : "");
+  return { visible: count > 0, count, running, radar: running > 0, title };
+}
+var CHIP_CSS = '@property --crew-arc { syntax: "<angle>"; inherits: false; initial-value: 0deg; }@keyframes crewarc { to { --crew-arc: 360deg; } }@keyframes crewglow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }.crew-chip { position: relative; display: flex; align-items: center; gap: 5px; border: 0; background: none; cursor: pointer; font-size: 11px; padding: 0 4px; border-radius: 4px; color: var(--ui-text-tertiary); }.crew-chip:hover { color: var(--ui-text-primary); }.crew-chip b { font-weight: 600; color: var(--ui-accent, #60a5fa); }.crew-chip.live::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none; background: conic-gradient(from var(--crew-arc), transparent 0 68%, var(--ui-success, #22c55e) 88%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: crewarc 2.2s linear infinite; }.crew-chip.live .codicon, .crew-chip.live svg { color: var(--ui-success, #22c55e); animation: crewglow 2.2s ease-in-out infinite; }@media (prefers-reduced-motion: reduce) { .crew-chip.live, .crew-chip.live::after, .crew-chip.live .codicon, .crew-chip.live svg { animation: none; } }';
+function CrewIcon() {
+  const Codicon2 = sdk2.Codicon;
+  if (Codicon2) return /* @__PURE__ */ jsx21(Codicon2, { name: "organization" });
+  return /* @__PURE__ */ jsxs20("svg", { width: "12", height: "12", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.4", "aria-hidden": "true", children: [
+    /* @__PURE__ */ jsx21("circle", { cx: "8", cy: "3.5", r: "1.8" }),
+    /* @__PURE__ */ jsx21("circle", { cx: "3.5", cy: "12.5", r: "1.8" }),
+    /* @__PURE__ */ jsx21("circle", { cx: "12.5", cy: "12.5", r: "1.8" }),
+    /* @__PURE__ */ jsx21("path", { d: "M8 5.3v2.7M8 8H3.5v2.7M8 8h4.5v2.7" })
+  ] });
+}
+function CrewStatusChip({ api, navigate }) {
+  const { board } = useBoard(api, 5e3);
+  const state = crewChipState(board);
+  if (!state.visible) return null;
+  injectCss("chip", CHIP_CSS);
+  return /* @__PURE__ */ jsxs20(
+    "button",
+    {
+      type: "button",
+      className: "crew-chip" + (state.radar ? " live" : ""),
+      "data-crew-chip": "true",
+      "data-radar": state.radar ? "running" : void 0,
+      title: state.title,
+      onClick: () => navigate(CREW_ROUTE),
+      children: [
+        /* @__PURE__ */ jsx21(CrewIcon, {}),
+        /* @__PURE__ */ jsx21("b", { children: state.count })
+      ]
+    }
+  );
+}
+
+// src/desktop.tsx
+import { jsx as jsx22, jsxs as jsxs21 } from "react/jsx-runtime";
 var hostNavigate = (path) => {
-  openCardRoute(path, (p) => sdk2.host?.navigate?.(p));
+  openCardRoute(path, (p) => sdk3.host?.navigate?.(p));
 };
 function Pane({ api }) {
   const { theme, renderedMode } = useTheme2();
-  return /* @__PURE__ */ jsx21("div", { style: { ...crewVarsFromTheme(theme, renderedMode), background: "var(--crew-bg)", color: "var(--crew-fg)", height: "100%" }, children: /* @__PURE__ */ jsx21(FlowPane, { api, navigate: hostNavigate, cardLink, boardLink: CREW_ROUTE }) });
+  return /* @__PURE__ */ jsx22("div", { style: { ...crewVarsFromTheme(theme, renderedMode), background: "var(--crew-bg)", color: "var(--crew-fg)", height: "100%" }, children: /* @__PURE__ */ jsx22(FlowPane, { api, navigate: hostNavigate, cardLink, boardLink: CREW_ROUTE }) });
 }
 function Host({ api, kanban, children }) {
   const [ask, setAsk] = useState13(null);
   const [showKanban, setShowKanban] = useState13(kanban ? kanban.show : false);
   const host3 = useMemo4(() => {
     const h = {};
-    const Md2 = sdk2.MessageTextContent, Sd = sdk2.Streamdown;
-    if (Md2) h.renderMarkdown = (text) => /* @__PURE__ */ jsx21(Md2, { text, media: false });
-    else if (Sd) h.renderMarkdown = (text) => /* @__PURE__ */ jsx21(Sd, { children: text });
-    if (sdk2.Button && sdk2.ConfirmDialog)
+    const Md2 = sdk3.MessageTextContent, Sd = sdk3.Streamdown;
+    if (Md2) h.renderMarkdown = (text) => /* @__PURE__ */ jsx22(Md2, { text, media: false });
+    else if (Sd) h.renderMarkdown = (text) => /* @__PURE__ */ jsx22(Sd, { children: text });
+    if (sdk3.Button && sdk3.ConfirmDialog)
       h.actions = {
         // the route is POST /action/<name> {card, ...extra}; the backend allowlists the names again
         run: (name, card, extra) => api.post("/action/" + name, { ...extra, card }),
         confirm: (title, body) => new Promise((resolve) => setAsk({ title, body, done: resolve })),
-        Button: sdk2.Button
+        Button: sdk3.Button
       };
     if (kanban) h.kanbanRow = { show: showKanban, set: (v) => {
       kanban.set(v);
@@ -3596,20 +3656,20 @@ function Host({ api, kanban, children }) {
     } };
     return h;
   }, [api, kanban, showKanban]);
-  const Dialog = sdk2.ConfirmDialog;
+  const Dialog = sdk3.ConfirmDialog;
   const close = (ok) => {
     if (ask) ask.done(ok);
     setAsk(null);
   };
-  return /* @__PURE__ */ jsxs20(CrewHostContext.Provider, { value: host3, children: [
+  return /* @__PURE__ */ jsxs21(CrewHostContext.Provider, { value: host3, children: [
     children,
-    Dialog && ask ? /* @__PURE__ */ jsx21(Dialog, { open: true, title: ask.title, description: ask.body, confirmLabel: "Confirm", destructive: true, onClose: () => close(false), onConfirm: () => close(true) }) : null
+    Dialog && ask ? /* @__PURE__ */ jsx22(Dialog, { open: true, title: ask.title, description: ask.body, confirmLabel: "Confirm", destructive: true, onClose: () => close(false), onConfirm: () => close(true) }) : null
   ] });
 }
 var KANBAN_ROW_ID = "kanban:nav";
 var HIDE_KEY = "hideKanbanRow";
 function kanbanRowSwitch(ctx) {
-  const area = sdk2.SIDEBAR_NAV_PREFS_AREA;
+  const area = sdk3.SIDEBAR_NAV_PREFS_AREA;
   if (!area || typeof ctx.register !== "function") return null;
   let drop;
   const apply = (show) => {
@@ -3635,7 +3695,7 @@ function kanbanRowSwitch(ctx) {
 }
 var WATCH_MS = 5e3;
 function watchBlocked(ctx, api) {
-  const host3 = sdk2.host;
+  const host3 = sdk3.host;
   if (!host3?.notify || typeof ctx.setInterval !== "function") return;
   const tick = blockedWatch(() => api.get("/board.json"), (t) => {
     host3.notify({
@@ -3663,7 +3723,7 @@ function watchCardLinks(doc = document) {
   slot[CARD_LINKS]?.();
   const onClick = (e) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    const navigate = sdk2.host?.navigate;
+    const navigate = sdk3.host?.navigate;
     if (typeof navigate !== "function") return;
     const t = e.target;
     const a = t && typeof t.closest === "function" ? t.closest("a[href]") : null;
@@ -3672,7 +3732,7 @@ function watchCardLinks(doc = document) {
     const id = cardFromHref(a.getAttribute("href") || "");
     if (!id) return;
     e.preventDefault();
-    openCardRoute(cardLink(id), (p) => sdk2.host?.navigate?.(p));
+    openCardRoute(cardLink(id), (p) => sdk3.host?.navigate?.(p));
   };
   doc.addEventListener("click", onClick, true);
   const off = () => {
@@ -3689,18 +3749,20 @@ var desktop_default = {
     const api = restApi(ctx);
     const kanban = kanbanRowSwitch(ctx);
     ctx.registerMany([
-      { id: "page", area: ROUTES_AREA, data: { path: "/crew" }, render: () => /* @__PURE__ */ jsx21(Host, { api, kanban, children: /* @__PURE__ */ jsx21(CrewPage, { api }) }) },
+      { id: "page", area: ROUTES_AREA, data: { path: "/crew" }, render: () => /* @__PURE__ */ jsx22(Host, { api, kanban, children: /* @__PURE__ */ jsx22(CrewPage, { api }) }) },
       { id: "nav", area: SIDEBAR_NAV_AREA, data: { path: "/crew", label: "Crew", codicon: "organization", asTile: true } },
       {
         id: "flow",
         area: PANES_AREA,
         title: "Crew flow",
         data: { placement: "right", width: "260px", hideOnly: true, collapsible: true, defaultCollapsed: true },
-        render: () => /* @__PURE__ */ jsx21(Pane, { api })
-      }
+        render: () => /* @__PURE__ */ jsx22(Pane, { api })
+      },
+      // The global status bar chip (open ticket count, radar while a ticket runs); a shell without the area gets 'statusBar.right'.
+      { id: "chip", area: sdk3.STATUSBAR_AREAS?.right || "statusBar.right", order: 110, render: () => /* @__PURE__ */ jsx22(CrewStatusChip, { api, navigate: hostNavigate }) }
     ]);
     watchBlocked(ctx, api);
-    if (typeof sdk2.host?.navigate === "function" && typeof document !== "undefined") {
+    if (typeof sdk3.host?.navigate === "function" && typeof document !== "undefined") {
       const off = watchCardLinks(document);
       if (typeof ctx.onDispose === "function") ctx.onDispose(off);
     }

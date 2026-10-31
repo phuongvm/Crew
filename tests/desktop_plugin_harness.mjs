@@ -2,15 +2,21 @@
 // three modules to a disk plugin; here @hermes/plugin-sdk is a stub, while react and react/jsx-runtime are the REAL
 // ones from ui/node_modules and the page and pane are rendered for real into a jsdom document, so the markup
 // asserted below is what React produced from the board.json fixture, effects and polling included.
-// Usage: node desktop_plugin_harness.mjs <plugin.js> <scratch dir>   (exit 0 and "OK n checks" when all pass)
+// Usage: node desktop_plugin_harness.mjs [<plugin.js> <scratch dir>]   (exit 0 and "OK n checks" when all pass)
+// With no arguments the plugin is ../desktop/plugin.js and the scratch dir is a temporary one, removed at exit.
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const [, , pluginPath, tmp] = process.argv
-const UI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'ui')
+const HERE0 = path.dirname(fileURLToPath(import.meta.url))
+const [, , argPlugin, argTmp] = process.argv
+const pluginPath = argPlugin || path.join(HERE0, '..', 'desktop', 'plugin.js')
+const tmp = argTmp || fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'crew-desktop-plugin-'))
+if (!argTmp) process.on('exit', () => { try { fs.rmSync(tmp, { recursive: true, force: true }) } catch { /* best effort */ } })
+const UI = path.join(HERE0, '..', 'ui')
 const req = createRequire(path.join(UI, 'package.json'))
 const { JSDOM } = req('jsdom')
 const dom = new JSDOM('<!doctype html><div id="root"></div>')
@@ -30,6 +36,7 @@ const reactUrl = pathToFileURL(req.resolve('react')).href
 const runtimeUrl = pathToFileURL(req.resolve('react/jsx-runtime')).href
 fs.writeFileSync(path.join(tmp, 'sdk.mjs'), `
 export const ROUTES_AREA = 'routes', SIDEBAR_NAV_AREA = 'sidebar.nav', PANES_AREA = 'panes'
+export const STATUSBAR_AREAS = { right: 'statusBar.right' }
 export const useTheme = () => ({ theme: globalThis.__theme, renderedMode: globalThis.__mode || 'light' })
 // Desktop's chat-open contract, host.openSession(session, { profile }) (recorded); every Desktop SDK has it
 export const host = { openSession: (s, o) => { (globalThis.__opened = globalThis.__opened || []).push([s, o]); return Promise.resolve() } }
@@ -92,14 +99,17 @@ const ctx = {
 }
 eq([plugin.id, plugin.name, typeof plugin.register], ['crew', 'Crew', 'function'])
 plugin.register(ctx)
-eq(calls.map(c => c.area), ['routes', 'sidebar.nav', 'panes'])
-const [page, nav, pane] = calls
+eq(calls.map(c => c.area), ['routes', 'sidebar.nav', 'panes', 'statusBar.right'])
+const [page, nav, pane, chip] = calls
 eq(page.data, { path: '/crew' })
 eq([nav.data.path, nav.data.label], ['/crew', 'Crew'])
 eq([pane.id, pane.title, pane.data.placement, pane.data.width], ['flow', 'Crew flow', 'right', '260px'])
 ok(pane.data.hideOnly === true, 'the pane is hideOnly')
 ok(pane.data.collapsible === true, 'the pane is collapsible')
 ok(pane.data.defaultCollapsed === true, 'the pane arrives collapsed (default OFF): Desktop minimizes it on first adoption')
+eq([calls.indexOf(page), calls.indexOf(nav), calls.indexOf(pane), calls.indexOf(chip)], [0, 1, 2, 3], 'page, nav, flow stay at 0..2; the chip is the fourth registration')
+eq([chip.id, chip.area, chip.order], ['chip', 'statusBar.right', 110], 'the global status bar chip: id chip, statusBar.right, order 110')
+eq(typeof chip.render, 'function', 'the chip renders')
 
 // --- render both for real: effects run, ctx.rest answers the fixture, React re-renders
 async function mount(render) {
@@ -298,6 +308,69 @@ for (const name of ['board.live.json', 'board.states.json']) {
 }
 ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
 
+// --- the global status bar chip (Crew icon + open ticket count, radar while a ticket runs), rendered for real from /board.json
+{
+  const savedRest = ctx.rest, savedNav = globalThis.__navigated
+  const chipBoard = counts => ({ generated_at: 1, counts, lanes: [], live: counts.running || 0, cards: Object.values(counts).reduce((a, n) => a + n, 0), attention: [] })
+  const mountChip = async counts => {
+    ctx.rest = async () => chipBoard(counts)
+    return mountKeep(chip.render)
+  }
+  // (a) running: running 1, ready 1, done 1 -> visible, count 2, crew-chip live + data-radar
+  {
+    const m = await mountChip({ running: 1, ready: 1, done: 1 })
+    const b = m.host.querySelector('button[data-crew-chip]')
+    ok(b, 'chip: a running board shows the chip')
+    eq(b.querySelector('b').textContent, '2', 'chip: count is running + ready, done excluded')
+    ok(b.classList.contains('crew-chip') && b.classList.contains('live'), 'chip: crew-chip live while a ticket runs')
+    eq(b.getAttribute('data-radar'), 'running', 'chip: data-radar=running')
+    ok(b.querySelector('svg'), 'chip: the Crew icon falls back to an inline svg without sdk.Codicon')
+    await m.done()
+  }
+  // (b) open but not running: ready 2, review 1, blocked 1, done 4 -> count 4, no live, no data-radar
+  {
+    const m = await mountChip({ running: 0, ready: 2, review: 1, blocked: 1, done: 4, archived: 3 })
+    const b = m.host.querySelector('button[data-crew-chip]')
+    ok(b, 'chip: open tickets that are not running still show the chip')
+    eq(b.querySelector('b').textContent, '4', 'chip: count excludes done and archived')
+    ok(!b.classList.contains('live') && !b.hasAttribute('data-radar'), 'chip: no radar when nothing runs')
+    await m.done()
+  }
+  // (c) zero open: only done/archived, or an empty board -> nothing rendered
+  for (const counts of [{ done: 5, archived: 2 }, {}]) {
+    const m = await mountChip(counts)
+    eq(m.host.querySelector('button[data-crew-chip]'), null, 'chip: hidden when no ticket is open ' + JSON.stringify(counts))
+    eq(m.host.innerHTML, '', 'chip: renders null for ' + JSON.stringify(counts))
+    await m.done()
+  }
+  // (d) click: host.navigate('/crew') exactly once (the host-aware stub records it); the plain stub has no navigate
+  {
+    globalThis.__navigated = []
+    const m = await mountChip({ running: 1, ready: 1 })
+    await click(m.host.querySelector('button[data-crew-chip]'))
+    eq(globalThis.__navigated, [], 'chip: a shell without host.navigate gets a quiet no-op click')
+    await m.done()
+    const hostFile = path.join(tmp, 'plugin-chip-host.mjs')
+    fs.writeFileSync(hostFile, rewritten.replaceAll('"./sdk.mjs"', '"./sdk-host.mjs"'))
+    const hp = (await import(pathToFileURL(hostFile).href + '?v=chip')).default
+    const hc = []
+    hp.register({ registerMany: cs => hc.push(...cs), rest: async () => chipBoard({ running: 1, ready: 1 }) })
+    const m2 = await mountKeep(hc.find(c => c.id === 'chip').render)
+    await click(m2.host.querySelector('button[data-crew-chip]'))
+    eq(globalThis.__navigated, ['/crew'], 'chip: a click navigates to /crew exactly once')
+    await m2.done()
+  }
+  // reduced motion: the injected CSS disables the radar animation
+  {
+    const css = document.head.querySelector('style[data-crew="chip"]')?.textContent || ''
+    ok(css.includes('@keyframes crewarc'), 'chip: the radar sweep is @keyframes crewarc')
+    const rm = /@media \(prefers-reduced-motion: reduce\)\s*\{([^@]*)\}\s*$/.exec(css)
+    ok(rm && /\.crew-chip\.live[^{]*\{[^}]*animation:\s*none/.test(rm[1]), 'chip: reduced motion sets animation: none on .crew-chip.live')
+    ok(rm && rm[1].includes('.crew-chip.live::after'), 'chip: reduced motion also stops the ::after sweep')
+  }
+  ctx.rest = savedRest
+  globalThis.__navigated = savedNav
+}
 // --- the card page, from the LIVE card fixture (tests/fixtures/card.live.json: archived card t_c9e643de, a done card with
 // a brief, two runs, a c_verifier with a PASS verdict and failed calls). Click a c_tile, read the page, poll again with one
 // more step appended: the lists must keep their DOM nodes (the in-place guarantee of the old page).
