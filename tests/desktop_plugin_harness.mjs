@@ -364,6 +364,9 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
   {
     const css = document.head.querySelector('style[data-crew="chip"]')?.textContent || ''
     ok(css.includes('@keyframes crewarc'), 'chip: the radar sweep is @keyframes crewarc')
+    ok(css.includes('linear-gradient(rgb(0 0 0 / 0.78) 0 0) content-box') && css.includes('content-box exclude'),
+      'chip: radar ::after uses a translucent content-box mask (interior conic fill + border sweep)')
+    ok(!/linear-gradient\(#000 0 0\)\s*content-box/.test(css), 'chip: no opaque #000 content-box mask remains on the radar rule')
     const rm = /@media \(prefers-reduced-motion: reduce\)\s*\{([^@]*)\}\s*$/.exec(css)
     ok(rm && /\.crew-chip\.live[^{]*\{[^}]*animation:\s*none/.test(rm[1]), 'chip: reduced motion sets animation: none on .crew-chip.live')
     ok(rm && rm[1].includes('.crew-chip.live::after'), 'chip: reduced motion also stops the ::after sweep')
