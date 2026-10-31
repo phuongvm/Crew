@@ -37,6 +37,7 @@ const runtimeUrl = pathToFileURL(req.resolve('react/jsx-runtime')).href
 fs.writeFileSync(path.join(tmp, 'sdk.mjs'), `
 export const ROUTES_AREA = 'routes', SIDEBAR_NAV_AREA = 'sidebar.nav', PANES_AREA = 'panes'
 export const STATUSBAR_AREAS = { right: 'statusBar.right' }
+export const SESSION_ROW_AREAS = { leading: 'sessionRow.leading', trailing: 'sessionRow.trailing' }
 export const useTheme = () => ({ theme: globalThis.__theme, renderedMode: globalThis.__mode || 'light' })
 // Desktop's chat-open contract, host.openSession(session, { profile }) (recorded); every Desktop SDK has it
 export const host = { openSession: (s, o) => { (globalThis.__opened = globalThis.__opened || []).push([s, o]); return Promise.resolve() } }
@@ -99,15 +100,16 @@ const ctx = {
 }
 eq([plugin.id, plugin.name, typeof plugin.register], ['crew', 'Crew', 'function'])
 plugin.register(ctx)
-eq(calls.map(c => c.area), ['routes', 'sidebar.nav', 'panes', 'statusBar.right'])
-const [page, nav, pane, chip] = calls
+eq(calls.map(c => c.area), ['routes', 'sidebar.nav', 'panes', 'statusBar.right', 'sessionRow.trailing'])
+const [page, nav, pane, chip, sessionChip] = calls
 eq(page.data, { path: '/crew' })
 eq([nav.data.path, nav.data.label], ['/crew', 'Crew'])
 eq([pane.id, pane.title, pane.data.placement, pane.data.width], ['flow', 'Crew flow', 'right', '260px'])
 ok(pane.data.hideOnly === true, 'the pane is hideOnly')
 ok(pane.data.collapsible === true, 'the pane is collapsible')
 ok(pane.data.defaultCollapsed === true, 'the pane arrives collapsed (default OFF): Desktop minimizes it on first adoption')
-eq([calls.indexOf(page), calls.indexOf(nav), calls.indexOf(pane), calls.indexOf(chip)], [0, 1, 2, 3], 'page, nav, flow stay at 0..2; the chip is the fourth registration')
+eq([calls.indexOf(page), calls.indexOf(nav), calls.indexOf(pane), calls.indexOf(chip), calls.indexOf(sessionChip)], [0, 1, 2, 3, 4], 'page, nav, flow, chip stay at 0..3; the session-row chip is the fifth registration (cs[4])')
+eq([sessionChip.id, sessionChip.area, typeof sessionChip.data?.render], ['session-chip', 'sessionRow.trailing', 'function'], 'the session-row chip: id session-chip in SESSION_ROW_AREAS.trailing, drawn by data.render({ sessionId })')
 eq([chip.id, chip.area, chip.order], ['chip', 'statusBar.right', 110], 'the global status bar chip: id chip, statusBar.right, order 110')
 eq(typeof chip.render, 'function', 'the chip renders')
 
@@ -375,6 +377,173 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
     const rm = /@media \(prefers-reduced-motion: reduce\)\s*\{([^@]*)\}\s*$/.exec(css)
     ok(rm && /\.crew-chip\.live[^{]*\{[^}]*animation:\s*none/.test(rm[1]), 'chip: reduced motion sets animation: none on .crew-chip.live')
     ok(rm && rm[1].includes('.crew-chip.live::after'), 'chip: reduced motion also stops the ::after sweep')
+  }
+  ctx.rest = savedRest
+  globalThis.__navigated = savedNav
+}
+// --- the session-row chip (Desktop's left sidebar, SESSION_ROW_AREAS.trailing): only THAT session's open tickets, rendered
+// for real from tile.session_id; radar only while one of its own tickets runs; null at 0; click opens the card or the board
+{
+  const savedRest = ctx.rest, savedNav = globalThis.__navigated
+  const tile = (id, status, session_id, extra = {}) => ({ id, title: id, status, role: 'worker', assignee: 'w', active: null, session_id, ...extra })
+  const sessBoard = tiles => ({ generated_at: 1, counts: {}, live: 0, cards: tiles.length, attention: [],
+    lanes: [{ key: 'all', label: 'All', hidden: 0, tiles: tiles.filter(t => t.status !== 'archived') },
+            { key: 'archived', label: 'Archived', hidden: 0, tiles: tiles.filter(t => t.status === 'archived') }] })
+  const sessChip = async (tiles, sessionId, wrap) => {
+    ctx.rest = async () => sessBoard(tiles)
+    return mountKeep(() => {
+      const inner = sessionChip.data.render({ sessionId })
+      return wrap ? wrap(inner) : inner
+    })
+  }
+  // (a) running + ready + done for sess-a, a running card for sess-b: count 2, radar from sess-a's own running card
+  {
+    const m = await sessChip([tile('t_a1', 'running', 'sess-a'), tile('t_a2', 'ready', 'sess-a'), tile('t_a3', 'done', 'sess-a'), tile('t_b1', 'running', 'sess-b')], 'sess-a')
+    const b = m.host.querySelector('button[data-crew-session-chip]')
+    ok(b, 'session chip: a session with open tickets shows the chip')
+    eq(b.getAttribute('data-crew-session-chip'), 'sess-a', 'session chip: it names its session')
+    eq(b.querySelector('b').textContent, '2', 'session chip: count is sess-a running + ready, done and sess-b excluded')
+    ok(b.classList.contains('crew-chip') && b.classList.contains('live'), 'session chip: crew-chip live while a ticket of this session runs')
+    eq(b.getAttribute('data-radar'), 'running', 'session chip: data-radar=running')
+    eq(b.getAttribute('title'), 'Crew: 2 open tickets · 1 running', 'session chip: title counts this session only')
+    ok(b.querySelector('svg'), 'session chip: the Crew icon falls back to an inline svg without sdk.Codicon')
+    await m.done()
+  }
+  // (b) review + blocked for sess-a while sess-b runs: count 2, NO radar (the other session's run does not light this row)
+  {
+    const m = await sessChip([tile('t_a1', 'review', 'sess-a'), tile('t_a2', 'blocked', 'sess-a'), tile('t_b1', 'running', 'sess-b')], 'sess-a')
+    const b = m.host.querySelector('button[data-crew-session-chip]')
+    ok(b, 'session chip: open tickets that are not running still show the chip')
+    eq(b.querySelector('b').textContent, '2', 'session chip: review + blocked count 2')
+    ok(!b.classList.contains('live') && !b.hasAttribute('data-radar'), 'session chip: no radar when only another session runs')
+    eq(b.getAttribute('title'), 'Crew: 2 open tickets', 'session chip: no running suffix in the title')
+    await m.done()
+  }
+  // a live run (tile.active) lights the radar even when the status text has not caught up
+  {
+    const m = await sessChip([tile('t_a1', 'ready', 'sess-a', { active: { profile: 'w', run: 1, for_s: 5 } })], 'sess-a')
+    ok(m.host.querySelector('button[data-crew-session-chip].live'), 'session chip: a ticket with a live run lights the radar')
+    await m.done()
+  }
+  // (d) zero ongoing: only done/archived of its own, a probe card, another session's cards, an unattributed card, an empty board
+  for (const [what, tiles] of [
+    ['done and archived only', [tile('t_1', 'done', 'sess-idle'), tile('t_2', 'archived', 'sess-idle')]],
+    ['only a test card', [tile('t_1', 'ready', 'sess-idle', { test: true })]],
+    ['other sessions own the open cards', [tile('t_1', 'running', 'sess-other'), tile('t_2', 'ready', '')]],
+    ['empty board', []]
+  ]) {
+    const m = await sessChip(tiles, 'sess-idle')
+    eq(m.host.querySelector('button[data-crew-session-chip]'), null, 'session chip: hidden for ' + what)
+    eq(m.host.innerHTML, '', 'session chip: renders null for ' + what)
+    await m.done()
+  }
+  {
+    const m = await sessChip([tile('t_1', 'ready', 'sess-a')], '')
+    eq(m.host.innerHTML, '', 'session chip: no session id renders null')
+    await m.done()
+  }
+  // title parity: the global chip and the session chip speak with one formatCrewChipTitle
+  {
+    ctx.rest = async () => ({ generated_at: 1, counts: { running: 1, ready: 1 }, lanes: [], live: 1, cards: 2, attention: [] })
+    const g = await mountKeep(chip.render)
+    const globalTitle = g.host.querySelector('button[data-crew-chip]').getAttribute('title')
+    await g.done()
+    const s = await sessChip([tile('t_1', 'running', 'sess-a'), tile('t_2', 'ready', 'sess-a')], 'sess-a')
+    eq(s.host.querySelector('button[data-crew-session-chip]').getAttribute('title'), globalTitle, 'session chip: same title as the global chip for the same count and running')
+    await s.done()
+    ctx.rest = async () => ({ generated_at: 1, counts: { ready: 1 }, lanes: [], live: 0, cards: 1, attention: [] })
+    const g1 = await mountKeep(chip.render)
+    const oneTitle = g1.host.querySelector('button[data-crew-chip]').getAttribute('title')
+    await g1.done()
+    const s1 = await sessChip([tile('t_1', 'ready', 'sess-a')], 'sess-a')
+    eq(s1.host.querySelector('button[data-crew-session-chip]').getAttribute('title'), oneTitle, 'session chip: same singular title as the global chip')
+    eq(oneTitle, 'Crew: 1 open ticket', 'session chip: singular ticket wording')
+    await s1.done()
+  }
+  // click: it stops the pointer and the click so the row (a parent with its own handlers) neither drags nor resumes
+  {
+    const hostFile = path.join(tmp, 'plugin-session-chip-host.mjs')
+    fs.writeFileSync(hostFile, rewritten.replaceAll('"./sdk.mjs"', '"./sdk-host.mjs"'))
+    const hp = (await import(pathToFileURL(hostFile).href + '?v=session-chip')).default
+    const hc = []
+    const tiles1 = [tile('t_only1', 'ready', 'sess-one'), tile('t_gone', 'done', 'sess-one')]
+    const tilesN = [tile('t_1', 'ready', 'sess-multi'), tile('t_2', 'running', 'sess-multi')]
+    let board2 = sessBoard(tiles1)
+    hp.register({ registerMany: cs => hc.push(...cs), rest: async () => board2 })
+    const hostChip = hc.find(c => c.id === 'session-chip')
+    const rowHits = []
+    const row = inner => React.createElement('div', { 'data-row': 'true', onClick: () => rowHits.push('click'), onPointerDown: () => rowHits.push('pointerdown') }, inner)
+    const press = async el => {
+      await React.act(async () => { el.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })) })
+      await click(el)
+    }
+    globalThis.__navigated = []
+    const m1 = await mountKeep(() => row(hostChip.data.render({ sessionId: 'sess-one' })))
+    await press(m1.host.querySelector('button[data-crew-session-chip]'))
+    eq(globalThis.__navigated, ['/crew?card=t_only1'], 'session chip: one open ticket opens that card')
+    eq(rowHits, [], 'session chip: pointerdown and click never reach the row (no drag, no resume)')
+    await m1.done()
+    globalThis.__navigated = []
+    board2 = sessBoard(tilesN)
+    const m2 = await mountKeep(() => row(hostChip.data.render({ sessionId: 'sess-multi' })))
+    await press(m2.host.querySelector('button[data-crew-session-chip]'))
+    eq(globalThis.__navigated, ['/crew'], 'session chip: two open tickets open the Crew board')
+    eq(rowHits, [], 'session chip: the multi-ticket click does not reach the row either')
+    await m2.done()
+    // a shell without host.navigate: a quiet no-op (a several-ticket session, so the card bus parks no card id for the next page)
+    globalThis.__navigated = []
+    ctx.rest = async () => sessBoard(tilesN)
+    const m3 = await mountKeep(() => row(sessionChip.data.render({ sessionId: 'sess-multi' })))
+    await press(m3.host.querySelector('button[data-crew-session-chip]'))
+    eq([globalThis.__navigated, rowHits], [[], []], 'session chip: a shell without host.navigate gets a quiet no-op click')
+    await m3.done()
+    window.location.hash = ''   // the host stub's navigate set it; a later page mount would open that card
+  }
+  // (e) one shared poll: the status bar chip and two session chips ask for /board.json once; the timer is shared and disposed
+  {
+    const realSet = globalThis.setInterval, realClear = globalThis.clearInterval
+    const fake = { n: 0, live: new Map(), cleared: 0 }
+    globalThis.setInterval = (fn, ms) => { const id = 'fake-interval-' + (++fake.n); fake.live.set(id, { fn, ms }); return id }
+    globalThis.clearInterval = id => { if (fake.live.delete(id)) fake.cleared++; else realClear(id) }
+    const asks = []
+    ctx.rest = async p => { asks.push(p); return sessBoard([tile('t_1', 'running', 'sess-a'), tile('t_2', 'ready', 'sess-b')]) }
+    try {
+      const trio = await mountKeep(() => React.createElement(React.Fragment, null,
+        chip.render(), sessionChip.data.render({ sessionId: 'sess-a' }), sessionChip.data.render({ sessionId: 'sess-b' })))
+      eq(asks.filter(p => p === '/board.json').length, 1, 'shared poll: the status chip plus two session chips issue ONE /board.json request on mount')
+      eq([...fake.live.values()].map(t => t.ms), [5000], 'shared poll: one timer for the three consumers')
+      ok(trio.host.querySelector('button[data-crew-session-chip="sess-a"]') && trio.host.querySelector('button[data-crew-session-chip="sess-b"]') && trio.host.querySelector('button[data-crew-chip]'), 'shared poll: all three chips drew from the one board')
+      await React.act(async () => { [...fake.live.values()][0].fn() })
+      await settle()
+      eq(asks.filter(p => p === '/board.json').length, 2, 'shared poll: one tick is one request for all three')
+      await trio.done()
+      eq(fake.live.size, 0, 'shared poll: unmounting the last consumer disposes the timer')
+      asks.length = 0
+      // mount @5000, then @2000 (the Crew flow pane): re-armed to 2000 with exactly one clear and no extra request
+      const a = await mountKeep(() => sessionChip.data.render({ sessionId: 'sess-a' }))
+      eq([...fake.live.values()].map(t => t.ms), [5000], 're-arm: the first subscriber arms 5000')
+      const clearedBefore = fake.cleared
+      const same = await mountKeep(() => sessionChip.data.render({ sessionId: 'sess-b' }))
+      eq([fake.cleared - clearedBefore, [...fake.live.values()].map(t => t.ms)], [0, [5000]], 're-arm: a second 5000 subscriber leaves the timer alone')
+      await same.done()
+      const b = await mountKeep(pane.render)
+      eq([...fake.live.values()].map(t => t.ms), [2000], 're-arm: a 2000 subscriber lowers the one timer to 2000')
+      eq(fake.cleared - clearedBefore, 1, 're-arm: exactly one clearInterval for the change')
+      eq(asks.filter(p => p === '/board.json').length, 1, 're-arm: joining and re-arming issue no extra /board.json request')
+      await b.done()
+      eq([...fake.live.values()].map(t => t.ms), [5000], 're-arm: the 2000 subscriber leaving restores 5000')
+      eq(fake.cleared - clearedBefore, 2, 're-arm: one more clearInterval on the way back')
+      await a.done()
+      eq(fake.live.size, 0, 'dispose: no pending timer after the last unmount')
+      // a late response of a disposed poll is ignored, and a new mount starts a fresh poll against the current rest
+      asks.length = 0
+      const c = await mountKeep(() => sessionChip.data.render({ sessionId: 'sess-a' }))
+      eq(asks.filter(p => p === '/board.json').length, 1, 'dispose: a later mount starts a fresh poll')
+      await c.done()
+    } finally {
+      globalThis.setInterval = realSet
+      globalThis.clearInterval = realClear
+    }
   }
   ctx.rest = savedRest
   globalThis.__navigated = savedNav

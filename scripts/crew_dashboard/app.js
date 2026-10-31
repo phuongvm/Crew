@@ -12835,31 +12835,82 @@
 
   // src/data.ts
   var import_react2 = __toESM(require_react(), 1);
-  function useBoard(api, intervalMs = 2e3, query = "") {
-    const [board, setBoard] = (0, import_react2.useState)(null);
-    const [error, setError] = (0, import_react2.useState)(null);
-    const [loading, setLoading] = (0, import_react2.useState)(true);
-    const [tick, setTick] = (0, import_react2.useState)(0);
-    (0, import_react2.useEffect)(() => {
-      let live = true;
-      const load = () => api.get("/board.json" + (query ? "?" + query : "")).then((b) => {
-        if (live) {
-          setBoard(b);
-          setError(null);
-        }
+  var INITIAL_SNAP = { board: null, error: null, loading: true };
+  var shared = /* @__PURE__ */ new WeakMap();
+  function rearm(entry) {
+    const wanted = [...entry.listeners.values()].filter((ms) => ms > 0);
+    const next = wanted.length ? Math.min(...wanted) : 0;
+    if (next === entry.armedMs) return;
+    if (entry.timer !== void 0) clearInterval(entry.timer);
+    entry.timer = next > 0 ? setInterval(entry.load, next) : void 0;
+    entry.armedMs = next;
+  }
+  function openEntry(api, query) {
+    const entry = {
+      snap: INITIAL_SNAP,
+      listeners: /* @__PURE__ */ new Map(),
+      timer: void 0,
+      armedMs: 0,
+      alive: true,
+      load: () => api.get("/board.json" + (query ? "?" + query : "")).then((b) => {
+        if (entry.alive) publish(entry, { board: b, error: null, loading: false });
       }).catch((e) => {
-        if (live) setError(String(e && e.message || e));
-      }).finally(() => {
-        if (live) setLoading(false);
-      });
-      load();
-      const timer = setInterval(load, intervalMs);
+        if (entry.alive) publish(entry, { board: entry.snap.board, error: String(e && e.message || e), loading: false });
+      })
+    };
+    return entry;
+  }
+  function publish(entry, snap) {
+    entry.snap = snap;
+    entry.listeners.forEach((_, fn) => fn(snap));
+  }
+  function peekSnap(api, query) {
+    return shared.get(api)?.get(query)?.snap ?? INITIAL_SNAP;
+  }
+  function joinBoard(api, query, intervalMs, listener) {
+    let byQuery = shared.get(api);
+    if (!byQuery) shared.set(api, byQuery = /* @__PURE__ */ new Map());
+    let entry = byQuery.get(query);
+    const fresh = !entry;
+    if (!entry) byQuery.set(query, entry = openEntry(api, query));
+    const joined = entry;
+    joined.listeners.set(listener, intervalMs);
+    if (!joined.snap.loading) listener(joined.snap);
+    if (fresh) void joined.load();
+    rearm(joined);
+    return {
+      entry: joined,
+      leave() {
+        joined.listeners.delete(listener);
+        if (joined.listeners.size > 0) {
+          rearm(joined);
+          return;
+        }
+        if (joined.timer !== void 0) clearInterval(joined.timer);
+        joined.timer = void 0;
+        joined.armedMs = 0;
+        joined.alive = false;
+        const map = shared.get(api);
+        if (map?.get(query) === joined) map.delete(query);
+        if (map && map.size === 0) shared.delete(api);
+      }
+    };
+  }
+  function useBoard(api, intervalMs = 2e3, query = "") {
+    const [snap, setSnap] = (0, import_react2.useState)(() => peekSnap(api, query));
+    const entryRef = (0, import_react2.useRef)(null);
+    (0, import_react2.useEffect)(() => {
+      const { entry, leave } = joinBoard(api, query, intervalMs, setSnap);
+      entryRef.current = entry;
       return () => {
-        live = false;
-        clearInterval(timer);
+        entryRef.current = null;
+        leave();
       };
-    }, [api, intervalMs, query, tick]);
-    return { board, error, loading, refresh: () => setTick((n) => n + 1) };
+    }, [api, intervalMs, query]);
+    const refresh = (0, import_react2.useCallback)(() => {
+      void entryRef.current?.load();
+    }, []);
+    return { board: snap.board, error: snap.error, loading: snap.loading, refresh };
   }
   function useCard(api, id, intervalMs = 2e3, paused = false) {
     const [card, setCard] = (0, import_react2.useState)(null);
@@ -15946,8 +15997,8 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
     const snap = window.__CREW_SNAPSHOT;
     const hosted = !!opts.base;
     const api = (0, import_react13.useMemo)(() => snap ? snapshotApi(snap) : fetchApi(opts.base || "", opts.fetch, !hosted), [snap, opts.base, opts.fetch, hosted]);
-    const shared = cardFromSearch(window.location.search);
-    const start = () => snap ? { page: "card", id: snap.card_id } : hosted ? shared ? { page: "card", id: shared } : { page: "board", all: false } : parseLocation(window.location.pathname, window.location.search);
+    const shared2 = cardFromSearch(window.location.search);
+    const start = () => snap ? { page: "card", id: snap.card_id } : hosted ? shared2 ? { page: "card", id: shared2 } : { page: "board", all: false } : parseLocation(window.location.pathname, window.location.search);
     const [route, setRoute] = (0, import_react13.useState)(start);
     (0, import_react13.useEffect)(() => {
       if (snap || hosted) return;

@@ -182,7 +182,7 @@ def board_data(include_all=False, older=False):
     tiles = []
     facts = {}
     for tid, title, status, assignee, created, started, completed, body, skills, lfe in tasks:
-        facts[tid] = (body or "", lfe)
+        facts[tid] = (body or "", lfe, created)
         my_runs = runs.get(tid, [])
         live = [r for r in my_runs if r[3] == "running" and run_is_live(r, now)]
         profile = (live[0][2] if live else assignee) or ""
@@ -233,7 +233,10 @@ def board_data(include_all=False, older=False):
     # Only the tiles the page draws are enriched (0.8 ms a card measured): every open card and the shown done.
     for lane in lanes:
         for t in lane["tiles"]:
-            body, lfe = facts.get(t["id"], ("", None))
+            body, lfe, created = facts.get(t["id"], ("", None, None))
+            # the chat session the card came from (Desktop's sidebar chip counts a session's tickets by it); the
+            # archived lane is not counted, so it skips the lookup
+            t["session_id"] = CG.resolve_tile_session_id(db, t["id"], body, created) if t["status"] != "archived" else ""
             t["summary"] = tile_summary(db, t["id"], t["status"], lfe)
             t["verdict"] = tile_verdict(db, t["id"], body)
             budget = tile_budget(t["id"])

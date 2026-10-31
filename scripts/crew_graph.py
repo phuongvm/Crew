@@ -549,6 +549,86 @@ def find_origin_session(board_db, card_id, card_session_id=None, created_at=None
     return prof, osid
 
 
+ROOT_HOPS = 16              # longest parent_session_id chain walked to a lineage root
+ROOT_TTL_S = 30             # a resolved root is reused this long: the board polls every tile every few seconds
+_ROOT_CACHE = {}
+
+
+def _root_session_id(sid):
+    """The durable root of `sid`'s continuation chain (sessions.parent_session_id in state.db), `sid` itself when it
+    has no parent or is in no store. Bounded and cycle-guarded; cached for ROOT_TTL_S."""
+    hit = _ROOT_CACHE.get(sid)
+    if hit and time.time() - hit[1] < ROOT_TTL_S:
+        return hit[0]
+    cur, seen = sid, {sid}
+    for _ in range(ROOT_HOPS):
+        row = find_session_by_id(cur)[2]
+        parent = str(row[1] or "").strip() if row is not None else ""
+        if not parent or parent in seen:
+            break
+        seen.add(parent)
+        cur = parent
+    _ROOT_CACHE[sid] = (cur, time.time())
+    return cur
+
+
+def _usable_origin_candidate(sid, run_sessions):
+    """`sid` when it can be a card's discussion session: well-formed, not 'no-session', not a local draft, not one of
+    the card's own worker run sessions and not a kanban worker session in state.db; else ''."""
+    sid = str(sid or "").strip()
+    if (not sid or sid == "no-session" or sid.startswith("local-") or not _SESSION_ID_RE.match(sid)
+            or sid in run_sessions):
+        return ""
+    row = find_session_by_id(sid)[2]
+    if row is not None and str(row[2] or "").strip().lower() == "kanban":
+        return ""
+    return sid
+
+
+def _stamped_origin(board_db, card_id, body, seen):
+    """The session a card itself or its ancestors name, without consulting the message scan: task_events origin,
+    tasks.session_id (absent on a minimal board), the `Coordinator: <profile>/<session_id>` body line, then each
+    parent card in turn (cycle-guarded). '' when none is usable."""
+    if not board_db or not card_id or card_id in seen:
+        return ""
+    seen.add(card_id)
+    run_sessions = set()
+    for (payload,) in q(board_db, "select payload from task_events where task_id = ? and kind = 'session'",
+                        (card_id,)):
+        try:
+            run_sessions.add(str(json.loads(payload or "{}").get("session") or ""))
+        except Exception:
+            pass
+    ev = _origin_from_events(board_db, card_id)
+    row = qone(board_db, "select session_id from tasks where id = ?", (card_id,))
+    coord = body_field(body or body_of(board_db, card_id), "Coordinator") or ""
+    for cand in (ev[1] if ev else "", row[0] if row else "", coord.rsplit("/", 1)[-1] if coord else ""):
+        sid = _usable_origin_candidate(cand, run_sessions)
+        if sid:
+            return sid
+    for pid in _parent_card_ids(board_db, card_id):
+        sid = _stamped_origin(board_db, pid, "", seen)
+        if sid:
+            return sid
+    return ""
+
+
+def resolve_tile_session_id(board_db, card_id, body="", created_at=None):
+    """The chat session a card came from, as the durable lineage-root session id Desktop's sidebar row carries, or ''.
+
+    The one owner of tile-to-session attribution (crew_graph_serve.board_data only calls this). It asks
+    find_origin_session first (state.db verified), then falls back to what the board itself recorded - task_events
+    origin, tasks.session_id, the `Coordinator:` line, the parent cards - so a headless board or a turn whose messages
+    are not flushed yet still resolves; the result is walked up sessions.parent_session_id to the root of an
+    auto-compressed chain. Works on a minimal `tasks` table (no session_id column)."""
+    if not board_db or not card_id:
+        return ""
+    sid = find_origin_session(board_db, card_id, created_at=created_at)[1]
+    if not sid:
+        sid = _stamped_origin(board_db, card_id, body, set())
+    return _root_session_id(sid) if sid else ""
+
+
 def _heal_task_session_in_db(board_db, card_id, prof, osid):
     """Persist the verified origin session back to tasks.session_id and Coordinator: in tasks.body when the row was
     stamped with a poisoned draft session."""

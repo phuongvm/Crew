@@ -16,6 +16,8 @@ export interface Tile {
   test?: boolean
   // the kind of proof question waiting for the owner ("blocked" | "rescope"), "" when none; Desktop's tile buttons read it
   proof_ask?: string
+  // the chat session the card came from (the durable lineage-root id Desktop's sidebar rows carry), "" when unknown
+  session_id?: string
 }
 export interface Lane {
   key: string

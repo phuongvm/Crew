@@ -5,6 +5,8 @@ declare module '@hermes/plugin-sdk' {
   export const SIDEBAR_NAV_AREA: string
   export const PANES_AREA: string
   export const STATUSBAR_AREAS: { right: string } | undefined   // the status bar areas; optional in older shells
+  export const SESSION_ROW_AREAS: { leading: string; trailing: string } | undefined   // the sidebar session-row slots; optional in older shells
+  export interface SessionRowSlotProps { sessionId: string }   // what a sessionRow.* contribution's data.render receives
   export const Codicon: ComponentType<{ name: string; size?: string }> | undefined   // the app's icon font
   export interface DesktopThemeColors {
     background: string; foreground: string; card: string; cardForeground: string; muted: string

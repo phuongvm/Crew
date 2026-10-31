@@ -191,31 +191,82 @@ import { useEffect as useEffect4, useMemo, useRef as useRef4, useState as useSta
 
 // src/data.ts
 import { useCallback, useEffect as useEffect2, useRef, useState as useState2 } from "react";
-function useBoard(api, intervalMs = 2e3, query = "") {
-  const [board, setBoard] = useState2(null);
-  const [error, setError] = useState2(null);
-  const [loading, setLoading] = useState2(true);
-  const [tick, setTick] = useState2(0);
-  useEffect2(() => {
-    let live = true;
-    const load = () => api.get("/board.json" + (query ? "?" + query : "")).then((b) => {
-      if (live) {
-        setBoard(b);
-        setError(null);
-      }
+var INITIAL_SNAP = { board: null, error: null, loading: true };
+var shared = /* @__PURE__ */ new WeakMap();
+function rearm(entry) {
+  const wanted = [...entry.listeners.values()].filter((ms) => ms > 0);
+  const next = wanted.length ? Math.min(...wanted) : 0;
+  if (next === entry.armedMs) return;
+  if (entry.timer !== void 0) clearInterval(entry.timer);
+  entry.timer = next > 0 ? setInterval(entry.load, next) : void 0;
+  entry.armedMs = next;
+}
+function openEntry(api, query) {
+  const entry = {
+    snap: INITIAL_SNAP,
+    listeners: /* @__PURE__ */ new Map(),
+    timer: void 0,
+    armedMs: 0,
+    alive: true,
+    load: () => api.get("/board.json" + (query ? "?" + query : "")).then((b) => {
+      if (entry.alive) publish(entry, { board: b, error: null, loading: false });
     }).catch((e) => {
-      if (live) setError(String(e && e.message || e));
-    }).finally(() => {
-      if (live) setLoading(false);
-    });
-    load();
-    const timer = setInterval(load, intervalMs);
+      if (entry.alive) publish(entry, { board: entry.snap.board, error: String(e && e.message || e), loading: false });
+    })
+  };
+  return entry;
+}
+function publish(entry, snap) {
+  entry.snap = snap;
+  entry.listeners.forEach((_, fn) => fn(snap));
+}
+function peekSnap(api, query) {
+  return shared.get(api)?.get(query)?.snap ?? INITIAL_SNAP;
+}
+function joinBoard(api, query, intervalMs, listener) {
+  let byQuery = shared.get(api);
+  if (!byQuery) shared.set(api, byQuery = /* @__PURE__ */ new Map());
+  let entry = byQuery.get(query);
+  const fresh = !entry;
+  if (!entry) byQuery.set(query, entry = openEntry(api, query));
+  const joined = entry;
+  joined.listeners.set(listener, intervalMs);
+  if (!joined.snap.loading) listener(joined.snap);
+  if (fresh) void joined.load();
+  rearm(joined);
+  return {
+    entry: joined,
+    leave() {
+      joined.listeners.delete(listener);
+      if (joined.listeners.size > 0) {
+        rearm(joined);
+        return;
+      }
+      if (joined.timer !== void 0) clearInterval(joined.timer);
+      joined.timer = void 0;
+      joined.armedMs = 0;
+      joined.alive = false;
+      const map = shared.get(api);
+      if (map?.get(query) === joined) map.delete(query);
+      if (map && map.size === 0) shared.delete(api);
+    }
+  };
+}
+function useBoard(api, intervalMs = 2e3, query = "") {
+  const [snap, setSnap] = useState2(() => peekSnap(api, query));
+  const entryRef = useRef(null);
+  useEffect2(() => {
+    const { entry, leave } = joinBoard(api, query, intervalMs, setSnap);
+    entryRef.current = entry;
     return () => {
-      live = false;
-      clearInterval(timer);
+      entryRef.current = null;
+      leave();
     };
-  }, [api, intervalMs, query, tick]);
-  return { board, error, loading, refresh: () => setTick((n) => n + 1) };
+  }, [api, intervalMs, query]);
+  const refresh = useCallback(() => {
+    void entryRef.current?.load();
+  }, []);
+  return { board: snap.board, error: snap.error, loading: snap.loading, refresh };
 }
 function useCard(api, id, intervalMs = 2e3, paused = false) {
   const [card, setCard] = useState2(null);
@@ -3579,6 +3630,9 @@ function liveTiles(board) {
 // src/components/StatusChip.tsx
 import { jsx as jsx21, jsxs as jsxs20 } from "react/jsx-runtime";
 var CLOSED = ["done", "archived"];
+function formatCrewChipTitle(count, running) {
+  return "Crew: " + count + " open ticket" + (count === 1 ? "" : "s") + (running ? " \xB7 " + running + " running" : "");
+}
 function openTickets(board) {
   const counts = board.counts ?? {};
   if (Object.keys(counts).length)
@@ -3590,10 +3644,23 @@ function crewChipState(board) {
   const open2 = openTickets(board);
   const running = Math.max(board.counts?.running ?? 0, board.live ?? 0, liveTiles(board).length);
   const count = Math.max(open2, running);
-  const title = "Crew: " + count + " open ticket" + (count === 1 ? "" : "s") + (running ? " \xB7 " + running + " running" : "");
-  return { visible: count > 0, count, running, radar: running > 0, title };
+  return { visible: count > 0, count, running, radar: running > 0, title: formatCrewChipTitle(count, running) };
 }
-var CHIP_CSS = '@property --crew-arc { syntax: "<angle>"; inherits: false; initial-value: 0deg; }@keyframes crewarc { to { --crew-arc: 360deg; } }@keyframes crewglow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }.crew-chip { position: relative; display: flex; align-items: center; gap: 5px; border: 0; background: none; cursor: pointer; font-size: 11px; align-self: center; height: 16px; margin: 0 2px; padding: 0 6px; box-sizing: border-box; line-height: 1; border-radius: 4px; color: var(--ui-text-tertiary); }.crew-chip:hover { color: var(--ui-text-primary); }.crew-chip b { font-weight: 600; color: var(--ui-accent, #60a5fa); }.crew-chip.live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-success, #22c55e) 28%, transparent); }.crew-chip.live::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; background: conic-gradient(from var(--crew-arc), transparent 0 68%, var(--ui-success, #22c55e) 88%, transparent 100%); -webkit-mask: linear-gradient(rgb(0 0 0 / 0.78) 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(rgb(0 0 0 / 0.78) 0 0) content-box exclude, linear-gradient(#000 0 0); animation: crewarc 2.2s linear infinite; }.crew-chip.live .codicon, .crew-chip.live svg { color: var(--ui-success, #22c55e); animation: crewglow 2.2s ease-in-out infinite; }@media (prefers-reduced-motion: reduce) { .crew-chip.live, .crew-chip.live::after, .crew-chip.live .codicon, .crew-chip.live svg { animation: none; } }';
+function crewSessionChipState(board, sessionId) {
+  const hidden = { visible: false, count: 0, running: 0, radar: false, title: "Crew", target: CREW_ROUTE };
+  if (!board || board.error || !sessionId) return hidden;
+  const open2 = /* @__PURE__ */ new Map();
+  for (const lane of board.lanes ?? []) {
+    if (lane.key === "archived") continue;
+    for (const t of lane.tiles) if (t.session_id === sessionId && !CLOSED.includes(t.status) && !t.test) open2.set(t.id, t);
+  }
+  const tiles = [...open2.values()];
+  const running = tiles.filter((t) => t.status === "running" || Boolean(t.active)).length;
+  const count = tiles.length;
+  if (!count) return hidden;
+  return { visible: true, count, running, radar: running > 0, title: formatCrewChipTitle(count, running), target: count === 1 ? cardUrl(CREW_ROUTE, tiles[0].id) : CREW_ROUTE };
+}
+var CHIP_CSS = '@property --crew-arc { syntax: "<angle>"; inherits: false; initial-value: 0deg; }@keyframes crewarc { to { --crew-arc: 360deg; } }@keyframes crewglow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }.crew-chip { position: relative; display: flex; align-items: center; gap: 5px; border: 0; background: none; cursor: pointer; font-size: 11px; align-self: center; flex-shrink: 0; height: 16px; margin: 0 2px; padding: 0 6px; box-sizing: border-box; line-height: 1; border-radius: 4px; color: var(--ui-text-tertiary); }.crew-chip:hover { color: var(--ui-text-primary); }.crew-chip b { font-weight: 600; color: var(--ui-accent, #60a5fa); }.crew-chip.live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-success, #22c55e) 28%, transparent); }.crew-chip.live::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; background: conic-gradient(from var(--crew-arc), transparent 0 68%, var(--ui-success, #22c55e) 88%, transparent 100%); -webkit-mask: linear-gradient(rgb(0 0 0 / 0.78) 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(rgb(0 0 0 / 0.78) 0 0) content-box exclude, linear-gradient(#000 0 0); animation: crewarc 2.2s linear infinite; }.crew-chip.live .codicon, .crew-chip.live svg { color: var(--ui-success, #22c55e); animation: crewglow 2.2s ease-in-out infinite; }@media (prefers-reduced-motion: reduce) { .crew-chip.live, .crew-chip.live::after, .crew-chip.live .codicon, .crew-chip.live svg { animation: none; } }';
 function CrewIcon() {
   const Codicon2 = sdk2.Codicon;
   if (Codicon2) return /* @__PURE__ */ jsx21(Codicon2, { name: "organization" });
@@ -3618,6 +3685,32 @@ function CrewStatusChip({ api, navigate }) {
       "data-radar": state.radar ? "running" : void 0,
       title: state.title,
       onClick: () => navigate(CREW_ROUTE),
+      children: [
+        /* @__PURE__ */ jsx21(CrewIcon, {}),
+        /* @__PURE__ */ jsx21("b", { children: state.count })
+      ]
+    }
+  );
+}
+function CrewSessionRowChip({ api, sessionId, navigate }) {
+  const { board } = useBoard(api, 5e3);
+  const state = crewSessionChipState(board, sessionId);
+  if (!state.visible) return null;
+  injectCss("chip", CHIP_CSS);
+  return /* @__PURE__ */ jsxs20(
+    "button",
+    {
+      type: "button",
+      className: "crew-chip" + (state.radar ? " live" : ""),
+      "data-crew-session-chip": sessionId,
+      "data-radar": state.radar ? "running" : void 0,
+      title: state.title,
+      onPointerDown: (e) => e.stopPropagation(),
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate(state.target);
+      },
       children: [
         /* @__PURE__ */ jsx21(CrewIcon, {}),
         /* @__PURE__ */ jsx21("b", { children: state.count })
@@ -3759,7 +3852,14 @@ var desktop_default = {
         render: () => /* @__PURE__ */ jsx22(Pane, { api })
       },
       // The global status bar chip (open ticket count, radar while a ticket runs); a shell without the area gets 'statusBar.right'.
-      { id: "chip", area: sdk3.STATUSBAR_AREAS?.right || "statusBar.right", order: 110, render: () => /* @__PURE__ */ jsx22(CrewStatusChip, { api, navigate: hostNavigate }) }
+      { id: "chip", area: sdk3.STATUSBAR_AREAS?.right || "statusBar.right", order: 110, render: () => /* @__PURE__ */ jsx22(CrewStatusChip, { api, navigate: hostNavigate }) },
+      // The same chip on each sidebar session row (cs[4]): that session's open tickets, the radar while one runs, nothing
+      // at 0. Desktop reads data.render({ sessionId }) (session-row-slots.tsx); a shell without the area gets 'sessionRow.trailing'.
+      {
+        id: "session-chip",
+        area: sdk3.SESSION_ROW_AREAS?.trailing || "sessionRow.trailing",
+        data: { render: ({ sessionId }) => /* @__PURE__ */ jsx22(CrewSessionRowChip, { api, sessionId, navigate: hostNavigate }) }
+      }
     ]);
     watchBlocked(ctx, api);
     if (typeof sdk3.host?.navigate === "function" && typeof document !== "undefined") {

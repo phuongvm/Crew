@@ -1,12 +1,13 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import * as sdk from '@hermes/plugin-sdk'
+import type { SessionRowSlotProps } from '@hermes/plugin-sdk'
 import { PANES_AREA, ROUTES_AREA, SIDEBAR_NAV_AREA, useTheme } from '@hermes/plugin-sdk'
 import { restApi, type CrewApi, type RestCtx } from './api'
 import type { Board } from './types'
 import { blockedWatch } from './blocked-watch'
 import { CrewPage } from './components/CrewPage'
 import { FlowPane } from './components/FlowPane'
-import { CrewStatusChip } from './components/StatusChip'
+import { CrewSessionRowChip, CrewStatusChip } from './components/StatusChip'
 import { CrewHostContext, type CrewHost, type KanbanRow } from './host'
 import { CREW_ROUTE, cardFromHref, cardLink, openCardRoute } from './open-card'
 
@@ -179,7 +180,14 @@ export default {
         render: () => <Pane api={api} />
       },
       // The global status bar chip (open ticket count, radar while a ticket runs); a shell without the area gets 'statusBar.right'.
-      { id: 'chip', area: sdk.STATUSBAR_AREAS?.right || 'statusBar.right', order: 110, render: () => <CrewStatusChip api={api} navigate={hostNavigate} /> }
+      { id: 'chip', area: sdk.STATUSBAR_AREAS?.right || 'statusBar.right', order: 110, render: () => <CrewStatusChip api={api} navigate={hostNavigate} /> },
+      // The same chip on each sidebar session row (cs[4]): that session's open tickets, the radar while one runs, nothing
+      // at 0. Desktop reads data.render({ sessionId }) (session-row-slots.tsx); a shell without the area gets 'sessionRow.trailing'.
+      {
+        id: 'session-chip',
+        area: sdk.SESSION_ROW_AREAS?.trailing || 'sessionRow.trailing',
+        data: { render: ({ sessionId }: SessionRowSlotProps) => <CrewSessionRowChip api={api} sessionId={sessionId} navigate={hostNavigate} /> }
+      }
     ])
     watchBlocked(ctx, api)
     if (typeof sdk.host?.navigate === 'function' && typeof document !== 'undefined') {
