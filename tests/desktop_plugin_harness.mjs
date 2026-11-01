@@ -318,30 +318,28 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
     ctx.rest = async () => chipBoard(counts)
     return mountKeep(chip.render)
   }
-  // (a) running: running 1, ready 1, done 1 -> visible, count 2, crew-chip live + data-radar
+  // (a) running: running 1, ready 1, done 1 -> visible, count 1 (running only), crew-chip live + data-radar
   {
     const m = await mountChip({ running: 1, ready: 1, done: 1 })
     const b = m.host.querySelector('button[data-crew-chip]')
     ok(b, 'chip: a running board shows the chip')
-    eq(b.querySelector('b').textContent, '2', 'chip: count is running + ready, done excluded')
+    eq(b.querySelector('b').textContent, '1', 'chip: count is the running tickets only, ready and done excluded')
+    eq(b.getAttribute('title'), 'Crew: 1 running ticket', 'chip: title names running tickets')
     ok(b.classList.contains('crew-chip') && b.classList.contains('live'), 'chip: crew-chip live while a ticket runs')
     eq(b.getAttribute('data-radar'), 'running', 'chip: data-radar=running')
     ok(b.querySelector('svg'), 'chip: the Crew icon falls back to an inline svg without sdk.Codicon')
     await m.done()
   }
-  // (b) open but not running: ready 2, review 1, blocked 1, done 4 -> count 4, no live, no data-radar
+  // (b) open but not running: ready 2, review 1, blocked 1, done 4 -> hidden (only running tickets show the chip)
   {
     const m = await mountChip({ running: 0, ready: 2, review: 1, blocked: 1, done: 4, archived: 3 })
-    const b = m.host.querySelector('button[data-crew-chip]')
-    ok(b, 'chip: open tickets that are not running still show the chip')
-    eq(b.querySelector('b').textContent, '4', 'chip: count excludes done and archived')
-    ok(!b.classList.contains('live') && !b.hasAttribute('data-radar'), 'chip: no radar when nothing runs')
+    eq(m.host.querySelector('button[data-crew-chip]'), null, 'chip: open tickets that are not running leave the chip hidden')
     await m.done()
   }
-  // (c) zero open: only done/archived, or an empty board -> nothing rendered
+  // (c) zero running: only done/archived, or an empty board -> nothing rendered
   for (const counts of [{ done: 5, archived: 2 }, {}]) {
     const m = await mountChip(counts)
-    eq(m.host.querySelector('button[data-crew-chip]'), null, 'chip: hidden when no ticket is open ' + JSON.stringify(counts))
+    eq(m.host.querySelector('button[data-crew-chip]'), null, 'chip: hidden when no ticket runs ' + JSON.stringify(counts))
     eq(m.host.innerHTML, '', 'chip: renders null for ' + JSON.stringify(counts))
     await m.done()
   }
@@ -381,8 +379,8 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
   ctx.rest = savedRest
   globalThis.__navigated = savedNav
 }
-// --- the session-row chip (Desktop's left sidebar, SESSION_ROW_AREAS.trailing): only THAT session's non-archived tickets (done ones too), rendered
-// for real from tile.session_id; radar only while one of its own tickets runs; null at 0; click opens the card or the board
+// --- the session-row chip (Desktop's left sidebar, SESSION_ROW_AREAS.trailing): only THAT session's running tickets, rendered
+// for real from tile.session_id; shown (with the radar) only while one of its own tickets runs; null at 0; click opens the card or the board
 {
   const savedRest = ctx.rest, savedNav = globalThis.__navigated
   const tile = (id, status, session_id, extra = {}) => ({ id, title: id, status, role: 'worker', assignee: 'w', active: null, session_id, ...extra })
@@ -396,38 +394,38 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
       return wrap ? wrap(inner) : inner
     })
   }
-  // (a) running + ready + done for sess-a, a running card for sess-b: count 3 (done is kept), radar from sess-a's own running card
+  // (a) running + ready + done for sess-a, a running card for sess-b: count 1 (running only), radar from sess-a's own running card
   {
     const m = await sessChip([tile('t_a1', 'running', 'sess-a'), tile('t_a2', 'ready', 'sess-a'), tile('t_a3', 'done', 'sess-a'), tile('t_b1', 'running', 'sess-b')], 'sess-a')
     const b = m.host.querySelector('button[data-crew-session-chip]')
     ok(b, 'session chip: a session with open tickets shows the chip')
     eq(b.getAttribute('data-crew-session-chip'), 'sess-a', 'session chip: it names its session')
-    eq(b.querySelector('b').textContent, '3', 'session chip: count is sess-a running + ready + done, sess-b excluded')
+    eq(b.querySelector('b').textContent, '1', 'session chip: count is sess-a running only, ready/done and sess-b excluded')
     ok(b.classList.contains('crew-chip') && b.classList.contains('live'), 'session chip: crew-chip live while a ticket of this session runs')
     eq(b.getAttribute('data-radar'), 'running', 'session chip: data-radar=running')
-    eq(b.getAttribute('title'), 'Crew: 3 tickets · 1 done · 1 running', 'session chip: title counts this session only')
+    eq(b.getAttribute('title'), 'Crew: 1 running ticket', 'session chip: title counts this session only')
     ok(b.querySelector('svg'), 'session chip: the Crew icon falls back to an inline svg without sdk.Codicon')
     await m.done()
   }
-  // (a2) only done tickets for sess-a: the chip stays as a static badge (count kept, no radar), archived ones are left out
+  // (a2) only done tickets for sess-a: hidden, however many it has
   {
     const m = await sessChip([tile('t_d1', 'done', 'sess-a'), tile('t_d2', 'done', 'sess-a'), tile('t_x', 'archived', 'sess-a')], 'sess-a')
-    const b = m.host.querySelector('button[data-crew-session-chip]')
-    ok(b, 'session chip: a session whose tickets are all done keeps its chip')
-    eq(b.querySelector('b').textContent, '2', 'session chip: done tickets count, archived ones do not')
-    ok(!b.classList.contains('live') && !b.hasAttribute('data-radar'), 'session chip: idle done-only session is static (no radar)')
-    eq(b.getAttribute('title'), 'Crew: 2 tickets · 2 done', 'session chip: title names the done tickets')
+    eq(m.host.querySelector('button[data-crew-session-chip]'), null, 'session chip: a session whose tickets are all done has no chip')
+    eq(m.host.innerHTML, '', 'session chip: done-only session renders null')
     await m.done()
   }
-  // (b) review + blocked for sess-a while sess-b runs: count 2, NO radar (the other session's run does not light this row)
+  // (b) review + blocked for sess-a while sess-b runs: hidden, also with 100 done/todo/review/blocked tickets
   {
     const m = await sessChip([tile('t_a1', 'review', 'sess-a'), tile('t_a2', 'blocked', 'sess-a'), tile('t_b1', 'running', 'sess-b')], 'sess-a')
-    const b = m.host.querySelector('button[data-crew-session-chip]')
-    ok(b, 'session chip: open tickets that are not running still show the chip')
-    eq(b.querySelector('b').textContent, '2', 'session chip: review + blocked count 2')
-    ok(!b.classList.contains('live') && !b.hasAttribute('data-radar'), 'session chip: no radar when only another session runs')
-    eq(b.getAttribute('title'), 'Crew: 2 open tickets', 'session chip: no running suffix in the title')
+    eq(m.host.innerHTML, '', 'session chip: open tickets that are not running leave the chip hidden (another session runs)')
     await m.done()
+    const hundred = Array.from({ length: 100 }, (_, i) => tile('t_h' + i, ['done', 'todo', 'review', 'blocked'][i % 4], 'sess-a'))
+    const m100 = await sessChip(hundred, 'sess-a')
+    eq(m100.host.innerHTML, '', 'session chip: 100 done/todo/review/blocked tickets and none running render null')
+    await m100.done()
+    const m101 = await sessChip([...hundred, tile('t_run', 'running', 'sess-a')], 'sess-a')
+    eq(m101.host.querySelector('button[data-crew-session-chip] b').textContent, '1', 'session chip: 100 idle + 1 running shows 1')
+    await m101.done()
   }
   // a live run (tile.active) lights the radar even when the status text has not caught up
   {
@@ -438,7 +436,8 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
   // (d) zero ongoing: only done/archived of its own, a probe card, another session's cards, an unattributed card, an empty board
   for (const [what, tiles] of [
     ['archived only', [tile('t_2', 'archived', 'sess-idle')]],
-    ['only a test card', [tile('t_1', 'ready', 'sess-idle', { test: true })]],
+    ['done and ready only', [tile('t_3', 'done', 'sess-idle'), tile('t_4', 'ready', 'sess-idle')]],
+    ['only a test card', [tile('t_1', 'running', 'sess-idle', { test: true })]],
     ['other sessions own the open cards', [tile('t_1', 'running', 'sess-other'), tile('t_2', 'ready', '')]],
     ['empty board', []]
   ]) {
@@ -459,16 +458,17 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
     const globalTitle = g.host.querySelector('button[data-crew-chip]').getAttribute('title')
     await g.done()
     const s = await sessChip([tile('t_1', 'running', 'sess-a'), tile('t_2', 'ready', 'sess-a')], 'sess-a')
-    eq(s.host.querySelector('button[data-crew-session-chip]').getAttribute('title'), globalTitle, 'session chip: same title as the global chip for the same count and running')
+    eq(s.host.querySelector('button[data-crew-session-chip]').getAttribute('title'), globalTitle, 'session chip: same title as the global chip for the same running count')
+    eq(globalTitle, 'Crew: 1 running ticket', 'session chip: singular ticket wording')
     await s.done()
-    ctx.rest = async () => ({ generated_at: 1, counts: { ready: 1 }, lanes: [], live: 0, cards: 1, attention: [] })
-    const g1 = await mountKeep(chip.render)
-    const oneTitle = g1.host.querySelector('button[data-crew-chip]').getAttribute('title')
-    await g1.done()
-    const s1 = await sessChip([tile('t_1', 'ready', 'sess-a')], 'sess-a')
-    eq(s1.host.querySelector('button[data-crew-session-chip]').getAttribute('title'), oneTitle, 'session chip: same singular title as the global chip')
-    eq(oneTitle, 'Crew: 1 open ticket', 'session chip: singular ticket wording')
-    await s1.done()
+    ctx.rest = async () => ({ generated_at: 1, counts: { running: 2 }, lanes: [], live: 2, cards: 2, attention: [] })
+    const g2 = await mountKeep(chip.render)
+    const pluralTitle = g2.host.querySelector('button[data-crew-chip]').getAttribute('title')
+    await g2.done()
+    const s2 = await sessChip([tile('t_1', 'running', 'sess-a'), tile('t_2', 'running', 'sess-a')], 'sess-a')
+    eq(s2.host.querySelector('button[data-crew-session-chip]').getAttribute('title'), pluralTitle, 'session chip: same plural title as the global chip')
+    eq(pluralTitle, 'Crew: 2 running tickets', 'session chip: plural ticket wording')
+    await s2.done()
   }
   // click: it stops the pointer and the click so the row (a parent with its own handlers) neither drags nor resumes
   {
@@ -476,8 +476,8 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
     fs.writeFileSync(hostFile, rewritten.replaceAll('"./sdk.mjs"', '"./sdk-host.mjs"'))
     const hp = (await import(pathToFileURL(hostFile).href + '?v=session-chip')).default
     const hc = []
-    const tiles1 = [tile('t_only1', 'ready', 'sess-one'), tile('t_gone', 'archived', 'sess-one')]
-    const tilesN = [tile('t_1', 'ready', 'sess-multi'), tile('t_2', 'running', 'sess-multi')]
+    const tiles1 = [tile('t_only1', 'running', 'sess-one'), tile('t_idle1', 'ready', 'sess-one'), tile('t_gone', 'archived', 'sess-one')]
+    const tilesN = [tile('t_1', 'running', 'sess-multi'), tile('t_2', 'running', 'sess-multi'), tile('t_3', 'done', 'sess-multi')]
     let board2 = sessBoard(tiles1)
     hp.register({ registerMany: cs => hc.push(...cs), rest: async () => board2 })
     const hostChip = hc.find(c => c.id === 'session-chip')
@@ -490,14 +490,14 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
     globalThis.__navigated = []
     const m1 = await mountKeep(() => row(hostChip.data.render({ sessionId: 'sess-one' })))
     await press(m1.host.querySelector('button[data-crew-session-chip]'))
-    eq(globalThis.__navigated, ['/crew?card=t_only1'], 'session chip: one open ticket opens that card')
+    eq(globalThis.__navigated, ['/crew?card=t_only1'], 'session chip: one running ticket opens that card')
     eq(rowHits, [], 'session chip: pointerdown and click never reach the row (no drag, no resume)')
     await m1.done()
     globalThis.__navigated = []
     board2 = sessBoard(tilesN)
     const m2 = await mountKeep(() => row(hostChip.data.render({ sessionId: 'sess-multi' })))
     await press(m2.host.querySelector('button[data-crew-session-chip]'))
-    eq(globalThis.__navigated, ['/crew'], 'session chip: two open tickets open the Crew board')
+    eq(globalThis.__navigated, ['/crew'], 'session chip: two running tickets open the Crew board')
     eq(rowHits, [], 'session chip: the multi-ticket click does not reach the row either')
     await m2.done()
     // a shell without host.navigate: a quiet no-op (a several-ticket session, so the card bus parks no card id for the next page)
@@ -516,7 +516,7 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
     globalThis.setInterval = (fn, ms) => { const id = 'fake-interval-' + (++fake.n); fake.live.set(id, { fn, ms }); return id }
     globalThis.clearInterval = id => { if (fake.live.delete(id)) fake.cleared++; else realClear(id) }
     const asks = []
-    ctx.rest = async p => { asks.push(p); return sessBoard([tile('t_1', 'running', 'sess-a'), tile('t_2', 'ready', 'sess-b')]) }
+    ctx.rest = async p => { asks.push(p); return ({ ...sessBoard([tile('t_1', 'running', 'sess-a'), tile('t_2', 'running', 'sess-b')]), counts: { running: 2 }, live: 2 }) }
     try {
       const trio = await mountKeep(() => React.createElement(React.Fragment, null,
         chip.render(), sessionChip.data.render({ sessionId: 'sess-a' }), sessionChip.data.render({ sessionId: 'sess-b' })))
