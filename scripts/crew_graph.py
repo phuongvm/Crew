@@ -565,8 +565,8 @@ def _session_lineage_row(sid):
         cols = {r[1] for r in q(db, "pragma table_info(sessions)")}
         if "id" not in cols:
             continue
-        pick = ["parent_session_id", "source"] + [c for c in ("model_config", "end_reason") if c in cols]
-        row = qone(db, "select %s from sessions where id = ?" % ", ".join(c for c in pick if c in cols), (sid,))
+        pick = [c for c in ("parent_session_id", "source", "model_config", "end_reason") if c in cols]
+        row = qone(db, "select %s from sessions where id = ?" % ", ".join(pick), (sid,))
         if row is None:
             continue
         got = dict(zip(pick, row))

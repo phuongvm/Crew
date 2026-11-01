@@ -44,7 +44,7 @@ export function crewChipState(board: Board | null): CrewChipState {
 
 export interface CrewSessionChipState extends CrewChipState {
   done: number      // of count, the tickets already done (count includes them: a finished session keeps its chip)
-  target: string    // where a click goes: the card when the session has exactly one ticket, else the Crew board
+  target: string    // where a click goes: the card of the session's single ongoing ticket (or single ticket), else the Crew board
 }
 
 // One chat session's tickets (its tiles by session_id; never archived or a proof-suite test card). Done tickets count, so
@@ -63,10 +63,14 @@ export function crewSessionChipState(board: Board | null, sessionId: string): Cr
   const count = tiles.length
   if (!count) return hidden
   const done = tiles.filter(t => t.status === 'done').length
+  // A click opens the card when exactly one ticket is ongoing (done ones beside it do not count), or when the session's
+  // only ticket is a done one; else the Crew board.
+  const ongoing = tiles.filter(t => t.status !== 'done')
+  const single = ongoing.length === 1 ? ongoing[0] : !ongoing.length && count === 1 ? tiles[0] : null
   const title = done
     ? 'Crew: ' + count + ' ticket' + (count === 1 ? '' : 's') + ' · ' + done + ' done' + (running ? ' · ' + running + ' running' : '')
     : formatCrewChipTitle(count, running)
-  return { visible: true, count, running, radar: running > 0, title, done, target: count === 1 ? cardUrl(CREW_ROUTE, tiles[0].id) : CREW_ROUTE }
+  return { visible: true, count, running, radar: running > 0, title, done, target: single ? cardUrl(CREW_ROUTE, single.id) : CREW_ROUTE }
 }
 
 // @property --crew-arc and @keyframes crewarc are the board's own (styles/board.css) restated word for word, because the

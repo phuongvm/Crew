@@ -44,4 +44,14 @@ function eq(actual: unknown, expected: unknown, what: string) {
 // a single done ticket opens its card
 eq(crewSessionChipState(board([tile('t_one', 'done', 'sess-a')]), 'sess-a').target, '/crew?card=t_one', 'one ticket: target is its card')
 
+// navigation follows the ongoing tickets: one ongoing ticket opens its card even beside done ones, several open the board
+{
+  const one = crewSessionChipState(board([tile('t_ready', 'ready', 'sess-a'), tile('t_done', 'done', 'sess-a')]), 'sess-a')
+  eq([one.count, one.done, one.target], [2, 1, '/crew?card=t_ready'], 'one ongoing + one done: target is the ongoing card')
+  const many = crewSessionChipState(board([tile('t_1', 'ready', 'sess-a'), tile('t_2', 'running', 'sess-a'), tile('t_3', 'done', 'sess-a')]), 'sess-a')
+  eq(many.target, '/crew', 'two ongoing + one done: target is the Crew board')
+  const doneMany = crewSessionChipState(board([tile('t_1', 'done', 'sess-a'), tile('t_2', 'done', 'sess-a')]), 'sess-a')
+  eq(doneMany.target, '/crew', 'several done tickets and nothing ongoing: target is the Crew board')
+}
+
 console.log('OK ' + checks + ' checks')

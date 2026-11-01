@@ -600,6 +600,7 @@ def card_response(rest):
     app's page (the shell), not this function's. One owner for the standalone server and the dashboard plugin."""
     if not rest.endswith(".json"):
         return 404, "not found\n", "text/plain; charset=utf-8"
+    refresh_graph()
     graph, err = CG.build_graph(rest[:-len(".json")])
     if err:
         return 404, json.dumps({"error": err}), "application/json"

@@ -194,6 +194,20 @@ class ResolveTileSessionId(unittest.TestCase):
         got = self.lineage([("s_a", None, "cli", "user_exit", None), ("s_b", "s_a", "cli", None, None)], "s_b")
         self.assertEqual("s_b", got)
 
+    def test_sessions_store_without_a_parent_column_keeps_every_field_in_place(self):
+        # a valid minimal store: sessions(id, source, model_config, end_reason) has no parent_session_id; the row must not
+        # be zipped against a column list that still names it (source would land in parent_session_id)
+        path = os.path.join(self.tmp.name, "no-parent.db")
+        conn = sqlite3.connect(path)
+        conn.execute("create table sessions (id text, source text, model_config text, end_reason text)")
+        conn.execute("insert into sessions values ('s_x', 'interactive', '{}', null)")
+        conn.commit()
+        conn.close()
+        with mock.patch.object(cg, "discover_state_dbs", return_value=[("default", path)]):
+            row = cg._session_lineage_row("s_x")
+            self.assertEqual(("", "interactive", {}, None, True), row)
+            self.assertEqual("s_x", cg._root_session_id("s_x"))
+
     def test_compression_continuation_of_a_branch_resolves_to_the_branch_root(self):
         local = "local-cron1"
         got = self.lineage([(local, None, "cron", None, None),
@@ -303,6 +317,15 @@ class HotReloadOnCutover(unittest.TestCase):
         self.assertIsNot(before, mod.CG)
         self.assertTrue(mod.CG.HOT_RELOAD_MARKER)
         self.assertFalse(mod.refresh_graph())
+
+    def test_direct_card_json_route_reloads_the_graph_too(self):
+        # /card/<id>.json served by a standalone daemon may be the only route hit after a cutover
+        mod = self.load_serve()
+        before = mod.CG
+        self.bump("crew_graph.py", "HOT_RELOAD_MARKER")
+        mod.card_response("t_none.json")
+        self.assertIsNot(before, mod.CG)
+        self.assertTrue(mod.CG.HOT_RELOAD_MARKER)
 
     def test_serve_keeps_the_loaded_graph_when_the_new_file_is_broken(self):
         mod = self.load_serve()
