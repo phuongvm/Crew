@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -66,6 +67,21 @@ def make_state(directory, sessions, name="state_sessions.db"):
     for sid, parent, source, count in sessions:
         conn.execute("insert into sessions values (?,?,?,?,?,?,?,?,?,?,?,?)",
                      (sid, parent, source, "m", "t", 1000.0, None, count, 0, 0, 0, "default"))
+    conn.commit()
+    conn.close()
+    return path
+
+
+def make_lineage_state(directory, sessions, name="state_lineage.db"):
+    """sessions: (id, parent_session_id, source, end_reason, model_config dict or None): the real state.db columns the
+    lineage walk reads to tell a compression continuation from a branch, a reset or a delegation."""
+    path = os.path.join(directory, name)
+    conn = sqlite3.connect(path)
+    conn.execute("create table sessions (%s, end_reason text, model_config text)" % SESSION_COLS)
+    for sid, parent, source, end_reason, config in sessions:
+        conn.execute("insert into sessions values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                     (sid, parent, source, "m", "t", 1000.0, None, 4, 0, 0, 0, "default", end_reason,
+                      json.dumps(config) if config is not None else None))
     conn.commit()
     conn.close()
     return path
@@ -145,6 +161,51 @@ class ResolveTileSessionId(unittest.TestCase):
         board = make_board(self.tmp.name, [{"id": "t_cyc", "session_id": "s_a"}])
         self.assertIn(self.resolve(board, "t_cyc", states=[("default", state)]), ("s_a", "s_b"))
 
+    def lineage(self, sessions, card_session):
+        n = len(os.listdir(self.tmp.name))
+        state = make_lineage_state(self.tmp.name, sessions, name="lineage-%d.db" % n)
+        board = make_board(self.tmp.name, [{"id": "t_l1", "session_id": card_session}], name="board-%d.db" % n)
+        return self.resolve(board, "t_l1", states=[("default", state)])
+
+    def test_branch_of_a_local_cron_session_keeps_its_own_id(self):
+        local = "local-371cf5d68f9a8708fad179bb64210fb9fe4518e7f25a30793a836878666cf3c5"
+        got = self.lineage([(local, None, "cron", None, None),
+                            ("20261101_064445_40877a", local, "desktop", None, {"_branched_from": local})],
+                           "20261101_064445_40877a")
+        self.assertEqual("20261101_064445_40877a", got)
+
+    def test_branch_marker_stops_the_walk_even_for_a_normal_parent(self):
+        got = self.lineage([("s_a", None, "cli", "compression", None),
+                            ("s_b", "s_a", "cli", None, {"_branched_from": "s_a"})], "s_b")
+        self.assertEqual("s_b", got)
+
+    def test_reset_and_delegate_markers_stop_the_walk(self):
+        for marker in ("_reset_from", "_delegate_from"):
+            with self.subTest(marker=marker):
+                cg._ROOT_CACHE.clear()
+                got = self.lineage([("s_a", None, "cli", None, None), ("s_b", "s_a", "cli", None, {marker: "s_a"})], "s_b")
+                self.assertEqual("s_b", got)
+
+    def test_tool_source_child_stops_the_walk(self):
+        got = self.lineage([("s_a", None, "cli", None, None), ("s_t", "s_a", "tool", None, None)], "s_t")
+        self.assertEqual("s_t", got)
+
+    def test_parent_not_ended_by_compression_stops_the_walk(self):
+        got = self.lineage([("s_a", None, "cli", "user_exit", None), ("s_b", "s_a", "cli", None, None)], "s_b")
+        self.assertEqual("s_b", got)
+
+    def test_compression_continuation_of_a_branch_resolves_to_the_branch_root(self):
+        local = "local-cron1"
+        got = self.lineage([(local, None, "cron", None, None),
+                            ("br_root", local, "desktop", "compression", {"_branched_from": local}),
+                            ("br_tip", "br_root", "desktop", None, None)], "br_tip")
+        self.assertEqual("br_root", got)
+
+    def test_compression_ended_chain_walks_to_the_root(self):
+        got = self.lineage([("s_a", None, "cli", "compression", None), ("s_b", "s_a", "cli", "compression", None),
+                            ("s_c", "s_b", "cli", None, None)], "s_c")
+        self.assertEqual("s_a", got)
+
     def test_minimal_tasks_table_without_a_session_column_resolves_from_the_body(self):
         board = make_board(self.tmp.name, [{"id": "t_m", "body": "Coordinator: default/sess-m\n"}], session_column=False)
         self.assertEqual("sess-m", self.resolve(board, "t_m", "Coordinator: default/sess-m\n"))
@@ -207,6 +268,70 @@ class BoardDataStampsSessionId(unittest.TestCase):
         self.assertIn("CG.resolve_tile_session_id(", src)
         self.assertEqual([], re.findall(r"\bCG\._\w+", src))
         self.assertNotIn("def tile_session_id", src)
+
+
+class HotReloadOnCutover(unittest.TestCase):
+    """A cutover replaces scripts/*.py under a process that stays up (the Hermes dashboard); the next render must run
+    the new code. Scripts are copied to a scratch dir so the test rewrites a copy, never the real ones."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.scripts = os.path.join(self.tmp.name, "scripts")
+        shutil.copytree(SCRIPTS, self.scripts, ignore=shutil.ignore_patterns("__pycache__", "crew_dashboard"))
+
+    def bump(self, name, marker):
+        path = os.path.join(self.scripts, name)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n%s = True\n" % marker)
+        st = os.stat(path)
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+
+    def load_serve(self):
+        spec = importlib.util.spec_from_file_location("cgs_hot_reload", os.path.join(self.scripts, "crew_graph_serve.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_serve_reloads_crew_graph_when_its_file_changes(self):
+        mod = self.load_serve()
+        before = mod.CG
+        self.assertFalse(mod.refresh_graph())
+        self.assertIs(before, mod.CG)
+        self.bump("crew_graph.py", "HOT_RELOAD_MARKER")
+        self.assertTrue(mod.refresh_graph())
+        self.assertIsNot(before, mod.CG)
+        self.assertTrue(mod.CG.HOT_RELOAD_MARKER)
+        self.assertFalse(mod.refresh_graph())
+
+    def test_serve_keeps_the_loaded_graph_when_the_new_file_is_broken(self):
+        mod = self.load_serve()
+        before = mod.CG
+        with open(os.path.join(self.scripts, "crew_graph.py"), "a", encoding="utf-8") as fh:
+            fh.write("\nraise RuntimeError('broken cutover')\n")
+        path = os.path.join(self.scripts, "crew_graph.py")
+        os.utime(path, ns=(0, os.stat(path).st_mtime_ns + 5_000_000_000))
+        self.assertFalse(mod.refresh_graph())
+        self.assertIs(before, mod.CG)
+
+    def test_dashboard_plugin_reloads_the_server_module_when_a_script_changes(self):
+        api_path = os.path.join(os.path.dirname(HERE), "dashboard", "plugin_api.py")
+        spec = importlib.util.spec_from_file_location("crew_plugin_api_hot_reload", api_path)
+        api = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(api)
+        except ImportError as exc:
+            self.skipTest("plugin_api deps unavailable: %s" % exc)
+        api.SCRIPTS_DIR = self.scripts
+        self.addCleanup(sys.modules.pop, "crew_graph_serve", None)
+        sys.modules.pop("crew_graph_serve", None)
+        first = api._crew()
+        self.assertIs(first, api._crew())
+        self.bump("crew_graph.py", "HOT_RELOAD_MARKER")
+        second = api._crew()
+        self.assertIsNot(first, second)
+        self.assertTrue(second.CG.HOT_RELOAD_MARKER)
+        self.assertIs(second, api._crew())
 
 
 if __name__ == "__main__":

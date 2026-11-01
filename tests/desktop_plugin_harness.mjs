@@ -381,7 +381,7 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
   ctx.rest = savedRest
   globalThis.__navigated = savedNav
 }
-// --- the session-row chip (Desktop's left sidebar, SESSION_ROW_AREAS.trailing): only THAT session's open tickets, rendered
+// --- the session-row chip (Desktop's left sidebar, SESSION_ROW_AREAS.trailing): only THAT session's non-archived tickets (done ones too), rendered
 // for real from tile.session_id; radar only while one of its own tickets runs; null at 0; click opens the card or the board
 {
   const savedRest = ctx.rest, savedNav = globalThis.__navigated
@@ -396,17 +396,27 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
       return wrap ? wrap(inner) : inner
     })
   }
-  // (a) running + ready + done for sess-a, a running card for sess-b: count 2, radar from sess-a's own running card
+  // (a) running + ready + done for sess-a, a running card for sess-b: count 3 (done is kept), radar from sess-a's own running card
   {
     const m = await sessChip([tile('t_a1', 'running', 'sess-a'), tile('t_a2', 'ready', 'sess-a'), tile('t_a3', 'done', 'sess-a'), tile('t_b1', 'running', 'sess-b')], 'sess-a')
     const b = m.host.querySelector('button[data-crew-session-chip]')
     ok(b, 'session chip: a session with open tickets shows the chip')
     eq(b.getAttribute('data-crew-session-chip'), 'sess-a', 'session chip: it names its session')
-    eq(b.querySelector('b').textContent, '2', 'session chip: count is sess-a running + ready, done and sess-b excluded')
+    eq(b.querySelector('b').textContent, '3', 'session chip: count is sess-a running + ready + done, sess-b excluded')
     ok(b.classList.contains('crew-chip') && b.classList.contains('live'), 'session chip: crew-chip live while a ticket of this session runs')
     eq(b.getAttribute('data-radar'), 'running', 'session chip: data-radar=running')
-    eq(b.getAttribute('title'), 'Crew: 2 open tickets · 1 running', 'session chip: title counts this session only')
+    eq(b.getAttribute('title'), 'Crew: 3 tickets · 1 done · 1 running', 'session chip: title counts this session only')
     ok(b.querySelector('svg'), 'session chip: the Crew icon falls back to an inline svg without sdk.Codicon')
+    await m.done()
+  }
+  // (a2) only done tickets for sess-a: the chip stays as a static badge (count kept, no radar), archived ones are left out
+  {
+    const m = await sessChip([tile('t_d1', 'done', 'sess-a'), tile('t_d2', 'done', 'sess-a'), tile('t_x', 'archived', 'sess-a')], 'sess-a')
+    const b = m.host.querySelector('button[data-crew-session-chip]')
+    ok(b, 'session chip: a session whose tickets are all done keeps its chip')
+    eq(b.querySelector('b').textContent, '2', 'session chip: done tickets count, archived ones do not')
+    ok(!b.classList.contains('live') && !b.hasAttribute('data-radar'), 'session chip: idle done-only session is static (no radar)')
+    eq(b.getAttribute('title'), 'Crew: 2 tickets · 2 done', 'session chip: title names the done tickets')
     await m.done()
   }
   // (b) review + blocked for sess-a while sess-b runs: count 2, NO radar (the other session's run does not light this row)
@@ -427,7 +437,7 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
   }
   // (d) zero ongoing: only done/archived of its own, a probe card, another session's cards, an unattributed card, an empty board
   for (const [what, tiles] of [
-    ['done and archived only', [tile('t_1', 'done', 'sess-idle'), tile('t_2', 'archived', 'sess-idle')]],
+    ['archived only', [tile('t_2', 'archived', 'sess-idle')]],
     ['only a test card', [tile('t_1', 'ready', 'sess-idle', { test: true })]],
     ['other sessions own the open cards', [tile('t_1', 'running', 'sess-other'), tile('t_2', 'ready', '')]],
     ['empty board', []]
@@ -466,7 +476,7 @@ ctx.rest = async (p, o) => { rests.push([p, o && o.method]); return board }
     fs.writeFileSync(hostFile, rewritten.replaceAll('"./sdk.mjs"', '"./sdk-host.mjs"'))
     const hp = (await import(pathToFileURL(hostFile).href + '?v=session-chip')).default
     const hc = []
-    const tiles1 = [tile('t_only1', 'ready', 'sess-one'), tile('t_gone', 'done', 'sess-one')]
+    const tiles1 = [tile('t_only1', 'ready', 'sess-one'), tile('t_gone', 'archived', 'sess-one')]
     const tilesN = [tile('t_1', 'ready', 'sess-multi'), tile('t_2', 'running', 'sess-multi')]
     let board2 = sessBoard(tiles1)
     hp.register({ registerMany: cs => hc.push(...cs), rest: async () => board2 })

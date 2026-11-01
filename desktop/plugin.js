@@ -3647,18 +3647,20 @@ function crewChipState(board) {
   return { visible: count > 0, count, running, radar: running > 0, title: formatCrewChipTitle(count, running) };
 }
 function crewSessionChipState(board, sessionId) {
-  const hidden = { visible: false, count: 0, running: 0, radar: false, title: "Crew", target: CREW_ROUTE };
+  const hidden = { visible: false, count: 0, running: 0, radar: false, title: "Crew", done: 0, target: CREW_ROUTE };
   if (!board || board.error || !sessionId) return hidden;
   const open2 = /* @__PURE__ */ new Map();
   for (const lane of board.lanes ?? []) {
     if (lane.key === "archived") continue;
-    for (const t of lane.tiles) if (t.session_id === sessionId && !CLOSED.includes(t.status) && !t.test) open2.set(t.id, t);
+    for (const t of lane.tiles) if (t.session_id === sessionId && t.status !== "archived" && !t.test) open2.set(t.id, t);
   }
   const tiles = [...open2.values()];
   const running = tiles.filter((t) => t.status === "running" || Boolean(t.active)).length;
   const count = tiles.length;
   if (!count) return hidden;
-  return { visible: true, count, running, radar: running > 0, title: formatCrewChipTitle(count, running), target: count === 1 ? cardUrl(CREW_ROUTE, tiles[0].id) : CREW_ROUTE };
+  const done2 = tiles.filter((t) => t.status === "done").length;
+  const title = done2 ? "Crew: " + count + " ticket" + (count === 1 ? "" : "s") + " \xB7 " + done2 + " done" + (running ? " \xB7 " + running + " running" : "") : formatCrewChipTitle(count, running);
+  return { visible: true, count, running, radar: running > 0, title, done: done2, target: count === 1 ? cardUrl(CREW_ROUTE, tiles[0].id) : CREW_ROUTE };
 }
 var CHIP_CSS = '@property --crew-arc { syntax: "<angle>"; inherits: false; initial-value: 0deg; }@keyframes crewarc { to { --crew-arc: 360deg; } }@keyframes crewglow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }.crew-chip { position: relative; display: flex; align-items: center; gap: 5px; border: 0; background: none; cursor: pointer; font-size: 11px; align-self: center; flex-shrink: 0; height: 16px; margin: 0 2px; padding: 0 6px; box-sizing: border-box; line-height: 1; border-radius: 4px; color: var(--ui-text-tertiary); }.crew-chip:hover { color: var(--ui-text-primary); }.crew-chip b { font-weight: 600; color: var(--ui-accent, #60a5fa); }.crew-chip.live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-success, #22c55e) 28%, transparent); }.crew-chip.live::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; background: conic-gradient(from var(--crew-arc), transparent 0 68%, var(--ui-success, #22c55e) 88%, transparent 100%); -webkit-mask: linear-gradient(rgb(0 0 0 / 0.78) 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(rgb(0 0 0 / 0.78) 0 0) content-box exclude, linear-gradient(#000 0 0); animation: crewarc 2.2s linear infinite; }.crew-chip.live .codicon, .crew-chip.live svg { color: var(--ui-success, #22c55e); animation: crewglow 2.2s ease-in-out infinite; }@media (prefers-reduced-motion: reduce) { .crew-chip.live, .crew-chip.live::after, .crew-chip.live .codicon, .crew-chip.live svg { animation: none; } }';
 function CrewIcon() {

@@ -64,6 +64,33 @@ def load_graph_module():
 
 
 CG = load_graph_module()
+_CG_PATH = os.path.join(HERE, "crew_graph.py")
+
+
+def _mtime(path):
+    try:
+        return os.stat(path).st_mtime_ns
+    except OSError:
+        return 0
+
+
+_CG_MTIME = _mtime(_CG_PATH)
+
+
+def refresh_graph():
+    """Re-execute crew_graph.py into CG when the file changed on disk since it was loaded (a cutover replaced it under
+    a process that stays up), so the next render uses the new code without a restart. True when it reloaded; a
+    reload that fails keeps the loaded module and is tried again on the next change."""
+    global CG, _CG_MTIME
+    stamp = _mtime(_CG_PATH)
+    if stamp == _CG_MTIME:
+        return False
+    try:
+        fresh = load_graph_module()
+    except Exception:
+        return False
+    CG, _CG_MTIME = fresh, stamp
+    return True
 
 
 # The board's own rule for the proof suite's scaffolding: a card titled PROBE/TEST is the suite's
@@ -154,6 +181,7 @@ def board_data(include_all=False, older=False):
     counts or the live lanes: they fill the last, owner-collapsed 'archived' lane - the newest ARCHIVED_SHOWN,
     with `hidden` the rest, so lane tiles + hidden is the total. older (the Done lane's "Show N older")
     lists every done card instead of the newest DONE_SHOWN."""
+    refresh_graph()
     board_slug = CG.active_board_slug()
     board_name = CG.active_board_name(board_slug)
     db = CG.kanban_db_path()

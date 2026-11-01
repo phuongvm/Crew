@@ -168,6 +168,8 @@ def _ensure_daemon_running() -> bool:
 
 _crew_lock = threading.Lock()
 _crew_mod = None
+_crew_stamp = ()                 # _script_mtimes() when _crew_mod was loaded
+_crew_loaded_before = []         # the module a failed reload falls back to
 
 # Repeated identical reads (the board and the card being watched, polled by Desktop and every dashboard
 # tab) are served from a short-TTL cache with single-flight per key. Without it each poll re-renders the
@@ -274,14 +276,33 @@ def _refresh(key, make, ttl):
     return built
 
 
+def _script_mtimes():
+    """The modified-time stamps of the two scripts the in-process render is built from."""
+    stamps = []
+    for name in ("crew_graph_serve.py", "crew_graph.py"):
+        try:
+            stamps.append(os.stat(os.path.join(SCRIPTS_DIR, name)).st_mtime_ns)
+        except OSError:
+            stamps.append(0)
+    return tuple(stamps)
+
+
 def _crew():
-    """crew_graph_serve, loaded once from this plugin's own scripts/ (never from a path on sys.path).
+    """crew_graph_serve, loaded from this plugin's own scripts/ (never from a path on sys.path), and loaded again when
+    crew_graph_serve.py or crew_graph.py changed on disk, so a cutover takes effect in this long-lived process (the
+    Hermes dashboard) without restarting it. A reload drops the cached reads: they were built by the old code.
 
     It resolves HERMES_HOME and the kanban board through crew_card.kanban_db(), the one resolver, in this process's
     environment: where hermes_cli is importable (it is, inside the Hermes web server) that is Hermes's own
     kanban_db_path(), the same file the daemon's bare-interpreter fallback mirrors."""
-    global _crew_mod
+    global _crew_mod, _crew_stamp
     with _crew_lock:
+        stamp = _script_mtimes()
+        if _crew_mod is not None and stamp != _crew_stamp:
+            previous, _crew_mod = _crew_mod, None
+            sys.modules.pop("crew_graph_serve", None)
+            _crew_loaded_before.append(previous)
+            _invalidate()
         if _crew_mod is None:
             path = os.path.join(SCRIPTS_DIR, "crew_graph_serve.py")
             loaded = sys.modules.get("crew_graph_serve")
@@ -297,8 +318,15 @@ def _crew():
                     spec.loader.exec_module(mod)
                 except BaseException:
                     sys.modules.pop("crew_graph_serve", None)
+                    if _crew_loaded_before:   # keep serving the last good module rather than failing every read
+                        _crew_mod = _crew_loaded_before.pop()
+                        sys.modules["crew_graph_serve"] = _crew_mod
+                        _crew_stamp = stamp
+                        return _crew_mod
                     raise
                 _crew_mod = mod
+            _crew_stamp = stamp
+            del _crew_loaded_before[:]
         return _crew_mod
 
 

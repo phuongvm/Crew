@@ -554,16 +554,62 @@ ROOT_TTL_S = 30             # a resolved root is reused this long: the board pol
 _ROOT_CACHE = {}
 
 
+_FORK_MARKERS = ("_branched_from", "_reset_from", "_delegate_from")   # model_config keys of a non-compression child
+
+
+def _session_lineage_row(sid):
+    """(parent_session_id, source, model_config dict, end_reason or None, has_end_reason) of `sid` from the first
+    state.db that holds it, or None. Reads only the columns the store really has: a minimal store may lack
+    model_config and end_reason."""
+    for _profile, db in discover_state_dbs():
+        cols = {r[1] for r in q(db, "pragma table_info(sessions)")}
+        if "id" not in cols:
+            continue
+        pick = ["parent_session_id", "source"] + [c for c in ("model_config", "end_reason") if c in cols]
+        row = qone(db, "select %s from sessions where id = ?" % ", ".join(c for c in pick if c in cols), (sid,))
+        if row is None:
+            continue
+        got = dict(zip(pick, row))
+        try:
+            config = json.loads(got.get("model_config") or "{}")
+        except Exception:
+            config = {}
+        return (str(got.get("parent_session_id") or "").strip(), str(got.get("source") or "").strip().lower(),
+                config if isinstance(config, dict) else {}, got.get("end_reason"), "end_reason" in cols)
+    return None
+
+
+def _continuation_parent(sid):
+    """The parent session `sid` continues after an auto-compression, else ''. Mirrors Desktop's sessionPinId
+    (_lineage_root_id): a /branch, /new reset or subagent delegation starts its own lineage, so none of those edges
+    is walked; neither is an edge onto a local-* cron/draft session, from a tool session, or from a parent that a
+    store with an end_reason column says ended for another reason than compression."""
+    row = _session_lineage_row(sid)
+    if row is None:
+        return ""
+    parent, source, config, _own_end, _has = row
+    if not parent or parent.startswith("local-") or source == "tool":
+        return ""
+    if any(str(config.get(k) or "").strip() == parent for k in _FORK_MARKERS):
+        return ""
+    prow = _session_lineage_row(parent)
+    if prow is not None and prow[4]:
+        reason = str(prow[3] or "").strip()
+        if reason and reason != "compression":
+            return ""
+    return parent
+
+
 def _root_session_id(sid):
-    """The durable root of `sid`'s continuation chain (sessions.parent_session_id in state.db), `sid` itself when it
-    has no parent or is in no store. Bounded and cycle-guarded; cached for ROOT_TTL_S."""
+    """The durable root of `sid`'s compression chain (sessions.parent_session_id across auto-compression edges only,
+    see _continuation_parent), `sid` itself when it continues nothing or is in no store. Bounded and cycle-guarded;
+    cached for ROOT_TTL_S."""
     hit = _ROOT_CACHE.get(sid)
     if hit and time.time() - hit[1] < ROOT_TTL_S:
         return hit[0]
     cur, seen = sid, {sid}
     for _ in range(ROOT_HOPS):
-        row = find_session_by_id(cur)[2]
-        parent = str(row[1] or "").strip() if row is not None else ""
+        parent = _continuation_parent(cur)
         if not parent or parent in seen:
             break
         seen.add(parent)

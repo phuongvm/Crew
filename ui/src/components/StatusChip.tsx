@@ -9,7 +9,8 @@ import { liveTiles, type Board, type Tile } from '../types'
 // The global Crew chip in Desktop's status bar (STATUSBAR_AREAS.right): the Crew icon and how many tickets are open on
 // the Kanban board, whatever chat session is showing. A radar sweep rings the chip while any ticket runs; it hides when
 // nothing is open. One click opens the Crew tab. Desktop only: browser.tsx never mounts it.
-// CrewSessionRowChip (below) is the same chip on a sidebar session row, counting only that session's tickets.
+// CrewSessionRowChip (below) is the same chip on a sidebar session row, counting only that session's tickets (done ones
+// too, as a static badge while nothing of the session runs; only archived and proof-suite test cards are left out).
 const CLOSED = ['done', 'archived']
 
 export interface CrewChipState {
@@ -42,24 +43,30 @@ export function crewChipState(board: Board | null): CrewChipState {
 }
 
 export interface CrewSessionChipState extends CrewChipState {
-  target: string    // where a click goes: the card when the session has exactly one open ticket, else the Crew board
+  done: number      // of count, the tickets already done (count includes them: a finished session keeps its chip)
+  target: string    // where a click goes: the card when the session has exactly one ticket, else the Crew board
 }
 
-// One chat session's open tickets (its tiles by session_id; never done, archived or a proof-suite test card). The radar
-// rings only while one of THIS session's tickets runs, so another session's run does not light the row.
+// One chat session's tickets (its tiles by session_id; never archived or a proof-suite test card). Done tickets count, so
+// the chip stays as a static badge once a session's work is finished. The radar rings only while one of THIS session's
+// tickets runs, so another session's run does not light the row.
 export function crewSessionChipState(board: Board | null, sessionId: string): CrewSessionChipState {
-  const hidden: CrewSessionChipState = { visible: false, count: 0, running: 0, radar: false, title: 'Crew', target: CREW_ROUTE }
+  const hidden: CrewSessionChipState = { visible: false, count: 0, running: 0, radar: false, title: 'Crew', done: 0, target: CREW_ROUTE }
   if (!board || board.error || !sessionId) return hidden
   const open = new Map<string, Tile>()
   for (const lane of board.lanes ?? []) {
     if (lane.key === 'archived') continue
-    for (const t of lane.tiles) if (t.session_id === sessionId && !CLOSED.includes(t.status) && !t.test) open.set(t.id, t)
+    for (const t of lane.tiles) if (t.session_id === sessionId && t.status !== 'archived' && !t.test) open.set(t.id, t)
   }
   const tiles = [...open.values()]
   const running = tiles.filter(t => t.status === 'running' || Boolean(t.active)).length
   const count = tiles.length
   if (!count) return hidden
-  return { visible: true, count, running, radar: running > 0, title: formatCrewChipTitle(count, running), target: count === 1 ? cardUrl(CREW_ROUTE, tiles[0].id) : CREW_ROUTE }
+  const done = tiles.filter(t => t.status === 'done').length
+  const title = done
+    ? 'Crew: ' + count + ' ticket' + (count === 1 ? '' : 's') + ' · ' + done + ' done' + (running ? ' · ' + running + ' running' : '')
+    : formatCrewChipTitle(count, running)
+  return { visible: true, count, running, radar: running > 0, title, done, target: count === 1 ? cardUrl(CREW_ROUTE, tiles[0].id) : CREW_ROUTE }
 }
 
 // @property --crew-arc and @keyframes crewarc are the board's own (styles/board.css) restated word for word, because the

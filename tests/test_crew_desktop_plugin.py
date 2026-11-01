@@ -42,6 +42,14 @@ class DesktopPluginTests(unittest.TestCase):
         self.assertRegex(r.stdout, r"OK \d+ checks")
 
     @NEEDS_MODULES
+    def test_ui_unit_tests(self):
+        """ui/src/**/__tests__/*.test.tsx (StatusChip.test.tsx: which tickets the session-row chip counts), run by ui/test.mjs."""
+        r = subprocess.run([NODE, os.path.join(ROOT, "ui", "test.mjs")], capture_output=True, text=True, timeout=120,
+                           encoding="utf-8", errors="replace")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertRegex(r.stdout, r"StatusChip\.test\.tsx: OK \d+ checks")
+
+    @NEEDS_MODULES
     def test_app_js_in_the_browser_shell_and_the_dashboard_tab(self):
         """scripts/crew_dashboard/app.js (the standalone shell's script and the tab's) under jsdom: route from the
         address bar, history, a hosted mount with a base and a fetch, an exported snapshot, and the dashboard tab
