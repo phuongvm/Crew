@@ -2,10 +2,10 @@
 
 - **Audit Date**: 2026-11-02
 - **Canonical Repository**: `O:/workspaces/oss/crew` (`os_54792d`)
-- **Archived Change Path**: `O:/workspaces/oss/crew/openspec/changes/archive/2026-11-02-crew-inputs-and-propose-continuity`
+- **Archived Change Path**: `O:/workspaces/oss/crew/openspec/changes/archive/crew-inputs-and-propose-continuity`
 - **Exploration Document**:
-  - `O:/workspaces/oss/crew/openspec/workspace/explorations/2026-11-02-crew-inputs-and-propose-continuity-exploration.md`
-  - `O:/workspaces/oss/crew/openspec/changes/archive/2026-11-02-crew-inputs-and-propose-continuity/explorations/2026-11-02-crew-inputs-and-propose-continuity-exploration.md`
+  - `O:/workspaces/oss/crew/openspec/workspace/explorations/crew-inputs-and-propose-continuity-exploration.md`
+  - `O:/workspaces/oss/crew/openspec/changes/archive/crew-inputs-and-propose-continuity/explorations/crew-inputs-and-propose-continuity-exploration.md`
 - **Completed Crew Kanban Cards**: `t_0c3c1ef0`, `t_5c60a08b`, `t_e4cf4cfa`, `t_c8e3aca2` (`status = done`, linked in `crewCards`)
 
 ---
@@ -32,5 +32,5 @@
   - `tests/test_crew_intake_create.py` -> `53 passed` (`rc=0`)
   - `tests/desktop_plugin_harness.mjs` -> `OK 686 checks` (`rc=0`)
 - **OpenSpec Board Scanner Verification (`os_54792d` -> `O:/workspaces/oss/crew`)**:
-  - `2026-11-02-crew-inputs-and-propose-continuity`: `status='archived'`, `hasExplorations=True`, `hasReviews=True`, `latestVerdict='APPROVED'`, `taskStats={'total': 5, 'done': 5}`.
+  - `crew-inputs-and-propose-continuity`: `status='archived'`, `hasExplorations=True`, `hasReviews=True`, `latestVerdict='APPROVED'`, `taskStats={'total': 5, 'done': 5}`.
   - Misrouted duplicate under `O:/workspaces/ai_agents/hermes-agent/openspec` quarantined to `O:/workspaces/_config/agent4070/hermes/quarantine/openspec-misrouted-20261102/` and `customize-hermes-crew-plugin/spec.md` restored clean.

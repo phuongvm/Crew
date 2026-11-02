@@ -32,7 +32,7 @@ The extension pane MUST construct graph URLs through the Hermes Gateway API prox
 ### Requirement 4: Test Suite Zero Regression Gate
 All 197+ existing tests across `tests/` MUST continue to pass with 0 failures.
 
-### Requirement 5: Crew Card Contract Tab Completeness
+### Requirement: Crew Card Contract Tab Completeness
 The Crew card detail view (`scripts/crew_graph.py` and `ui/src/components/Panel.tsx`) SHALL extract and render the complete contract specification—including `Inputs`, `Artifact`, `Lands at`, `Constraints`, `Done when`, and `Proof command`—directly inside the default `Contract` tab of the `Coordinator · card` node.
 
 #### Scenario: Reviewing a card displays Inputs and contract targets in the Contract tab

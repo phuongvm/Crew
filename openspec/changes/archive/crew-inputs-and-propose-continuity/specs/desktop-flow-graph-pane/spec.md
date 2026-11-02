@@ -2,7 +2,7 @@
 
 ## ADDED Requirements
 
-### Requirement 5: Crew Card Contract Tab Completeness
+### Requirement: Crew Card Contract Tab Completeness
 The Crew card detail view (`scripts/crew_graph.py` and `ui/src/components/Panel.tsx`) SHALL extract and render the complete contract specification—including `Inputs`, `Artifact`, `Lands at`, `Constraints`, `Done when`, and `Proof command`—directly inside the default `Contract` tab of the `Coordinator · card` node.
 
 #### Scenario: Reviewing a card displays Inputs and contract targets in the Contract tab

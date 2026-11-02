@@ -156,7 +156,7 @@ Both `/crew` and `/crew-no-spec` SHALL check whether the current conversation or
 #### Scenario: Mandatory 6-point close-out syncs canonical repository specs, packages explorations, verifies terminal Kanban state, and fast-forwards production checkout
 - **GIVEN** all implementation and verification tasks for a `/crew` Track A change have passed (`rc=0`)
 - **WHEN** the coordinator executes Phase 5 (`Sync`) and Phase 6 (`Archive`)
-- **THEN** it MUST merge delta specs into the target repository's canonical `<OPENSPEC_ROOT>/specs/<capability>/spec.md`, ensure `<OPENSPEC_ROOT>/changes/<change-id>/explorations/` and `reviews/` are packaged, move the change into `<OPENSPEC_ROOT>/changes/archive/YYYY-MM-DD-<change-id>`, write `<OPENSPEC_ROOT>/workspace/audits/YYYY-MM-DD/<change-id>-audit.md`, confirm all associated Crew cards are in terminal `done` state, and commit + push + fast-forward `<project-path>` so the OpenSpec UI source is clean and up to date.
+- **THEN** it MUST merge delta specs into the target repository's canonical `<OPENSPEC_ROOT>/specs/<capability>/spec.md`, ensure `<OPENSPEC_ROOT>/changes/<change-id>/explorations/` and `reviews/` are packaged, move the change into `<OPENSPEC_ROOT>/changes/archive/<change-id>`, write `<OPENSPEC_ROOT>/workspace/audits/YYYY-MM-DD/<change-id>-audit.md`, confirm all associated Crew cards are in terminal `done` state, and commit + push + fast-forward `<project-path>` so the OpenSpec UI source is clean and up to date.
 
 #### Scenario: New exploration is persisted incrementally
 - **GIVEN** no Exploration Document exists and discovery is required
