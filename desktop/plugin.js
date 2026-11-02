@@ -2593,7 +2593,13 @@ function tabBody(card, n, m, tab) {
   if (m.kind === "card") {
     if (tab === "Contract")
       return { doc: /* @__PURE__ */ jsxs8("dl", { children: [
+        kvRow("Goal", ev.goal && String(ev.goal).trim() !== String(card.card_title || "").trim() ? /* @__PURE__ */ jsx9(Md, { text: ev.goal }) : ""),
+        kvRow("Inputs", ev.inputs ? /* @__PURE__ */ jsx9(Md, { text: ev.inputs }) : ""),
+        kvRow("Artifact", ev.artifact ? /* @__PURE__ */ jsx9(Md, { text: ev.artifact }) : ""),
+        kvRow("Lands at", ev.lands_at ? /* @__PURE__ */ jsx9(Md, { text: ev.lands_at }) : ""),
+        kvRow("Constraints", ev.constraints ? /* @__PURE__ */ jsx9(Md, { text: ev.constraints }) : ""),
         kvRow("Done when", ev.done_when ? /* @__PURE__ */ jsx9(Md, { text: ev.done_when }) : ""),
+        kvRow("Proof command", ev.proof_cmd ? /* @__PURE__ */ jsx9("span", { className: "mono", children: ev.proof_cmd }) : ""),
         kvRow("Writer", (ev.writer_role || "") + (ev.assignee ? " \xB7 " + ev.assignee : "")),
         kvRow("Verifier", ev.verifier || ""),
         kvRow("Model pin", ev.model_override ? (ev.provider_override ? ev.provider_override + "/" : "") + ev.model_override : "none - the role profile's model"),
@@ -2611,7 +2617,7 @@ function tabBody(card, n, m, tab) {
         ] }, i)) })
       ] }) : null,
       /* @__PURE__ */ jsx9(RoleAbout, { card, role: "coordinator" }),
-      rawFields([ev], { done_when: 1, writer_role: 1, assignee: 1, verifier: 1, model_override: 1, provider_override: 1, ceiling: 1, spent: 1, result: 1, block_reason: 1, status: 1, decisions: 1 })
+      rawFields([ev], { goal: 1, inputs: 1, artifact: 1, lands_at: 1, constraints: 1, proof_cmd: 1, done_when: 1, writer_role: 1, assignee: 1, verifier: 1, model_override: 1, provider_override: 1, ceiling: 1, spent: 1, result: 1, block_reason: 1, status: 1, decisions: 1 })
     ] }) };
   }
   if (m.kind === "verifier") {

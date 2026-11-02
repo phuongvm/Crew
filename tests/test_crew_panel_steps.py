@@ -243,5 +243,58 @@ class CoordinatorTargetTests(unittest.TestCase):
         self.assertEqual(json.loads(out.stdout), [c[1] for c in cases])
 
 
+class ContractTabEvidenceTests(unittest.TestCase):
+    """build_graph puts the card's `Inputs` (single-line and `> ` quoted multiline) and `Constraints` into the
+    card:<id> node's evidence, on a throwaway kernel board (tests/kernel_board.py)."""
+
+    def setUp(self):
+        if HERE not in sys.path:
+            sys.path.insert(0, HERE)
+        import kernel_board as kbd
+        self.kbd = kbd
+        self._env = {k: os.environ.get(k) for k in ("HERMES_HOME", "HERMES_KANBAN_DB", "KANBAN_DB", "HERMES_BIN")}
+        self.home = tempfile.mkdtemp(prefix="crew-contract-ev-")
+        os.environ["HERMES_HOME"] = self.home
+        os.environ.setdefault("HERMES_BIN", "/bin/false")
+        _kb, self.conn, db_path = kbd.open_board(self.home)
+        os.environ["KANBAN_DB"] = db_path
+
+    def tearDown(self):
+        self.conn.close()
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def _evidence(self, *lines):
+        body = "\n".join(("Role: worker", "Coordinator: o/s", "Budget: 200000 tokens", "", "GOAL: g") + lines
+                         + ("Done when: d", "", "proof command: true", ""))
+        cid = self.kbd.add_card(self.conn, body=body, title="contract card")
+        graph, err = cg.build_graph(cid)
+        self.assertIsNone(err)
+        return [n for n in graph["nodes"] if n["id"] == "card:" + cid][0]["evidence"]
+
+    def test_single_line_inputs_and_constraints(self):
+        ev = self._evidence("Inputs: a/explorations/x-exploration.md, b/design.md", "Constraints: Zero-Checkout")
+        self.assertEqual(ev["inputs"], "a/explorations/x-exploration.md, b/design.md")
+        self.assertEqual(ev["constraints"], "Zero-Checkout")
+
+    def test_multiline_quoted_inputs(self):
+        ev = self._evidence("Inputs: a/explorations/x-exploration.md", "> pasted line one", "> pasted line two")
+        self.assertEqual(ev["inputs"], "a/explorations/x-exploration.md\n> pasted line one\n> pasted line two")
+        self.assertFalse(ev["constraints"])
+
+    def test_quoted_only_inputs_block(self):
+        ev = self._evidence("Inputs:", "> only pasted text")
+        self.assertEqual(ev["inputs"], "> only pasted text")
+
+    def test_no_inputs_or_constraints(self):
+        ev = self._evidence()
+        self.assertFalse(ev["inputs"])
+        self.assertFalse(ev["constraints"])
+
+
 if __name__ == "__main__":
     unittest.main()

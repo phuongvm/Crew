@@ -594,6 +594,43 @@ const panelTxt = c_host.querySelector('#panel').textContent
 ok(c_host.querySelector('#panel.open') && panelTxt.includes(c_verifier.evidence.verdict), 'verifier panel shows the verdict ' + c_verifier.evidence.verdict)
 await c_act(async () => { c_host.querySelector('#panel [data-tab="Proof"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
 ok(c_host.querySelector('#panel').textContent.includes(c_verifier.evidence.command.slice(0, 20)), 'Proof tab shows the proof command')
+// the card node's Contract tab: Inputs, Artifact, Lands at, Constraints, Done when, Proof command are rows of the tab
+// (not leftovers in Details -> Raw fields); Goal is a row only when it differs from the card title
+const c_cardNode = c_cardFx.nodes.find(n => n.kind === 'card')
+const c_contractEv = { inputs: 'O:/x/explorations/2026-11-02-topic-exploration.md\n> pasted note', artifact: 'O:/x/artifact.md', lands_at: 'O:/x/landing', constraints: 'Zero-Checkout', proof_cmd: 'node check.mjs', goal: c_cardFx.card_title }
+const c_contractFx = JSON.parse(JSON.stringify(c_cardFx))
+Object.assign(c_contractFx.nodes.find(n => n.id === c_cardNode.id).evidence, c_contractEv)
+c_served = c_contractFx
+await c_settle(2300)
+await c_act(async () => { c_host.querySelector('.node[data-id="' + c_cardNode.id + '"] .card').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+const c_kv = () => Object.fromEntries([...c_host.querySelectorAll('#panel dl > .kvr')].map(r => [r.querySelector('dt').textContent, r.querySelector('dd').textContent]))
+const c_panelTab = () => c_host.querySelector('#panel [data-tab].on')
+ok(c_panelTab() && c_panelTab().getAttribute('data-tab') === 'Contract', 'the card node opens on the Contract tab')
+{
+  const kv = c_kv(), keys = Object.keys(kv)
+  ok(kv['Inputs'].includes('2026-11-02-topic-exploration.md') && kv['Inputs'].includes('pasted note'), 'Contract tab: Inputs row shows the Exploration Document path and the quoted lines')
+  eq(kv['Artifact'], 'O:/x/artifact.md', 'Contract tab: Artifact row')
+  eq(kv['Lands at'], 'O:/x/landing', 'Contract tab: Lands at row')
+  eq(kv['Constraints'], 'Zero-Checkout', 'Contract tab: Constraints row')
+  eq(kv['Proof command'], 'node check.mjs', 'Contract tab: Proof command row')
+  ok('Done when' in kv, 'Contract tab: Done when row')
+  ok(!('Goal' in kv), 'Contract tab: Goal row omitted when it equals the card title')
+  const order = ['Inputs', 'Artifact', 'Lands at', 'Constraints', 'Done when', 'Proof command', 'Writer', 'Verifier', 'Model pin']
+  eq(keys.filter(k => order.includes(k)), order, 'Contract tab: rows in the contract order')
+}
+{
+  const g = JSON.parse(JSON.stringify(c_contractFx))
+  g.nodes.find(n => n.id === c_cardNode.id).evidence.goal = 'A different, longer goal than the card title says'
+  c_served = g
+  await c_settle(2300)
+  eq(c_kv()['Goal'], 'A different, longer goal than the card title says', 'Contract tab: Goal row when it differs from the card title')
+}
+await c_act(async () => { c_host.querySelector('#panel [data-tab="Details"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+{
+  const raw = [...c_host.querySelectorAll('#panel details.raw dt')].map(e => e.textContent)
+  for (const k of ['goal', 'inputs', 'artifact', 'lands_at', 'constraints', 'proof_cmd']) ok(!raw.includes(k), 'Details: Raw fields skips the promoted ' + k)
+}
+c_served = c_cardFx
 // the c_session's Calls: one row per step, kept across a poll that appends a step
 const c_session = c_cardFx.nodes.find(n => n.kind === 'session')
 await c_act(async () => { c_host.querySelector('.node[data-id="' + c_session.id + '"] .card').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })

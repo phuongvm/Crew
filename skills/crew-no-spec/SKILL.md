@@ -1,7 +1,7 @@
 ---
 name: crew-no-spec
 description: "Use when /crew-no-spec <ask>. Fast-track direct card intake."
-version: 0.10.5
+version: 0.10.7
 ---
 
 # /crew-no-spec - adaptive exploration & fast-track coordinator intake
@@ -151,7 +151,8 @@ When configuring tasks requiring independent review alongside automated proof co
          proof_cmd="<shell command>",
          proof_mode="safe",
          verify="proof",
-         constraints="<constraints>; Zero-Checkout: no branch checkout in production checkouts, branch work only in O:/workspaces/.worktrees/<name>"
+         constraints="<constraints>; Zero-Checkout: no branch checkout in production checkouts, branch work only in O:/workspaces/.worktrees/<name>",
+         inputs="<exploration_doc_path>"
      )
      ```
   2. **Card 2 (Independent Re-Review)**:
@@ -196,7 +197,7 @@ The coordinator utilizes the registered `crew` toolset for operations:
 
 | Tool | When to Use | Arguments | Safety / Mutability | Next Action |
 |---|---|---|---|---|
-| `crew_card_create` | Primary tool to open a validated contract card in Turn 1 | `title`, `role`, `goal`, `artifact`, `lands`, `audience`, `done_when`, `proof_cmd`, `verify`, `proof_mode`, `constraints`, `budget`, `parents`, `skills`, `dry_run`, `allow_no_proof`, `initial_status` | Mutating (creates card) | Launch background watcher |
+| `crew_card_create` | Primary tool to open a validated contract card in Turn 1 | `title`, `role`, `goal`, `artifact`, `lands`, `audience`, `done_when`, `proof_cmd`, `verify`, `proof_mode`, `constraints`, `inputs`, `budget`, `parents`, `skills`, `dry_run`, `allow_no_proof`, `initial_status` | Mutating (creates card) | Launch background watcher |
 | `crew_proof_check` | Screen proposed proof command before card creation | `command="<proof_cmd>"` | Read-only | If `flagged`, ask owner; if `ok`, proceed |
 | `crew_status` | Check queue, active cards, or worker progress | `limit=10`, `format="text"\|"json"` | Read-only | Report queue metrics |
 | `crew_event_subscribe` | Manage lifecycle event webhook subscriptions | `action="subscribe"\|"list"\|"unsubscribe"\|"clear"`, `url="..."`, `events=[...]`, `headers={...}`, `format="text"\|"json"` | Mutating (saves subscription) | Monitor card event webhooks |

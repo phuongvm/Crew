@@ -86,7 +86,13 @@ function tabBody(card: CardJson, n: CardNode, m: PanelModel, tab: string | null)
     if (tab === 'Contract')
       return { doc: (
         <dl>
+          {kvRow('Goal', ev.goal && String(ev.goal).trim() !== String(card.card_title || '').trim() ? <Md text={ev.goal} /> : '')}
+          {kvRow('Inputs', ev.inputs ? <Md text={ev.inputs} /> : '')}
+          {kvRow('Artifact', ev.artifact ? <Md text={ev.artifact} /> : '')}
+          {kvRow('Lands at', ev.lands_at ? <Md text={ev.lands_at} /> : '')}
+          {kvRow('Constraints', ev.constraints ? <Md text={ev.constraints} /> : '')}
           {kvRow('Done when', ev.done_when ? <Md text={ev.done_when} /> : '')}
+          {kvRow('Proof command', ev.proof_cmd ? <span className="mono">{ev.proof_cmd}</span> : '')}
           {kvRow('Writer', (ev.writer_role || '') + (ev.assignee ? ' · ' + ev.assignee : ''))}
           {kvRow('Verifier', ev.verifier || '')}
           {kvRow('Model pin', ev.model_override ? (ev.provider_override ? ev.provider_override + '/' : '') + ev.model_override : "none - the role profile's model")}
@@ -104,7 +110,7 @@ function tabBody(card: CardJson, n: CardNode, m: PanelModel, tab: string | null)
           </div>
         ) : null}
         <RoleAbout card={card} role="coordinator" />
-        {rawFields([ev], { done_when: 1, writer_role: 1, assignee: 1, verifier: 1, model_override: 1, provider_override: 1, ceiling: 1, spent: 1, result: 1, block_reason: 1, status: 1, decisions: 1 })}
+        {rawFields([ev], { goal: 1, inputs: 1, artifact: 1, lands_at: 1, constraints: 1, proof_cmd: 1, done_when: 1, writer_role: 1, assignee: 1, verifier: 1, model_override: 1, provider_override: 1, ceiling: 1, spent: 1, result: 1, block_reason: 1, status: 1, decisions: 1 })}
       </>
     ) }
   }

@@ -15250,7 +15250,13 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
     if (m.kind === "card") {
       if (tab === "Contract")
         return { doc: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("dl", { children: [
+          kvRow("Goal", ev.goal && String(ev.goal).trim() !== String(card.card_title || "").trim() ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Md, { text: ev.goal }) : ""),
+          kvRow("Inputs", ev.inputs ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Md, { text: ev.inputs }) : ""),
+          kvRow("Artifact", ev.artifact ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Md, { text: ev.artifact }) : ""),
+          kvRow("Lands at", ev.lands_at ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Md, { text: ev.lands_at }) : ""),
+          kvRow("Constraints", ev.constraints ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Md, { text: ev.constraints }) : ""),
           kvRow("Done when", ev.done_when ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Md, { text: ev.done_when }) : ""),
+          kvRow("Proof command", ev.proof_cmd ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "mono", children: ev.proof_cmd }) : ""),
           kvRow("Writer", (ev.writer_role || "") + (ev.assignee ? " \xB7 " + ev.assignee : "")),
           kvRow("Verifier", ev.verifier || ""),
           kvRow("Model pin", ev.model_override ? (ev.provider_override ? ev.provider_override + "/" : "") + ev.model_override : "none - the role profile's model"),
@@ -15268,7 +15274,7 @@ body:has(#crew-app[data-crew-shell]){margin:0;background:var(--crew-bg)}
           ] }, i)) })
         ] }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(RoleAbout, { card, role: "coordinator" }),
-        rawFields([ev], { done_when: 1, writer_role: 1, assignee: 1, verifier: 1, model_override: 1, provider_override: 1, ceiling: 1, spent: 1, result: 1, block_reason: 1, status: 1, decisions: 1 })
+        rawFields([ev], { goal: 1, inputs: 1, artifact: 1, lands_at: 1, constraints: 1, proof_cmd: 1, done_when: 1, writer_role: 1, assignee: 1, verifier: 1, model_override: 1, provider_override: 1, ceiling: 1, spent: 1, result: 1, block_reason: 1, status: 1, decisions: 1 })
       ] }) };
     }
     if (m.kind === "verifier") {
