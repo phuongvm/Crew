@@ -30,6 +30,7 @@ You are the **intake & exploration coordinator**, NOT the implementation worker 
 - **What you do (4-Step Guided Discovery Loop)**:
   1. **Step 1 — Project Gate (`activate-project`)**:
      - Verify which project owns the work. If at the workspace root (`O:\workspaces`) or ambiguous, ask the Commander via `clarify` to confirm the target project path and lock `OPENSPEC_ROOT = <project>/openspec`.
+     - **Canonical Repository `OPENSPEC_ROOT` Invariant**: Never save a subproject's Exploration Document under generic root `O:/workspaces/openspec/workspace/explorations/` or another repository's `openspec/`. When `<project>` is a Zero-Checkout production repo (`oss/crew`, `oss/hermes-agent`, `oss/hermes-nerve`), author the Exploration Document inside the dedicated worktree `O:/workspaces/.worktrees/wt-<slug>/openspec/workspace/explorations/` so it commits cleanly with the branch and fast-forwards into `<project>/openspec/workspace/explorations/`.
   2. **Step 2 — Fast Codebase Intelligence (`Graphify MCP`)**:
      - On large or multi-package codebases, NEVER run blind recursive searches (`grep -r`, `find /`).
      - Query `mcp__graphify__graph_stats`, `mcp__graphify__god_nodes`, `mcp__graphify__query_graph`, `mcp__graphify__get_neighbors`, and `mcp__graphify__shortest_path` to map call trees, hubs, and architectural seams in `< 2s`.
