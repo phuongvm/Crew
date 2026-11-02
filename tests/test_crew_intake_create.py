@@ -8,6 +8,7 @@ AFTER the environment is set, because it reads HERMES_HOME at import time.
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -390,6 +391,54 @@ class AnsweringReportTests(IntakeCase):
         self.assertEqual({}, self.plug._REPORT_WINDOWS)
 
 
+REJECTED_REPORT = ('[IMPORTANT: Background process proc_5b1c completed normally (exit code 0).\n'
+                   'Command: python3 "$HERMES_HOME/plugins/crew/scripts/crew_card.py" watch --card t_rev00001\n'
+                   'Output:\ncrew: card t_rev00001 is done.\nIndependent proposal review: verdict: REJECTED '
+                   '(findings: reviews/findings-proposal-v2.md).\n]')
+APPROVED_REPORT = REJECTED_REPORT.replace("verdict: REJECTED", "verdict: APPROVED")
+NOT_REJECTED_REPORT = REJECTED_REPORT.replace("verdict: REJECTED", "verdict: NOT REJECTED")
+
+
+class RejectedReportTests(IntakeCase):
+    """Step 3b: a REJECTED review report must let the coordinator open Remediation + Re-Review in that same turn."""
+
+    def test_a_rejected_report_turn_lets_the_guard_allow_the_create(self):
+        self.assertEqual("block", self.guard(turn="T1")["action"])                 # Red: no window before the report
+        out = self.plug.crew_intake_preload(user_message=REJECTED_REPORT, session_id="S1", turn_id="T1")
+        self.assertIn("t_rev00001", out["context"])
+        self.assertIn("REJECTED", out["context"])
+        self.assertIn('<skill name="crew">', out["context"])
+        self.assertIn("<crew-facts>", out["context"])                              # _intake_facts() rides along
+        self.assertEqual("modify", self.guard(turn="T1")["action"])
+
+    def test_the_same_turn_may_open_the_remediation_and_the_gated_re_review(self):
+        self.plug.crew_intake_preload(user_message=REJECTED_REPORT, session_id="S1", turn_id="T1")
+        self.assertEqual("modify", self.guard(turn="T1", title="Remediate proposal")["action"])
+        # the post hook of card 1 closes the window (one-report/one-pipeline-start), as in production
+        self.plug._close_window("S1")
+        self.assertFalse(self.plug._window_live("S1"))
+        second = self.guard(turn="T1", title="Re-review proposal", assignee="crew-verifier")
+        self.assertEqual("modify", second["action"])                               # F-07: Card 2 still authorized
+        self.assertIsNone(self.plug.crew_tool_guard(tool_name="crew_plan", args={}, session_id="S1", turn_id="T1"))
+
+    def test_authorization_does_not_leak_into_a_later_turn_or_other_session(self):
+        self.plug.crew_intake_preload(user_message=REJECTED_REPORT, session_id="S1", turn_id="T1")
+        self.plug._close_window("S1")
+        self.assertEqual("block", self.guard(turn="T2")["action"])
+        self.assertEqual("block", self.guard(session="S2", turn="T1")["action"])
+
+    def test_a_non_rejected_report_opens_nothing(self):
+        for i, report in enumerate((APPROVED_REPORT, NOT_REJECTED_REPORT, WATCH_REPORT)):
+            sid = "SN%d" % i
+            self.assertIsNone(self.plug.crew_intake_preload(user_message=report, session_id=sid, turn_id="T1"))
+            self.assertFalse(self.plug._window_live(sid))
+            self.assertEqual("block", self.guard(session=sid, turn="T1")["action"])
+
+    def test_a_rejected_report_without_a_session_opens_nothing(self):
+        self.assertIsNone(self.plug.crew_intake_preload(user_message=REJECTED_REPORT, session_id=None, turn_id="T1"))
+        self.assertEqual({}, self.plug._CREW_WINDOWS)
+
+
 class BannerTests(unittest.TestCase):
     """A /crew turn opens with the HERMES.CREW wordmark and the plugin's own version."""
 
@@ -464,7 +513,8 @@ class BannerTests(unittest.TestCase):
             self.assertNotIn("Open it in Crew", text, rel)
             self.assertIn("watch --card <id> --md", text, rel)
             self.assertTrue(text.startswith("---\n"), rel)
-            self.assertIn("\nversion: 0.10.2\n", text.split("\n---\n")[0] + "\n", rel)
+            plugin_version = re.search(r"^version:\s*(\S+)", (REPO / "plugin.yaml").read_text(encoding="utf-8"), re.M).group(1)
+            self.assertIn("\nversion: %s\n" % plugin_version, text.split("\n---\n")[0] + "\n", rel)
 
     def test_cli_tui_and_unknown_end_with_crew_dashboard(self):
         for i, platform in enumerate(("cli", "tui", "telegram", "", None)):

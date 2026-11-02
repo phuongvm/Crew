@@ -974,6 +974,9 @@ _REPORT_WINDOWS = {}      # session_id -> (card_id, expiry epoch); consumed by t
 WATCH_REPORT_RX = re.compile(
     r"\A\s*\[IMPORTANT: Background process \S+ completed\b[^\n]*\n\s*Command:[^\n]*"
     r"crew_card\.py[\"']?\s+watch\s+--card\s+(\S+)")
+# A report whose review verdict is REJECTED ("verdict: REJECTED", "Verdict: **REJECTED**"); "NOT REJECTED" and
+# "verdict: APPROVED" do not match.
+REJECTED_VERDICT_RX = re.compile(r"\bverdict\b[\s:*`'\"=\-]*(?:is\s+)?REJECTED\b", re.I)
 
 
 def _note_report(session_id, card_id):
@@ -1594,6 +1597,22 @@ def crew_intake_preload(user_message=None, session_id=None, turn_id=None, platfo
     report = WATCH_REPORT_RX.match(user_message)
     if report:
         _note_report(session_id, report.group(1))
+        if session_id and REJECTED_VERDICT_RX.search(user_message):
+            body = _crew_skill_text()
+            if body is not None:
+                # Step 3b: a REJECTED review ends with the intake window long expired. Authorize this report turn
+                # (window for crew_card_create, turn record so the Re-Review card after the Remediation card is
+                # still allowed once the first card closes the window) and hand the coordinator the crew skill.
+                _open_window(session_id)
+                if turn_id:
+                    _record_crew_turn(session_id, turn_id)
+                return {"context": (
+                    "Crew's report on card %s carries a REJECTED review verdict. Run Step 3b of the `crew` "
+                    "skill now, in this same turn, without asking the owner to re-confirm or to type "
+                    "/crew remediate: open the Remediation card (@coder) and its gated Re-Review card "
+                    "(@reviewer), each with Inputs carrying the Exploration Document, the change directory and "
+                    "the rejecting findings file. The skill is already loaded below; do not call skill_view."
+                    "\n\n<skill name=\"crew\">\n%s\n</skill>\n%s" % (report.group(1), body, _intake_facts()))}
         return None
     if _REPORT_WINDOWS.get(str(session_id or "")) and not CREW_SLASH_RX.match(user_message) \
             and not CREW_SKILL_INVOKED_RX.match(user_message.lstrip()[:200]):
