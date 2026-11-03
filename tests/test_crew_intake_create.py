@@ -439,6 +439,32 @@ class RejectedReportTests(IntakeCase):
         self.assertEqual({}, self.plug._CREW_WINDOWS)
 
 
+OPENSPEC_DONE_REPORT = (
+    '[IMPORTANT: Background process proc_9a2f completed normally (exit code 0).\n'
+    'Command: python3 "$HERMES_HOME/plugins/crew/scripts/crew_card.py" watch --card t_app00001 --md\n'
+    'Output:\n**Done** · [t_app00001](http://localhost:8799/crew?card=t_app00001) · Apply OpenSpec change demo-change\n'
+    '- **Lands at:** `O:/workspaces/oss/crew/openspec/changes/demo-change`\n]'
+)
+
+
+class OpenSpecCloseOutReportTests(IntakeCase):
+    """Completed OpenSpec watcher reports inject the deterministic 6-point close-out gate without opening the intake window."""
+
+    def test_completed_openspec_report_injects_closeout_gate_without_opening_window(self):
+        out = self.plug.crew_intake_preload(user_message=OPENSPEC_DONE_REPORT, session_id="S1", turn_id="T1")
+        self.assertIsNotNone(out)
+        self.assertIn("[CREW OPENSPEC CLOSE-OUT GATE]", out["context"])
+        self.assertIn("demo-change", out["context"])
+        self.assertIn("openspec-sync-specs", out["context"])
+        self.assertIn("openspec_change_archive", out["context"])
+        self.assertFalse(self.plug._window_live("S1"))
+        self.assertEqual("block", self.guard(session="S1", turn="T1")["action"])
+
+    def test_completed_openspec_report_without_session_returns_none(self):
+        self.assertIsNone(self.plug.crew_intake_preload(user_message=OPENSPEC_DONE_REPORT, session_id=None, turn_id="T1"))
+
+
+
 class BannerTests(unittest.TestCase):
     """A /crew turn opens with the HERMES.CREW wordmark and the plugin's own version."""
 

@@ -977,6 +977,18 @@ WATCH_REPORT_RX = re.compile(
 # A report whose review verdict is REJECTED ("verdict: REJECTED", "Verdict: **REJECTED**"); "NOT REJECTED" and
 # "verdict: APPROVED" do not match.
 REJECTED_VERDICT_RX = re.compile(r"\bverdict\b[\s:*`'\"=\-]*(?:is\s+)?REJECTED\b", re.I)
+DONE_REPORT_RX = re.compile(r"(?:\*\*Done\*\*|\bis done\.)", re.I)
+OPENSPEC_CHANGE_RX = re.compile(r"openspec/changes/(?:archive/)?([A-Za-z0-9._-]+)")
+
+
+def _report_openspec_change(card_id, user_message):
+    for text in (str(user_message or ""), _card_body(card_id) if card_id else ""):
+        norm = str(text or "").replace("\\", "/")
+        for m in OPENSPEC_CHANGE_RX.finditer(norm):
+            slug = m.group(1).rstrip(".").strip()
+            if slug and slug != "archive":
+                return slug
+    return ""
 
 
 def _note_report(session_id, card_id):
@@ -1613,6 +1625,22 @@ def crew_intake_preload(user_message=None, session_id=None, turn_id=None, platfo
                     "(@reviewer), each with Inputs carrying the Exploration Document, the change directory and "
                     "the rejecting findings file. The skill is already loaded below; do not call skill_view."
                     "\n\n<skill name=\"crew\">\n%s\n</skill>\n%s" % (report.group(1), body, _intake_facts()))}
+        if session_id and DONE_REPORT_RX.search(user_message):
+            change_id = _report_openspec_change(report.group(1), user_message)
+            if change_id:
+                return {"context": (
+                    "[CREW OPENSPEC CLOSE-OUT GATE] Card %s completed for OpenSpec change `%s`. "
+                    "When all Apply/Verification cards for `%s` are done and close-out is authorized, "
+                    "execute the mandatory 6-point close-out sequence on the canonical repository's `<OPENSPEC_ROOT>` "
+                    "(inside its isolated worktree when Zero-Checkout applies): "
+                    "(5a) `openspec-verify-change` & `openspec validate %s --strict`; "
+                    "(5b) `openspec-sync-specs` into canonical `<OPENSPEC_ROOT>/specs/`; "
+                    "(5c) confirm `<OPENSPEC_ROOT>/changes/%s/explorations/` and `reviews/` are packaged; "
+                    "(5d) `openspec_change_archive(change=\"%s\", workdir=\"...\")`; "
+                    "(5e) write `<OPENSPEC_ROOT>/workspace/audits/YYYY-MM-DD/%s-audit.md`; "
+                    "(5f) commit, push to `origin/main`, and fast-forward `<project-path>` via `git pull --ff-only origin main`."
+                    % (report.group(1), change_id, change_id, change_id, change_id, change_id, change_id)
+                )}
         return None
     if _REPORT_WINDOWS.get(str(session_id or "")) and not CREW_SLASH_RX.match(user_message) \
             and not CREW_SKILL_INVOKED_RX.match(user_message.lstrip()[:200]):
