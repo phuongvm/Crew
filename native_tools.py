@@ -8,6 +8,7 @@ registered via `ctx.register_tool()`.
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import io
 import os
 import re
@@ -37,6 +38,21 @@ def _diagnose_tool():
         return crew_diagnose
     except Exception:
         return None
+
+
+_GATES: Any = None
+
+
+def _openspec_gates() -> Any:
+    """Load the plugin-root OpenSpec gate module by path, so direct native handler calls cannot bypass it."""
+    global _GATES
+    if _GATES is None:
+        spec = importlib.util.spec_from_file_location("crew_openspec_gates_native", os.path.join(HERE, "openspec_gates.py"))
+        if spec is None or spec.loader is None:
+            raise RuntimeError("openspec_gates.py is not loadable")
+        _GATES = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_GATES)
+    return _GATES
 
 
 # ---------------------------------------------------------------- schemas
@@ -312,6 +328,18 @@ def handle_crew_card_create(args: dict, **kwargs: Any) -> dict[str, Any]:
     allow_no_proof = bool(args.get("allow_no_proof", False))
     parents = tuple(args.get("parents") or ())
     initial_status = args.get("initial_status")
+
+    # Native handlers can be invoked without the plugin pre_tool_call hook. Enforce the same two
+    # creation gates here, before `open_card` can persist a parent link or a cross-repo input.
+    try:
+        gates = _openspec_gates()
+        why = gates.parent_fence(_card_tool(), c["role"], parents) or gates.ownership_fence(
+            c.get("inputs", ""), c.get("lands", "")
+        )
+    except Exception as exc:
+        return {"status": "error", "error": "OpenSpec card-create fence failed closed: %s" % exc}
+    if why:
+        return {"status": "refused", "error": why}
 
     if not c["proof_cmd"] and not allow_no_proof:
         return {"status": "error", "error": "proof_cmd is required unless allow_no_proof is True"}
@@ -927,6 +955,15 @@ def handle_crew_plan_split(args: dict, **kwargs: Any) -> dict[str, Any]:
     card_mod = _card_tool()
     if card_mod is None:
         return _err("crew_card module could not be loaded")
+    try:
+        gates = _openspec_gates()
+        for child in spec.children:
+            why = gates.parent_fence(card_mod, child.get("role"), child.get("parents")) \
+                or gates.ownership_fence(child.get("inputs"), child.get("lands"))
+            if why:
+                return {"status": "refused", "error": why}
+    except Exception as exc:
+        return _err("OpenSpec plan-split fence failed closed: %s" % exc)
     try:
         res = card_mod.run_plan(spec.to_dict(), dry_run=dry_run)
     except Exception as exc:

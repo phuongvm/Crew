@@ -129,7 +129,7 @@ RETIRED_SCRIPT_FILES = ["crew_follow.py", "crew_follow_proof.py", "crew_observer
 PLUGIN_FILES = (["plugin.yaml", "__init__.py",
                  # root modules __init__.py / crew_card import: native_tools (crew_* tools incl. crew_observe),
                  # runtime_events, contracts. Without them a profile copy runs stale or missing native tools.
-                 "native_tools.py", "runtime_events.py", "contracts.py",
+                 "native_tools.py", "openspec_gates.py", "runtime_events.py", "contracts.py",
                  "skills/crew-verifier/SKILL.md",
                  "skills/crew-role-worker/SKILL.md", "skills/crew-role-content/SKILL.md",
                  "skills/crew/SKILL.md", "skills/crew-no-spec/SKILL.md", "skills/crew-diagnose/SKILL.md",

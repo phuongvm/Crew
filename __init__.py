@@ -153,6 +153,54 @@ def _card_tool():
     return _load_script("crew_card.py", "crew_card_tool")
 
 
+_GATES = None
+
+
+def _gates():
+    """openspec_gates.py (plugin root), loaded once by path: the OpenSpec governance gates shared with native_tools."""
+    global _GATES
+    if _GATES is None:
+        spec = importlib.util.spec_from_file_location("crew_openspec_gates", os.path.join(HERE, "openspec_gates.py"))
+        if spec is None or spec.loader is None:
+            raise RuntimeError("openspec_gates.py is not loadable")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _GATES = mod
+    return _GATES
+
+
+def _load_openspec_evaluator():
+    """The OpenSpec plugin's authoritative `evaluate_change_gate`, or None (every caller fails closed)."""
+    return _gates().load_openspec_evaluator(HOME)
+
+
+def _openspec_create_fence(tool_name, args):
+    """pre_tool_call, every profile and process (a worker's HERMES_KANBAN_TASK does not exempt it): no Apply
+    card under an unapproved review card, and no OpenSpec change input outside the target repo's openspec/ root."""
+    if tool_name not in ("kanban_create", "crew_card_create", "crew_plan_split") or not isinstance(args, dict):
+        return None
+    tool = _card_tool()
+    if tool is None:
+        return None
+    if tool_name == "kanban_create":
+        body = str(args.get("body") or "")
+        if not tool.is_crew_body(body):
+            return None
+        c = tool.parse_contract(body)
+        cards = [(c.get("role"), args.get("parents"), c.get("inputs"), c.get("lands"))]
+    elif tool_name == "crew_card_create":
+        cards = [(args.get("role"), args.get("parents"), args.get("inputs"), args.get("lands"))]
+    else:
+        cards = [(ch.get("role"), ch.get("parents"), ch.get("inputs"), ch.get("lands"))
+                 for ch in (args.get("children") or []) if isinstance(ch, dict)]
+    g = _gates()
+    for role, parents, inputs, lands in cards:
+        why = g.parent_fence(tool, role, parents) or g.ownership_fence(inputs, lands)
+        if why:
+            return _create_refusal(why)
+    return None
+
+
 _RESULT_TOOL = None
 
 
@@ -1064,14 +1112,13 @@ def _is_crew_turn(session_id, turn_id):
 def _open_guard(tool_name, args, session_id, turn_id):
     """Refuse a direct `crew_card.py open` outside a /crew turn and its session's intake window
     (PROBE titles pass)."""
-    if tool_name == "crew_plan":
+    if tool_name in ("crew_plan", "crew_card_create", "crew_plan_split"):
         if os.environ.get("HERMES_KANBAN_TASK") or _is_crew_turn(session_id, turn_id):
             return None
         return {"action": "block",
                 "message": "crew cards open only from the owner's /crew command. This session has no "
-                           "open crew intake, so crew_plan is refused. Answer the owner "
-                           "normally; if they want crew work they type /crew <ask> and the intake "
-                           "runs in that turn."}
+                           "open crew intake, so %s is refused. Answer the owner normally; if they want crew "
+                           "work they type /crew <ask> and the intake runs in that turn." % tool_name}
     if tool_name != "terminal":
         return None
     cmd = str((args or {}).get("command") or "")
@@ -1125,7 +1172,7 @@ def _create_guard(args, session_id, turn_id):
     model pin) or None when the call is not a crew card. A coordinator or worker process (HERMES_KANBAN_TASK
     set) may create children: the plan tool validates those."""
     args = args if isinstance(args, dict) else {}
-    if os.environ.get("HERMES_KANBAN_TASK") or args.get("parents"):
+    if os.environ.get("HERMES_KANBAN_TASK"):
         return None
     tool = _card_tool()
     if tool is None:
@@ -1242,6 +1289,10 @@ def _close_guard(tool_name, args):
     if not card or tool is None:
         return None
     body = _card_body(card)
+    why = _gates().verify_close_gate(tool, body, loader=_load_openspec_evaluator)
+    if why:
+        return {"action": "block",
+                "message": "crew close rule: card %s cannot be completed - %s." % (card, why)}
     if not tool.needs_pass(body):
         return None
     ok, why = tool.close_check(card, body, tool.claimed_at(card))
@@ -1327,6 +1378,12 @@ def crew_tool_guard(tool_name=None, args=None, **kwargs):
     profiles the per-card budget hard stop and the read-only verifier."""
     blocked = _open_guard(tool_name, args, kwargs.get("session_id"), kwargs.get("turn_id")) \
         or _skill_edit_guard(tool_name, args)
+    if blocked:
+        return blocked
+    try:
+        blocked = _openspec_create_fence(tool_name, args)
+    except Exception as exc:  # noqa: BLE001 - a hook error lets the call through, so fail closed here
+        blocked = _create_refusal("the OpenSpec create fence failed (%s); nothing was created." % exc)
     if blocked:
         return blocked
     if tool_name == "kanban_create":
@@ -1805,6 +1862,13 @@ def crew_open_hook(tool_name=None, args=None, result=None, **kwargs):
 
     if tool_name in ("kanban_complete", "kanban_block", "kanban_request_review", "kanban_request_changes"):
         task_id = (args or {}).get("task_id") or os.environ.get("HERMES_KANBAN_TASK")
+        if task_id and tool_name == "kanban_complete" and '"error"' not in str(result or ""):
+            try:  # a completed review card with Verdict: REJECTED holds every child that has not started
+                _gates().block_rejected_children(_card_tool(), str(task_id),
+                                                 summary=str((args or {}).get("summary") or (args or {}).get("result") or ""),
+                                                 rejected_rx=REJECTED_VERDICT_RX)
+            except Exception as exc:  # noqa: BLE001 - logged; the completion itself already happened
+                logging.getLogger(__name__).warning("crew: REJECTED child blocker failed for %s: %s", task_id, exc)
         if task_id:
             try:
                 try:
