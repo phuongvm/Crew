@@ -75,6 +75,33 @@ def _same_path(a: str, b: str) -> bool:
     return os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))
 
 
+def owning_repo(repo_path: str) -> str:
+    """Canonical repository root owning `repo_path` (resolves a git worktree's `.git` file via `gitdir`/`commondir`)."""
+    if not repo_path:
+        return ""
+    p = Path(repo_path)
+    dot_git = p / ".git"
+    try:
+        if dot_git.is_file():
+            raw = dot_git.read_text(encoding="utf-8", errors="replace").splitlines()
+            gitdir_line = next((ln for ln in raw if ln.lower().startswith("gitdir:")), "")
+            if gitdir_line:
+                gitdir = Path(gitdir_line.split(":", 1)[1].strip())
+                if not gitdir.is_absolute():
+                    gitdir = (p / gitdir).resolve()
+                commondir_file = gitdir / "commondir"
+                if commondir_file.is_file():
+                    common = Path(commondir_file.read_text(encoding="utf-8", errors="replace").strip())
+                    common_dir = common if common.is_absolute() else (gitdir / common).resolve()
+                    if common_dir.name == ".git":
+                        return str(common_dir.parent)
+                if gitdir.parent.name == "worktrees" and gitdir.parent.parent.name == ".git":
+                    return str(gitdir.parent.parent.parent)
+    except OSError:
+        pass
+    return str(p)
+
+
 def target_repo(path_text: Any) -> str:
     """The git checkout (repository or worktree) that contains the first absolute path in `path_text`, or ''."""
     m = _ABS_PATH_RX.search(_norm(path_text))
@@ -132,16 +159,28 @@ def _card_row(tool: Any, card_id: str) -> Optional[tuple]:
 
 
 def _artifact_text(tool: Any, body: str) -> str:
-    """Contents of the card's declared `Artifact:` file(s) (absolute paths only, capped)."""
-    out = []
+    """Contents of the card's declared `Artifact:` file(s) (absolute paths + relative paths under `Lands at`, capped)."""
+    candidates: list[Path] = []
+    base_dirs: list[Path] = []
     for key in ("Artifact", "Lands at"):
         for m in _ABS_PATH_RX.finditer(_norm(tool.field(body, key) or "")):
             p = Path(m.group(0).rstrip(".,;)"))
-            if p.is_file():
-                try:
-                    out.append(p.read_bytes()[:_ARTIFACT_MAX].decode("utf-8", "replace"))
-                except OSError:
-                    pass
+            if p.is_file() and p not in candidates:
+                candidates.append(p)
+            elif key == "Lands at" and p.is_dir() and p not in base_dirs:
+                base_dirs.append(p)
+    art_raw = _norm(tool.field(body, "Artifact") or "").strip().strip("`'\"")
+    if art_raw and not _ABS_PATH_RX.match(art_raw) and ".." not in Path(art_raw).parts:
+        for bdir in base_dirs:
+            rel_target = bdir / art_raw
+            if rel_target.is_file() and rel_target not in candidates:
+                candidates.append(rel_target)
+    out = []
+    for p in candidates:
+        try:
+            out.append(p.read_bytes()[:_ARTIFACT_MAX].decode("utf-8", "replace"))
+        except OSError:
+            pass
     return "\n".join(out)
 
 
@@ -196,14 +235,16 @@ def ownership_fence(inputs: Any, lands: Any) -> Optional[str]:
     """Refusal text when `Inputs:` / `Lands at:` names an OpenSpec change outside the target repo's openspec/
     root while that repo owns openspec/specs/ (unless the change sets `x-crossRepo: true`)."""
     repo = target_repo(lands)
-    if not repo or not (Path(repo) / "openspec" / "specs").is_dir():
+    owner = owning_repo(repo)
+    if not owner or not (Path(owner) / "openspec" / "specs").is_dir():
         return None
-    for root, change in change_refs("%s\n%s" % (inputs or "", lands or ""), base_repo=repo):
-        if _same_path(root, repo) or is_cross_repo(root, change):
+    for root, change in change_refs("%s\n%s" % (inputs or "", lands or ""), base_repo=owner):
+        root_owner = owning_repo(target_repo(root) or root)
+        if _same_path(root, owner) or _same_path(root, repo) or (root_owner and _same_path(root_owner, owner)) or is_cross_repo(root, change):
             continue
         return ("OPENSPEC_ROOT ownership mismatch: change `%s` lives under %s/openspec but the target repository "
                 "%s owns its own openspec/specs/; move the change there or set `x-crossRepo: true` in its "
-                ".openspec.yaml" % (change, root, _norm(repo)))
+                ".openspec.yaml" % (change, root, _norm(owner)))
     return None
 
 
@@ -287,7 +328,7 @@ def block_rejected_children(tool: Any, card_id: str, summary: str = "",
                             rejected_rx: re.Pattern = REJECTED_VERDICT_RX) -> list[str]:
     """After `kanban_complete` on a verifier card whose verdict is REJECTED: block its todo/ready children."""
     row = _card_row(tool, card_id)
-    if row is None:
+    if row is None or row[0] not in ("done", "archived"):
         return []
     body, result = row[1] or "", row[2] or ""
     if (tool.field(body, "Role") or "").strip().lower() != "verifier":

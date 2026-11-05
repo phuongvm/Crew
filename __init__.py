@@ -1862,7 +1862,16 @@ def crew_open_hook(tool_name=None, args=None, result=None, **kwargs):
 
     if tool_name in ("kanban_complete", "kanban_block", "kanban_request_review", "kanban_request_changes"):
         task_id = (args or {}).get("task_id") or os.environ.get("HERMES_KANBAN_TASK")
-        if task_id and tool_name == "kanban_complete" and '"error"' not in str(result or ""):
+        parsed_result = result
+        if isinstance(result, str):
+            try:
+                parsed_result = json.loads(result)
+            except (ValueError, TypeError):
+                parsed_result = None
+        completed = (isinstance(parsed_result, dict)
+                     and (parsed_result.get("ok") is True or parsed_result.get("status") == "ok")
+                     and not parsed_result.get("error") and parsed_result.get("success") is not False)
+        if task_id and tool_name == "kanban_complete" and completed:
             try:  # a completed review card with Verdict: REJECTED holds every child that has not started
                 _gates().block_rejected_children(_card_tool(), str(task_id),
                                                  summary=str((args or {}).get("summary") or (args or {}).get("result") or ""),

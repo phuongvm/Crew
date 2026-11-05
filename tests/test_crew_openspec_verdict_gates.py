@@ -141,6 +141,22 @@ class CrewOpenSpecVerdictGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "refused")
         self.assertIn("cannot be chained", result["error"])
 
+    def test_failed_verifier_completion_does_not_block_child(self):
+        parent = kernel_board.add_card(self.conn, status="ready", body=REVIEW_BODY, title="proposal review")
+        child = kernel_board.add_card(self.conn, status="todo", body=WORKER_BODY, title="apply", parents=(parent,))
+        events_before = kernel_board.events(self.conn, child)
+        self.plugin.crew_open_hook(
+            tool_name="kanban_complete",
+            args={"task_id": parent, "summary": "Verdict: REJECTED"},
+            result={"status": "error", "error": "completion refused"},
+        )
+        self.assertEqual(self.kb.get_task(self.conn, parent).status, "ready")
+        self.assertEqual(self.kb.get_task(self.conn, child).status, "todo")
+        self.assertEqual(kernel_board.events(self.conn, child), events_before)
+        self.assertEqual(self.plugin._gates().block_rejected_children(
+            crew_card, parent, summary="Verdict: REJECTED"), [])
+        self.assertEqual(self.kb.get_task(self.conn, child).status, "todo")
+
     def test_rejected_verifier_completion_blocks_ready_child_via_kernel_board(self):
         parent = kernel_board.add_card(self.conn, status="ready", body=REVIEW_BODY, title="proposal review")
         child = kernel_board.add_card(self.conn, status="todo", body=WORKER_BODY, title="apply", parents=(parent,))
@@ -155,6 +171,30 @@ class CrewOpenSpecVerdictGateTests(unittest.TestCase):
         self.assertEqual(self.kb.get_task(self.conn, child).status, "blocked")
         event_kinds = kernel_board.events(self.conn, child)
         self.assertIn("blocked", event_kinds)
+        self.kb.recompute_ready(self.conn)
+        self.assertEqual(self.kb.get_task(self.conn, child).status, "blocked")
+
+    def test_rejected_artifact_file_blocks_child_when_summary_is_generic(self):
+        change_dir = Path(self.tmp) / "change-under-review"
+        findings = change_dir / "reviews" / "findings-proposal-v1.md"
+        findings.parent.mkdir(parents=True)
+        findings.write_text("# Review\n\nVerdict: REJECTED\n", encoding="utf-8")
+        review_body = (
+            REVIEW_BODY
+            .replace("Artifact: review.md", "Artifact: reviews/findings-proposal-v1.md")
+            .replace("Lands at: /tmp/review.md", f"Lands at: {change_dir.as_posix()}")
+        )
+        parent = kernel_board.add_card(self.conn, status="ready", body=review_body, title="proposal review")
+        child = kernel_board.add_card(self.conn, status="todo", body=WORKER_BODY, title="apply", parents=(parent,))
+        self.assertTrue(self.kb.complete_task(self.conn, parent, result="Findings recorded", summary="Findings recorded"))
+        self.plugin.crew_open_hook(
+            tool_name="kanban_complete",
+            args={"task_id": parent, "summary": "Findings recorded"},
+            result=f'{{"ok": true, "task_id": "{parent}"}}',
+        )
+        self.assertEqual(self.kb.get_task(self.conn, child).status, "blocked")
+        self.kb.recompute_ready(self.conn)
+        self.assertEqual(self.kb.get_task(self.conn, child).status, "blocked")
 
     def test_dual_close_is_blocked_by_real_verify_close_gate(self):
         body = """Role: worker
@@ -191,6 +231,20 @@ proof command: true
             "x-crossRepo: true\n", encoding="utf-8"
         )
         self.assertIsNone(gates.ownership_fence(inputs, str(target / "src" / "thing.py")))
+
+        wt = Path(self.tmp) / "wt-target"
+        wt.mkdir(parents=True)
+        gitdir = target / ".git" / "worktrees" / "wt-target"
+        gitdir.mkdir(parents=True)
+        (gitdir / "commondir").write_text("../..\n", encoding="utf-8")
+        (wt / ".git").write_text(f"gitdir: {gitdir.as_posix()}\n", encoding="utf-8")
+        (target / "openspec" / "changes" / "own-change").mkdir(parents=True)
+        own_inputs = str(target / "openspec" / "changes" / "own-change")
+        self.assertIsNone(gates.ownership_fence(own_inputs, str(wt / "src" / "thing.py")))
+        self.assertIn(
+            "ownership mismatch",
+            gates.ownership_fence(str(Path(self.tmp) / "other" / "openspec" / "changes" / "bad"), str(wt / "src" / "thing.py")),
+        )
 
 
 if __name__ == "__main__":
