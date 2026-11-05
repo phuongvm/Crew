@@ -8,7 +8,6 @@ registered via `ctx.register_tool()`.
 from __future__ import annotations
 
 import contextlib
-import importlib.util
 import io
 import os
 import re
@@ -18,8 +17,9 @@ from typing import Any, Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.join(HERE, "scripts")
-if SCRIPTS_DIR not in sys.path:
-    sys.path.insert(0, SCRIPTS_DIR)
+for _p in (SCRIPTS_DIR, HERE):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 
 def _card_tool():
@@ -40,19 +40,13 @@ def _diagnose_tool():
         return None
 
 
-_GATES: Any = None
-
-
 def _openspec_gates() -> Any:
-    """Load the plugin-root OpenSpec gate module by path, so direct native handler calls cannot bypass it."""
-    global _GATES
-    if _GATES is None:
-        spec = importlib.util.spec_from_file_location("crew_openspec_gates_native", os.path.join(HERE, "openspec_gates.py"))
-        if spec is None or spec.loader is None:
-            raise RuntimeError("openspec_gates.py is not loadable")
-        _GATES = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(_GATES)
-    return _GATES
+    """Import the shared plugin-root OpenSpec gate module so direct native handler calls cannot bypass it."""
+    try:
+        from . import openspec_gates as mod  # type: ignore[attr-defined]
+    except ImportError:
+        import openspec_gates as mod  # type: ignore[no-redef]
+    return mod
 
 
 # ---------------------------------------------------------------- schemas

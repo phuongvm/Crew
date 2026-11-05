@@ -209,7 +209,7 @@ def is_review_card(tool: Any, body: str) -> bool:
 # ---------------------------------------------------------------- gates
 
 
-def parent_fence(tool: Any, role: str, parents: Any) -> Optional[str]:
+def parent_fence(tool: Any, role: Any, parents: Any) -> Optional[str]:
     """Refusal text when a writer (Apply) card is chained under a review card that is not done with APPROVED."""
     if str(role or "").strip().lower() not in WRITER_ROLES or not parents:
         return None

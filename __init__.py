@@ -153,20 +153,15 @@ def _card_tool():
     return _load_script("crew_card.py", "crew_card_tool")
 
 
-_GATES = None
-
-
 def _gates():
-    """openspec_gates.py (plugin root), loaded once by path: the OpenSpec governance gates shared with native_tools."""
-    global _GATES
-    if _GATES is None:
-        spec = importlib.util.spec_from_file_location("crew_openspec_gates", os.path.join(HERE, "openspec_gates.py"))
-        if spec is None or spec.loader is None:
-            raise RuntimeError("openspec_gates.py is not loadable")
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        _GATES = mod
-    return _GATES
+    """openspec_gates.py (plugin root): the OpenSpec governance gates shared with native_tools."""
+    try:
+        from . import openspec_gates as mod
+    except ImportError:
+        if HERE not in sys.path:
+            sys.path.insert(0, HERE)
+        import openspec_gates as mod
+    return mod
 
 
 def _load_openspec_evaluator():
