@@ -1650,13 +1650,124 @@ def _lagging(profile_home, prefix, no_profiles):
     return want, homes, lagging
 
 
+def _parse_plugins_cfg(cfg_path: Path) -> tuple[list[str], list[str] | None]:
+    """Return (disabled_list, enabled_list_or_None) from config.yaml using PyYAML or stdlib fallback."""
+    if not cfg_path.is_file():
+        return [], None
+    text = cfg_path.read_text(encoding="utf-8")
+    try:
+        import yaml  # type: ignore
+        data = yaml.safe_load(text) or {}
+        pl = (data.get("plugins") or {}) if isinstance(data, dict) else {}
+        dis = [str(x) for x in (pl.get("disabled") or [])] if isinstance(pl, dict) else []
+        en_raw = pl.get("enabled") if isinstance(pl, dict) else None
+        en = [str(x) for x in en_raw] if isinstance(en_raw, list) else None
+        return dis, en
+    except Exception:
+        lines = text.splitlines()
+        in_plugins = False
+        section = None
+        dis: list[str] = []
+        en: list[str] | None = None
+        for line in lines:
+            raw = line.rstrip("\r\n")
+            if re.match(r"^plugins:\s*(#.*)?$", raw):
+                in_plugins = True
+                section = None
+                continue
+            if in_plugins:
+                if raw.strip() and not raw.lstrip().startswith("#") and not raw.startswith((" ", "\t")):
+                    break
+                m_sec = re.match(r"^\s+(disabled|enabled):\s*(.*?)\s*(#.*)?$", raw)
+                if m_sec:
+                    section = m_sec.group(1)
+                    if section == "enabled" and en is None:
+                        en = []
+                    continue
+                m_item = re.match(r"^\s*-\s+(.+?)\s*(#.*)?$", raw)
+                if m_item and section in ("disabled", "enabled"):
+                    val = m_item.group(1).strip().strip("'\"")
+                    if section == "disabled":
+                        dis.append(val)
+                    elif en is not None:
+                        en.append(val)
+        return dis, en
+
+
+def verify_seven_profile_plugin_parity(
+    hermes_home: str | Path | None = None,
+    *,
+    required_plugins: tuple[str, ...] = ("nerve", "crew", "openspec"),
+    specialist_profiles: tuple[str, ...] = ("coder", "reviewer", "qa", "leader", "designer", "researcher"),
+) -> dict:
+    """Verify 7-root directory presence, config.yaml enablement, and SHA-256 (.py/.yaml) manifest parity."""
+    import hashlib
+
+    base = Path(hermes_home or os.environ.get("HERMES_HOME") or crew_card.default_home()).resolve()
+    roots = [("default", base / "plugins", base / "config.yaml")] + [
+        (p, base / "profiles" / p / "plugins", base / "profiles" / p / "config.yaml")
+        for p in specialist_profiles
+    ]
+
+    def _manifest(pdir: Path) -> dict[str, str]:
+        return {
+            str(f.relative_to(pdir)).replace("\\", "/"): hashlib.sha256(f.read_bytes()).hexdigest()
+            for f in sorted(pdir.rglob("*"))
+            if f.is_file() and "__pycache__" not in f.parts and f.suffix in (".py", ".yaml")
+        }
+
+    ref: dict[str, dict[str, str]] = {}
+    for pl in required_plugins:
+        default_pl = roots[0][1] / pl
+        if not (default_pl / "__init__.py").is_file() or not (default_pl / "plugin.yaml").is_file():
+            raise AssertionError(f"default:{pl}: missing __init__.py or plugin.yaml")
+        mf = _manifest(default_pl)
+        if not mf:
+            raise AssertionError(f"default:{pl}: empty manifest")
+        ref[pl] = mf
+
+    for name, rdir, cfg_path in roots:
+        if not cfg_path.is_file():
+            raise AssertionError(f"{name}: missing config.yaml at {cfg_path}")
+        disabled, enabled = _parse_plugins_cfg(cfg_path)
+        for pl in required_plugins:
+            pdir = rdir / pl
+            if not (pdir / "__init__.py").is_file() or not (pdir / "plugin.yaml").is_file():
+                raise AssertionError(f"{name}:{pl}: missing plugin directory or entrypoint")
+            if pl in disabled:
+                raise AssertionError(f"{name}:{pl}: listed in plugins.disabled")
+            if enabled is not None and pl not in enabled:
+                raise AssertionError(f"{name}:{pl}: missing from plugins.enabled")
+            cur = _manifest(pdir)
+            if cur != ref[pl]:
+                raise AssertionError(f"{name}:{pl}: SHA-256 manifest mismatch vs default")
+
+    return {
+        "ok": True,
+        "roots": [r[0] for r in roots],
+        "plugins": list(required_plugins),
+        "file_counts": {pl: len(ref[pl]) for pl in required_plugins},
+    }
+
+
 def step_parity(profile_home, prefix, apply, no_profiles=False):
     """Every profile with crew holds the package's version and md5-identical files (scripts/crew_parity_check.py is
     the comparison). A lagging profile is brought up to version here (plugin, skills, scripts, roles file: what
     step_other_copies does), then compared again; only a profile that still differs after the repair is FAILED
     (not ready). In --check it is a would-change line."""
     want, homes, lagging = _lagging(profile_home, prefix, no_profiles)
+    base = Path(resolve_profile_home("default"))
+    full_seven_root = (
+        all((base / "profiles" / p / "config.yaml").is_file() for p in ("coder", "reviewer", "qa", "leader", "designer", "researcher"))
+        and (base / "plugins" / "nerve" / "__init__.py").is_file()
+        and (base / "plugins" / "openspec" / "__init__.py").is_file()
+    )
     if not lagging:
+        if full_seven_root:
+            try:
+                verify_seven_profile_plugin_parity(base)
+            except AssertionError as exc:
+                return ("FAILED" if apply else "CHANGED"), f"7-root parity failed: {exc}"
         return "OK", "%d profile(s) on crew %s, md5 for md5 (%s)" % (len(homes), want, ", ".join(n for n, _h in homes))
     if not apply:
         return "CHANGED", "profiles lag crew %s - %s" % (want, " | ".join(d for _n, _h, d in lagging))
@@ -1672,6 +1783,11 @@ def step_parity(profile_home, prefix, apply, no_profiles=False):
     _w, _h, still = _lagging(profile_home, prefix, no_profiles)
     if still:
         return "FAILED", "not ready, profiles still lag crew %s after the repair - %s" % (want, " | ".join(d for _n, _h, d in still))
+    if full_seven_root:
+        try:
+            verify_seven_profile_plugin_parity(base)
+        except AssertionError as exc:
+            return "FAILED", f"7-root parity failed after crew sync: {exc}"
     return "CHANGED", "brought to crew %s: %s; all %d profile(s) consistent" % (want, ", ".join(n for n, _h, _d in lagging), len(homes))
 
 

@@ -328,6 +328,55 @@ class CrewOpenSpecVerdictGateTests(unittest.TestCase):
             gates.ownership_fence(str(Path(self.tmp) / "other" / "openspec" / "changes" / "bad"), str(wt / "src" / "thing.py")),
         )
 
+    def test_verify_seven_profile_plugin_parity_and_negative_fixtures(self):
+        import shutil
+        import install as crew_install
+
+        base = Path(self.tmp) / "seven_root_home"
+        profiles = ("coder", "reviewer", "qa", "leader", "designer", "researcher")
+        plugins = ("nerve", "crew", "openspec")
+        roots = [base] + [base / "profiles" / p for p in profiles]
+
+        for r in roots:
+            r.mkdir(parents=True, exist_ok=True)
+            (r / "config.yaml").write_text(
+                "plugins:\n  enabled:\n  - nerve\n  - crew\n  - openspec\n  disabled:\n  - spotify\n",
+                encoding="utf-8",
+            )
+            for pl in plugins:
+                pdir = r / "plugins" / pl
+                pdir.mkdir(parents=True, exist_ok=True)
+                (pdir / "__init__.py").write_text(f"# {pl} init\nVALUE = 1\n", encoding="utf-8")
+                (pdir / "plugin.yaml").write_text(f"name: {pl}\nversion: 1.0.0\n", encoding="utf-8")
+
+        res = crew_install.verify_seven_profile_plugin_parity(base)
+        self.assertTrue(res["ok"])
+        self.assertEqual(len(res["roots"]), 7)
+
+        # Negative fixture 1: byte-skewed payload
+        skew_file = base / "profiles" / "coder" / "plugins" / "nerve" / "__init__.py"
+        orig_bytes = skew_file.read_bytes()
+        skew_file.write_text("# skewed\nVALUE = 2\n", encoding="utf-8")
+        with self.assertRaises(AssertionError) as ctx_skew:
+            crew_install.verify_seven_profile_plugin_parity(base)
+        self.assertIn("coder:nerve", str(ctx_skew.exception))
+        skew_file.write_bytes(orig_bytes)
+
+        # Negative fixture 2: disabled in config.yaml
+        rev_cfg = base / "profiles" / "reviewer" / "config.yaml"
+        orig_cfg = rev_cfg.read_text(encoding="utf-8")
+        rev_cfg.write_text("plugins:\n  disabled:\n  - nerve\n", encoding="utf-8")
+        with self.assertRaises(AssertionError) as ctx_dis:
+            crew_install.verify_seven_profile_plugin_parity(base)
+        self.assertIn("reviewer:nerve", str(ctx_dis.exception))
+        rev_cfg.write_text(orig_cfg, encoding="utf-8")
+
+        # Negative fixture 3: missing plugin directory
+        shutil.rmtree(base / "profiles" / "qa" / "plugins" / "openspec")
+        with self.assertRaises(AssertionError) as ctx_miss:
+            crew_install.verify_seven_profile_plugin_parity(base)
+        self.assertIn("qa:openspec", str(ctx_miss.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
