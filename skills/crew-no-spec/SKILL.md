@@ -1,6 +1,6 @@
 ---
 name: crew-no-spec
-description: "Use when /crew-no-spec <ask>. Fast-track direct card intake."
+description: "Run /crew-no-spec direct Crew card intake without OpenSpec"
 version: 0.10.7
 ---
 

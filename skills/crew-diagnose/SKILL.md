@@ -1,6 +1,6 @@
 ---
 name: crew-diagnose
-description: "Use when /crew-diagnose [state]. Read-only card diagnosis."
+description: "Run /crew-diagnose for read-only card diagnosis by state"
 version: 0.10.7
 ---
 
