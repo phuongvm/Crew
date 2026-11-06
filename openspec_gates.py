@@ -402,17 +402,18 @@ def _parse_plugins_cfg(cfg_path: Path) -> tuple[list[str], list[str] | None]:
             section = None
             continue
 
-        if section is not None and indent >= section_indent:
-            m_item = re.match(r"^\s*-\s+(.+?)\s*(#.*)?$", raw)
-            if m_item:
-                val = m_item.group(1).strip().strip("'\"")
-                if not val:
-                    raise AssertionError(f"empty item in plugins.{section} of {cfg_path}")
-                if section == "disabled":
-                    dis.append(val)
-                elif en is not None:
-                    en.append(val)
-                continue
+        if section is not None:
+            if indent >= section_indent:
+                m_item = re.match(r"^\s*-\s+(.+?)\s*(#.*)?$", raw)
+                if m_item:
+                    val = m_item.group(1).strip().strip("'\"")
+                    if not val:
+                        raise AssertionError(f"empty item in plugins.{section} of {cfg_path}")
+                    if section == "disabled":
+                        dis.append(val)
+                    elif en is not None:
+                        en.append(val)
+                    continue
             if indent > section_indent:
                 raise AssertionError(f"malformed entry under plugins.{section} in {cfg_path}: {raw!r}")
             section = None
@@ -434,7 +435,8 @@ def _parse_plugins_cfg(cfg_path: Path) -> tuple[list[str], list[str] | None]:
                 section = None
             continue
 
-        if not re.match(r"^\s+[A-Za-z0-9_.-]+:\s*(.*?)\s*(#.*)?$", raw):
+        # Nested content under sibling keys inside plugins: (e.g. plugins.config / plugins.nerve)
+        if not re.match(r"^\s+(?:[A-Za-z0-9_./-]+:\s*(.*?)|-\s+.+?)\s*(#.*)?$", raw):
             raise AssertionError(f"malformed line inside plugins block of {cfg_path}: {raw!r}")
 
     return dis, en
