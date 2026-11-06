@@ -330,6 +330,7 @@ class CrewOpenSpecVerdictGateTests(unittest.TestCase):
 
     def test_verify_seven_profile_plugin_parity_and_negative_fixtures(self):
         import shutil
+        from unittest import mock
         import install as crew_install
 
         base = Path(self.tmp) / "seven_root_home"
@@ -362,13 +363,35 @@ class CrewOpenSpecVerdictGateTests(unittest.TestCase):
         self.assertIn("coder:nerve", str(ctx_skew.exception))
         skew_file.write_bytes(orig_bytes)
 
-        # Negative fixture 2: disabled in config.yaml
+        # Negative fixture 2: disabled in config.yaml (multiline and inline list without PyYAML)
         rev_cfg = base / "profiles" / "reviewer" / "config.yaml"
         orig_cfg = rev_cfg.read_text(encoding="utf-8")
-        rev_cfg.write_text("plugins:\n  disabled:\n  - nerve\n", encoding="utf-8")
-        with self.assertRaises(AssertionError) as ctx_dis:
-            crew_install.verify_seven_profile_plugin_parity(base)
-        self.assertIn("reviewer:nerve", str(ctx_dis.exception))
+        with mock.patch.dict(sys.modules, {"yaml": None}):
+            rev_cfg.write_text("plugins:\n  disabled:\n  - nerve\n", encoding="utf-8")
+            with self.assertRaises(AssertionError) as ctx_dis:
+                crew_install.verify_seven_profile_plugin_parity(base)
+            self.assertIn("reviewer:nerve", str(ctx_dis.exception))
+
+            # Inline disabled list: plugins:\n  disabled: [nerve]
+            rev_cfg.write_text("plugins:\n  disabled: [nerve]\n", encoding="utf-8")
+            with self.assertRaises(AssertionError) as ctx_dis_inline:
+                crew_install.verify_seven_profile_plugin_parity(base)
+            self.assertIn("reviewer:nerve", str(ctx_dis_inline.exception))
+
+            # Inline enabled list missing nerve: plugins:\n  enabled: [crew, openspec]
+            rev_cfg.write_text("plugins:\n  enabled: [crew, openspec]\n", encoding="utf-8")
+            with self.assertRaises(AssertionError) as ctx_en_missing:
+                crew_install.verify_seven_profile_plugin_parity(base)
+            self.assertIn("reviewer:nerve", str(ctx_en_missing.exception))
+
+            # Malformed inline scalar under disabled fails closed
+            rev_cfg.write_text("plugins:\n  disabled: nerve\n", encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                crew_install.verify_seven_profile_plugin_parity(base)
+
+            # Inline enabled list with all 3 required plugins passes without PyYAML
+            rev_cfg.write_text("plugins:\n  enabled: [nerve, crew, openspec]\n", encoding="utf-8")
+            self.assertTrue(crew_install.verify_seven_profile_plugin_parity(base)["ok"])
         rev_cfg.write_text(orig_cfg, encoding="utf-8")
 
         # Negative fixture 3: missing plugin directory

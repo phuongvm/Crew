@@ -344,3 +344,156 @@ def block_rejected_children(tool: Any, card_id: str, summary: str = "",
     reason = ("parent review card %s completed with Verdict: REJECTED; remediate and re-review before this card "
               "runs" % card_id)
     return _block_rows(tool, children, reason, card_id)
+
+
+def _parse_inline_yaml_list(inline: str, section: str) -> list[str]:
+    if not (inline.startswith("[") and inline.endswith("]")):
+        raise AssertionError(f"unsupported inline plugins.{section} value: {inline!r}")
+    body = inline[1:-1].strip()
+    if not body:
+        return []
+    items: list[str] = []
+    for raw_item in body.split(","):
+        token = raw_item.strip()
+        if not token:
+            raise AssertionError(f"malformed empty element in plugins.{section}: {inline!r}")
+        if (token.startswith('"') and token.endswith('"')) or (token.startswith("'") and token.endswith("'")):
+            token = token[1:-1].strip()
+        elif any(ch in token for ch in ("[", "]", "{", "}", ":")):
+            raise AssertionError(f"unsupported nested token in plugins.{section}: {inline!r}")
+        if not token:
+            raise AssertionError(f"empty plugin name in plugins.{section}: {inline!r}")
+        items.append(token)
+    return items
+
+
+def _parse_plugins_cfg(cfg_path: Path) -> tuple[list[str], list[str] | None]:
+    """Deterministically parse plugins.disabled and plugins.enabled from config.yaml (stdlib only, fail-closed)."""
+    if not cfg_path.is_file():
+        raise AssertionError(f"missing config.yaml: {cfg_path}")
+    text = cfg_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    in_plugins = False
+    plugins_indent = 0
+    section: str | None = None
+    section_indent = 0
+    dis: list[str] = []
+    en: list[str] | None = None
+
+    for line in lines:
+        raw = line.rstrip("\r\n")
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" \t"))
+        if not in_plugins:
+            m_top = re.match(r"^plugins:\s*(.*?)\s*(#.*)?$", raw)
+            if m_top:
+                rest = m_top.group(1).strip()
+                if rest and rest not in ("{}",):
+                    raise AssertionError(f"invalid inline plugins block in {cfg_path}: {rest!r}")
+                in_plugins = True
+                plugins_indent = indent
+                section = None
+            continue
+
+        if indent <= plugins_indent:
+            in_plugins = False
+            section = None
+            continue
+
+        if section is not None and indent >= section_indent:
+            m_item = re.match(r"^\s*-\s+(.+?)\s*(#.*)?$", raw)
+            if m_item:
+                val = m_item.group(1).strip().strip("'\"")
+                if not val:
+                    raise AssertionError(f"empty item in plugins.{section} of {cfg_path}")
+                if section == "disabled":
+                    dis.append(val)
+                elif en is not None:
+                    en.append(val)
+                continue
+            if indent > section_indent:
+                raise AssertionError(f"malformed entry under plugins.{section} in {cfg_path}: {raw!r}")
+            section = None
+
+        m_sec = re.match(r"^\s+(disabled|enabled):\s*(.*?)\s*(#.*)?$", raw)
+        if m_sec:
+            sec_name = str(m_sec.group(1))
+            section = sec_name
+            section_indent = indent
+            inline = m_sec.group(2).strip()
+            if sec_name == "enabled" and en is None:
+                en = []
+            if inline:
+                parsed_items = _parse_inline_yaml_list(inline, sec_name)
+                if sec_name == "disabled":
+                    dis.extend(parsed_items)
+                elif en is not None:
+                    en.extend(parsed_items)
+                section = None
+            continue
+
+        if not re.match(r"^\s+[A-Za-z0-9_.-]+:\s*(.*?)\s*(#.*)?$", raw):
+            raise AssertionError(f"malformed line inside plugins block of {cfg_path}: {raw!r}")
+
+    return dis, en
+
+
+def verify_seven_profile_plugin_parity(
+    hermes_home: str | Path | None = None,
+    *,
+    required_plugins: tuple[str, ...] = ("nerve", "crew", "openspec"),
+    specialist_profiles: tuple[str, ...] = ("coder", "reviewer", "qa", "leader", "designer", "researcher"),
+) -> dict[str, Any]:
+    """Verify 7-root directory presence, config.yaml enablement, and SHA-256 (.py/.yaml) manifest parity."""
+    import hashlib
+
+    base_raw = hermes_home or os.environ.get("HERMES_HOME")
+    if not base_raw:
+        raise AssertionError("hermes_home or HERMES_HOME is required")
+    base = Path(base_raw).resolve()
+    roots = [("default", base / "plugins", base / "config.yaml")] + [
+        (p, base / "profiles" / p / "plugins", base / "profiles" / p / "config.yaml")
+        for p in specialist_profiles
+    ]
+
+    def _manifest(pdir: Path) -> dict[str, str]:
+        return {
+            f.relative_to(pdir).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest()
+            for f in sorted(pdir.rglob("*"))
+            if f.is_file() and "__pycache__" not in f.parts and f.suffix in (".py", ".yaml")
+        }
+
+    ref: dict[str, dict[str, str]] = {}
+    for pl in required_plugins:
+        default_pl = roots[0][1] / pl
+        if not (default_pl / "__init__.py").is_file() or not (default_pl / "plugin.yaml").is_file():
+            raise AssertionError(f"default:{pl}: missing __init__.py or plugin.yaml")
+        mf = _manifest(default_pl)
+        if not mf:
+            raise AssertionError(f"default:{pl}: empty manifest")
+        ref[pl] = mf
+
+    for name, rdir, cfg_path in roots:
+        if not cfg_path.is_file():
+            raise AssertionError(f"{name}: missing config.yaml at {cfg_path}")
+        disabled, enabled = _parse_plugins_cfg(cfg_path)
+        for pl in required_plugins:
+            pdir = rdir / pl
+            if not (pdir / "__init__.py").is_file() or not (pdir / "plugin.yaml").is_file():
+                raise AssertionError(f"{name}:{pl}: missing plugin directory or entrypoint")
+            if pl in disabled:
+                raise AssertionError(f"{name}:{pl}: listed in plugins.disabled")
+            if enabled is not None and pl not in enabled:
+                raise AssertionError(f"{name}:{pl}: missing from plugins.enabled")
+            cur = _manifest(pdir)
+            if cur != ref[pl]:
+                raise AssertionError(f"{name}:{pl}: SHA-256 manifest mismatch vs default")
+
+    return {
+        "ok": True,
+        "roots": [r[0] for r in roots],
+        "plugins": list(required_plugins),
+        "file_counts": {pl: len(ref[pl]) for pl in required_plugins},
+    }
