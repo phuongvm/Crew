@@ -88,6 +88,11 @@ try:
         if _dirty:
             print("WARNING: the release checkout %s has uncommitted changes - proofs run as installed" % _rel)
         else:
+            # the box runs GitHub's latest main, never a local commit (owner, 2026-11-09): fetch and fast-forward;
+            # a checkout holding unpushed commits is not moved, and parity (which compares against origin/main)
+            # then reports that delta instead of hiding it
+            subprocess.run(["git", "-C", _rel, "fetch", "-q", "origin", "main"])
+            subprocess.run(["git", "-C", _rel, "merge", "-q", "--ff-only", "origin/main"])
             _tree, _from_release = _rel, True
 except Exception as exc:                                   # noqa: BLE001 - never kill the night on this
     print("WARNING: cannot resolve the crew package (%s)" % exc)
@@ -502,8 +507,14 @@ def _cfg(profile, key):
     '[a,b]' ('[]' when empty), a list of mappings as JSON (see _canon), None when the key is not set. Hermes does
     the reading, the way it does the writing."""
     rc, out = _cfg_raw_many(profile, [key])[key]
+    return _parse_get(out) if rc == 0 else None
+
+
+def _parse_get(out):
+    """One `hermes config get` stdout as _cfg's one-line value; None when empty. Indentation-agnostic: Hermes
+    has printed block lists both indented (`  - a`) and flush (`- a`), and both must read the same."""
     out = (out or "").strip()
-    if rc != 0 or not out:
+    if not out:
         return None
     lines = [l for l in out.splitlines() if l.strip()]
     mappings = _block_mappings(lines) if _LIST_ITEM_RX.match(lines[0]) else None

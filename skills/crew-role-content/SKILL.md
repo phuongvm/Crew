@@ -1,7 +1,7 @@
 ---
 name: crew-role-content
-description: "Create crew card content: reports, pages, posts, and media."
-version: 0.10.7
+description: "Crew content pass: posts, reports, video, pages and social on a crew card; rendered artifact plus source."
+version: 0.10.9
 ---
 # Crew content pass
 
@@ -16,6 +16,10 @@ Any crew card with `Role: content`: produce the artifact the reader will see, ju
 3. Render it the way the reader will see it (image, page, preview) and check the render yourself.
 4. Run the proof through the tool, never by hand: `crew_verdict(card="<card id>")`. `"verdict": "BLOCKED"` → `kanban_block(kind="needs_input")`.
 5. Finish with rendered path, source path and figure sources by the `Verify:` line — `proof`: `kanban_complete` · `independent`: skip verdict, `crew_review_handoff` · `dual`: `crew_verdict` PASS then `crew_review_handoff` (never `kanban_complete`) · `agent`: misrouted, `kanban_block` · `closeout`: `kanban_complete`. Two FAILs → `kanban_block` and end.
+
+## Interactive Prototypes & Architecture
+- Use `Interactive Prototypes` for UI layouts or stateful experiences that need visual validation before implementation; keep prototypes self-contained and disposable.
+- For visual architecture reports, use `improve-codebase-architecture` with `codebase-design`, show Before/After diagrams, and cite every figure source.
 
 ## Handoff summary (mandatory)
 `- Done:` rendered artifact path, raw source path · `- Not done:` · `- Evidence:` crew_verdict PASS/FAIL (rc) and render/source checks · (`kanban_block` adds `- Decision needed:`).

@@ -1167,7 +1167,7 @@ def _create_guard(args, session_id, turn_id):
     model pin) or None when the call is not a crew card. A coordinator or worker process (HERMES_KANBAN_TASK
     set) may create children: the plan tool validates those."""
     args = args if isinstance(args, dict) else {}
-    if os.environ.get("HERMES_KANBAN_TASK"):
+    if os.environ.get("HERMES_KANBAN_TASK") or args.get("parents"):
         return None
     tool = _card_tool()
     if tool is None:

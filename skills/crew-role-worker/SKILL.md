@@ -1,7 +1,7 @@
 ---
 name: crew-role-worker
-description: "Implement crew card code, config, and infra with disk proof"
-version: 0.10.7
+description: "Crew worker pass: code, config, infra and web work on a crew card; one writer, proof on disk."
+version: 0.10.9
 ---
 # Crew worker pass
 
@@ -16,6 +16,11 @@ Any crew card with `Role: worker`: code, config, infra and service work judged b
 3. Do the work inside the card's scope with deep modules at clean seams (`codebase-design`), domain terms (`GLOSSARY.md`), TDD at public seams (Red → Green, no tautological tests), surgical edits (no drive-by refactors). Never touch `.crew/` (the verifier's proof scripts).
 4. Run the proof through the tool, never by hand: `crew_verdict(card="<card id>")`. `"verdict": "BLOCKED"` → `kanban_block(kind="needs_input")`.
 5. Finish by the `Verify:` line — `proof`: `kanban_complete` on PASS · `independent`: skip verdict, `crew_review_handoff` · `dual`: `crew_verdict` PASS then `crew_review_handoff` (never `kanban_complete`) · `agent`: misrouted, `kanban_block` · `closeout`: `kanban_complete`. Two FAILs → `kanban_block` and end.
+
+## Unified Engineering Discipline
+- **TDD at Public Seams:** write a deterministic red test at the highest public seam, make the smallest implementation pass, then refactor without tautological assertions.
+- Use `codebase-design` for deep modules and `pr` for blast-radius review; preserve domain terms and perform surgical edits only.
+- Keep every implementation in the dedicated worktree and record proof output, changed files, and SHAs in the handoff.
 
 ## Handoff summary (mandatory)
 `- Done:` deliverables, files, SHAs · `- Not done:` · `- Evidence:` crew_verdict PASS/FAIL, before → after output · `- Blast radius:` · (`kanban_block` adds `- Decision needed:`).

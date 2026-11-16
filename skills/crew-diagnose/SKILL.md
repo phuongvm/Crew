@@ -1,7 +1,7 @@
 ---
 name: crew-diagnose
-description: "Run /crew-diagnose for read-only card diagnosis by state"
-version: 0.10.7
+description: "Crew read-only pass: /crew-diagnose [state] - every card sitting in that state with its id and reason, then how each would resume. Plans only, it touches nothing."
+version: 0.10.9
 ---
 
 # /crew-diagnose [state] - a diagnosis per card, and how each would resume
