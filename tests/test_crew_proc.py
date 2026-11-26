@@ -75,16 +75,15 @@ class WindowsProofTests(unittest.TestCase):
     def test_on_windows_a_proof_runs_as_bash_dash_c_and_without_git_bash_it_does_not_run(self):
         seen = []
 
-        def fake_run(argv, **kw):
-            if argv and argv[0].endswith("bash.exe"):          # the safety floor's own git/tirith calls pass by
-                seen.append((argv, kw.get("shell")))
-            return mock.Mock(returncode=0, stdout="ok", stderr="")
+        def fake_run_bounded(argv, **kw):
+            seen.append((argv, isinstance(argv, str)))
+            return crew_proc.BoundedResult(0, "ok", "", False, 0.01, "crew-m")
         with mock.patch.object(crew_safety, "IS_WINDOWS", True), \
-                mock.patch.object(crew_safety.subprocess, "run", fake_run):
+                mock.patch.object(crew_safety.crew_proc, "run_bounded", side_effect=fake_run_bounded):
             with mock.patch.object(crew_safety, "git_bash", return_value="/g/bin/bash.exe"):
                 res = crew_safety.run_proof("echo hi", None, 5, "safe")
-            self.assertEqual(([["/g/bin/bash.exe", "-c", "echo hi"]], 0, False),
-                             ([s[0] for s in seen], res.rc, seen[0][1]))
+            self.assertEqual(([["/g/bin/bash.exe", "-c", "echo hi"]], 0, False, "ok"),
+                             ([s[0] for s in seen], res.rc, seen[0][1], res.out))
             seen.clear()
             with mock.patch.object(crew_safety, "git_bash", return_value=""):
                 res = crew_safety.run_proof("echo hi", None, 5, "safe")

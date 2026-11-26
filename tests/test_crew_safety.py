@@ -511,15 +511,16 @@ class PowerShellTests(SafetyCase):
     def routed_argv(self, cmd, is_windows=True):
         seen = []
 
-        def fake_run(argv, **kw):
-            seen.append((argv, kw))
-            return mock.Mock(returncode=0, stdout="True\n", stderr="")
+        def fake_run_bounded(argv, **kw):
+            seen.append((argv, dict(kw, shell=isinstance(argv, str))))
+            return crew_safety.crew_proc.BoundedResult(0, "True\n", "", False, 0.01, "crew-m")
         with mock.patch.object(crew_safety, "IS_WINDOWS", is_windows), \
                 mock.patch.object(crew_safety, "git_bash", return_value="C:/Git/bin/bash.exe"), \
                 mock.patch.object(crew_safety, "_powershell", return_value="C:/PS/pwsh.exe"), \
-                mock.patch.object(crew_safety.subprocess, "run", side_effect=fake_run):
+                mock.patch.object(crew_safety.crew_proc, "run_bounded", side_effect=fake_run_bounded):
             res = crew_safety.run_proof(cmd, self.home, 20, "safe")
         self.assertEqual("", res.blocked)
+        self.assertEqual("True\n", res.out)
         return seen[0]
 
     def test_bare_powershell_runs_through_pwsh_on_windows_and_posix_stays_in_git_bash(self):

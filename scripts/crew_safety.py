@@ -33,6 +33,11 @@ import subprocess
 import sys
 from collections import namedtuple
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import crew_proc  # noqa: E402
+
 IS_WINDOWS = os.name == "nt"     # a name of its own so a test can pin the Windows branch on Linux
 PROOF_MODES = ("safe", "brave")
 APPROVED = "approved"            # a mode only proof_mode() returns: safe, but this exact command has the owner's yes
@@ -290,7 +295,7 @@ def _exe_py_version(exe_path):
         try:
             proc = subprocess.run(
                 [norm, "-E", "-c", "import sys; print('%d.%d' % sys.version_info[:2])"],
-                capture_output=True, text=True, timeout=2, check=False,
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=2, check=False,
             )
             parts = (proc.stdout or "").strip().split(".")
             if proc.returncode == 0 and len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
@@ -736,10 +741,8 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
                         cwd = r
                         break
     argv = cmd
-    stdin = None
     if IS_WINDOWS and detect_bare_powershell(cmd):
         argv = [_powershell(), "-NoProfile", "-NonInteractive", "-Command", _PS_WRAPPER % cmd]
-        stdin = subprocess.DEVNULL                   # -NonInteractive: a prompt fails instead of waiting for nobody
     elif IS_WINDOWS:
         # A proof is bash. cmd.exe reads `echo hi; exit 3`, `sleep` and `rm` differently, and a safety check that
         # judged the bash text would then guard something other than what runs.
@@ -748,11 +751,10 @@ def run_proof(cmd, cwd=None, timeout=300, mode="safe", card=None):
             return Result(127, "Git Bash was not found next to git.exe: crew proofs run in Git Bash on Windows "
                                "(install Git for Windows); the proof was not run", "")
         argv = [bash, "-c", cmd]
-    try:
-        done = subprocess.run(argv, shell=not IS_WINDOWS, capture_output=True, text=True, timeout=timeout, cwd=cwd,
-                              env=proof_env(cmd=cmd), encoding="utf-8", errors="replace", stdin=stdin)
-        return Result(done.returncode, (done.stdout or "") + (done.stderr or ""), "")
-    except subprocess.TimeoutExpired:
+    br = crew_proc.run_bounded(argv, timeout_s=timeout, cwd=cwd, env=proof_env(cmd=cmd))
+    if br.timed_out:
         return Result(124, "proof command timed out after %ss" % timeout, "")
-    except OSError as exc:
-        return Result(127, str(exc), "")
+    out = (br.stdout or "") + (br.stderr or "")
+    if br.exit_code == 127 and not br.stdout and re.match(r"^[A-Za-z]+Error:", br.stderr or ""):
+        return Result(127, out.strip(), "")
+    return Result(br.exit_code, out, "")

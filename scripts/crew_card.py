@@ -651,6 +651,20 @@ def verify_mode(body):
     return coerce_verify(mode, proof_cmd(body)) if mode in VERIFY_MODES + (CLOSEOUT_MODE,) else ""
 
 
+VERIFIER_VERIFY_MODES = ("independent", "agent", "dual")
+TWO_STAGE_VERIFY_MODES = ("independent", "dual")
+
+
+def uses_verifier_lane(body):
+    """True when closing verdicts and verifier blocks belong to the verifier."""
+    return verify_mode(body) in VERIFIER_VERIFY_MODES
+
+
+def uses_review_handoff(body):
+    """True when a separate writer hands off to a verifier review lane (never standalone Verify: agent)."""
+    return verify_mode(body) in TWO_STAGE_VERIFY_MODES
+
+
 INPUTS_RX = re.compile(r"^[ \t]*Inputs:[ \t]*(.*)$", re.I)
 INPUTS_MAX = 2000       # characters: longer pasted text goes in a file the owner names
 
@@ -1412,7 +1426,7 @@ def repin_for_review(card_id):
     if not row:
         return {"action": "unchanged", "why": "unknown card"}
     body = row[4]
-    if verify_mode(body) != "independent":
+    if not uses_review_handoff(body):
         return {"action": "unchanged", "why": "not an independent-verification card"}
     cur_model, cur_prov = card_pin(card_id)
     verifier = role_profile("verifier")
@@ -2021,7 +2035,7 @@ def send_to_verifier(card_id, summary):
     row = card_row(card_id)
     if not row:
         return {"ok": False, "why": "no such card"}
-    if verify_mode(row[4]) != "independent":
+    if not uses_review_handoff(row[4]):
         return {"ok": False, "why": "not an independent-verification card"}
     repin_for_review(card_id)
     ok, why = lift_into_review(card_id, role_profile("verifier"), summary[:400])
@@ -2061,7 +2075,7 @@ def closer_profiles(body=""):
     before it existed) keeps the old rule: every crew role."""
     coord = {profile_prefix() + "coordinator", role_profile("coordinator")}
     mode = verify_mode(body)
-    if mode in ("independent", "agent", "dual"):
+    if uses_verifier_lane(body):
         return {profile_prefix() + "verifier", role_profile("verifier")} | coord
     if mode == "proof":
         role = (field(body, "Role") or "").strip().lower()
@@ -2551,7 +2565,7 @@ def verifier_block(card_id):
     if not db:
         return None
     row = card_row(card_id)
-    if not row or row[2] != "blocked" or verify_mode(row[4]) != "independent":
+    if not row or row[2] != "blocked" or not uses_verifier_lane(row[4]):
         return None
     judges = {profile_prefix() + "verifier", role_profile("verifier")}
     try:
@@ -2580,7 +2594,7 @@ def hand_to_writer(card_id):
     writer profile (its `Role:` line, else the worker). Returns {"reopened", "assigned"}."""
     out = {"reopened": False, "assigned": ""}
     row = card_row(card_id)
-    if not row or verify_mode(row[4]) != "independent":
+    if not row or not uses_review_handoff(row[4]):
         return out
     judges = {profile_prefix() + "verifier", role_profile("verifier")}
     role = (field(row[4], "Role") or "").strip().lower()

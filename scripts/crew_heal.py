@@ -31,6 +31,7 @@ import crew_result  # noqa: E402 - the words of the thrash stop's block reason
 import crew_safety  # noqa: E402 - the one runner of a proof command
 import crew_card  # noqa: E402 - the board and the Hermes home the defaults below come from
 KANBAN_DB = os.environ.get("KANBAN_DB") or os.path.join(crew_card.default_home(), "kanban.db")
+NON_HEALABLE_BLOCK_KINDS = frozenset({"needs_input", "capability"})
 BLOCKER_WORDS = (r"quota", r"rate", r"429", r"403", r"forbidden", r"billing", r"subscription",
                  r"auth(?!or\b)", r"access denied", r"permission denied", r"invalid api key")
 # Matched from a word start, so "rate" cannot fire inside "moderate" and "auth" cannot fire inside
@@ -180,8 +181,25 @@ def heal_dead_model(card, dry):
             "action": "no live pick fits (%s)" % action, "fixed": False}
 
 
+def _card_block_kind(card):
+    kind = str(card.get("block_kind") or "").strip().lower()
+    if kind:
+        return kind
+    cid = card.get("id")
+    if cid and os.path.exists(KANBAN_DB):
+        try:
+            rows = q("select block_kind from tasks where id = ?", (cid,))
+            if rows:
+                return str(rows[0].get("block_kind") or "").strip().lower()
+        except Exception:  # noqa: BLE001
+            return ""
+    return ""
+
+
 def heal_stale_verify(card, dry):
     import crew_card
+    if _card_block_kind(card) in NON_HEALABLE_BLOCK_KINDS:
+        return None
     cmd = card_proof(card)
     if not cmd:
         return None
@@ -256,6 +274,8 @@ def heal_card(card, dry=False):
             return safely(heal_dead_model, card, dry)
         return None
     if status == "blocked" and card_proof(card):
+        if _card_block_kind(card) in NON_HEALABLE_BLOCK_KINDS:
+            return None
         if heal_stamp(card["id"], "stale_verify"):
             return None
         return safely(heal_stale_verify, card, dry)

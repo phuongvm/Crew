@@ -224,6 +224,19 @@ def stopped_after(ctx, card_id, event_id):
                   (card_id, event_id)))
 
 
+def _stop_guard_reason(ctx, card_id, newest_event_id):
+    live = get_card(ctx, card_id)
+    if not live:
+        return "no such card"
+    if live["status"] in ("archived", "done"):
+        return live["status"]
+    if crew_card.parked_by_owner(ctx.db, card_id):
+        return "stopped by the owner (/crew-stop): no decision until /crew-unstuck"
+    if newest_event_id is not None and stopped_after(ctx, card_id, newest_event_id):
+        return "stopped by the owner"
+    return ""
+
+
 def fix_count(decisions):
     """Retry/rescope/split decisions since the owner was last asked: an answer resets the count."""
     n = 0
@@ -957,15 +970,10 @@ def handle_card(ctx, card_id, events):
         out.update(audit_completion(ctx, card, completions[-1]))
         if not events:
             return out
-    if card["status"] in ("archived", "done"):
-        out["detail"] = card["status"]
-        return out
-    if crew_card.parked_by_owner(ctx.db, card_id):
-        out["detail"] = "stopped by the owner (/crew-stop): no decision until /crew-unstuck"
-        return out
-    newest = events[-1]
-    if stopped_after(ctx, card_id, newest["id"]):
-        out["detail"] = "stopped by the owner"
+    newest_id = events[-1]["id"] if events else None
+    stop_reason = _stop_guard_reason(ctx, card_id, newest_id)
+    if stop_reason:
+        out["detail"] = stop_reason
         return out
     decisions = decisions_of(ctx, card_id)
     if awaiting_owner(ctx, card_id, decisions):
@@ -999,6 +1007,10 @@ def handle_card(ctx, card_id, events):
         return out
     if ctx.dry:
         out.update(action="would %s" % dec["decision"], detail=json.dumps(dec)[:240])
+        return out
+    post_stop = _stop_guard_reason(ctx, card_id, newest_id)
+    if post_stop:
+        out.update(action="skip", detail="%s (detected after resolve)" % post_stop, pending=False)
         return out
     try:
         ok, result = apply_decision(ctx, card, decisions, dec)

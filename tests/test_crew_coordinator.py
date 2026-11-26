@@ -268,6 +268,37 @@ class HandleCardTests(unittest.TestCase):
         self.assertEqual("stopped by the owner", got["detail"])
         self.assertEqual([], self.asked)
 
+    def test_owner_stop_or_archive_during_resolve_aborts_before_apply_decision(self):
+        add_card("t_race_stop")
+        add_event("t_race_stop", "blocked")
+
+        def stop_during_resolve(_ctx, facts_path):
+            self.asked.append(Path(facts_path).read_text(encoding="utf-8"))
+            add_event("t_race_stop", "blocked", {"reason": cc.crew_card.owner_stop_reason("t_race_stop")})
+            return '{"decision": "retry", "fix": "too late"}', 0
+
+        self.ctx.decider = stop_during_resolve
+        got = self.handle("t_race_stop")
+        self.assertEqual("skip", got["action"])
+        self.assertIn("stopped by the owner", got["detail"])
+        self.assertEqual([], self.applied)
+        self.assertEqual([], events("t_race_stop", "crew_decision"))
+
+        add_card("t_race_arch")
+        add_event("t_race_arch", "blocked")
+
+        def archive_during_resolve(_ctx, facts_path):
+            self.asked.append(Path(facts_path).read_text(encoding="utf-8"))
+            sql("update tasks set status = 'archived' where id = 't_race_arch'")
+            return '{"decision": "retry", "fix": "too late"}', 0
+
+        self.ctx.decider = archive_during_resolve
+        got_arch = self.handle("t_race_arch")
+        self.assertEqual("skip", got_arch["action"])
+        self.assertIn("archived", got_arch["detail"])
+        self.assertEqual([], self.applied)
+        self.assertEqual([], events("t_race_arch", "crew_decision"))
+
     def test_a_card_waiting_on_the_owner_is_left_until_something_moves_it(self):
         add_card()
         add_event("t_1", "blocked")
@@ -935,7 +966,7 @@ class ApplyDecisionTests(unittest.TestCase):
         self.assertIsNone(cc.proof_diff_span("rm -rf a", "ls b"))   # heads that differ already show in the truncation
 
     def test_a_blocked_stale_block_proof_is_asked_not_decided(self):
-        card = self.card()
+        card = self.card(block_kind="transient")
         cc.crew_card.record_origin("t_1", env={"origin": "", "session": "s"}, proof_cmd="rm -rf build-output")
         add_event("t_1", "blocked")
         evs = cc.q(self.ctx, "select id, kind, payload, created_at from task_events where task_id = 't_1'")

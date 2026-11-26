@@ -18,7 +18,8 @@ WHAT ONE STOP DOES, IN ORDER
      be imported the sessions are reported as not closed.
   3. PARK the card with the kernel's own verbs, reason "stopped by owner (/crew-stop) - continue with
      /crew-unstuck <id>" (crew_card.owner_stop_reason): running/ready -> `hermes kanban block --kind <k>`
-     (the Needs-you lane); todo/blocked -> `hermes kanban schedule`. With --archive: `hermes kanban archive`.
+     (the Needs-you lane); todo/blocked -> `hermes kanban schedule`; review -> `hermes kanban reopen-review`
+     followed by `block` (ready) or `schedule` (parent-gated todo). With --archive: `hermes kanban archive`.
   4. re-read the card and say so when it did not hold.
 
 WHY THIS PARK HOLDS (read from hermes_cli/kanban_db.py, 2026-10-03)
@@ -31,7 +32,9 @@ WHY THIS PARK HOLDS (read from hermes_cli/kanban_db.py, 2026-10-03)
     so the kind is the first of needs_input/capability/transient that differs from the card's last block kind.
   - the coordinator (handle_card), crew_heal.heal_card and crew_notify (card_reports) recognise the reason
     (crew_card.parked_by_owner) and leave the card alone: no decision, no heal, no "needs you" ping.
-  - triage and review cards have no park verb in the kernel: they are reported as NOT down, never as stopped.
+  - triage cards have no park verb in the kernel: they are reported as NOT down, never as stopped; review cards
+    leave review via `reopen-review` and are immediately parked (`block` or `schedule`) with `crew_stop_parked`
+    provenance recording `prior_status` and `prior_reviewer`.
 
 CONTINUE: /crew-unstuck <id> (crew_card.unstuck_card -> `hermes kanban unblock`): the card goes back in the queue
 and the worker resumes with the card's whole history.
@@ -292,10 +295,54 @@ def park_kind(card_id):
 
 def park_card(card_id, dry):
     """Park the card with the kernel's own verb for its state. Returns (status word, output)."""
-    status = (q("select status from tasks where id = ?", (card_id,)) or [{"status": "?"}])[0]["status"]
+    row = (q("select status, assignee from tasks where id = ?", (card_id,))
+           or [{"status": "?", "assignee": ""}])[0]
+    status = row["status"]
     reason = crew_card.owner_stop_reason(card_id)
     if crew_card.parked_by_owner(KANBAN_DB, card_id):
         return "already parked", ""
+    if status == "review":
+        if dry:
+            return "would reopen-review + park", ""
+        prior_reviewer = row.get("assignee") or ""
+        env = dict(os.environ, HERMES_KANBAN_DB=KANBAN_DB)
+        reopen = subprocess.run([crew_card.hermes_bin(), "kanban", "reopen-review", card_id],
+                                capture_output=True, text=True, timeout=120,
+                                env=env, encoding="utf-8", errors="replace")
+        reopen_out = (reopen.stdout + reopen.stderr).strip()
+        if reopen.returncode != 0:
+            return "reopen-review refused", reopen_out
+        landed = (q("select status from tasks where id = ?", (card_id,)) or [{"status": "?"}])[0]["status"]
+        if landed == "ready":
+            argv = ["block", card_id, "--kind", park_kind(card_id), reason]
+        elif landed == "todo":
+            argv = ["schedule", card_id, reason]
+        else:
+            return "cannot park a %s card after reopen-review" % landed, reopen_out
+        done = subprocess.run([crew_card.hermes_bin(), "kanban"] + argv, capture_output=True, text=True,
+                              timeout=120, env=env, encoding="utf-8", errors="replace")
+        if done.returncode != 0:
+            time.sleep(0.2)
+            done = subprocess.run([crew_card.hermes_bin(), "kanban"] + argv, capture_output=True, text=True,
+                                  timeout=120, env=env, encoding="utf-8", errors="replace")
+        out = (done.stdout + done.stderr).strip()
+        if done.returncode != 0:
+            return "%s refused" % argv[0], out or reopen_out
+        try:
+            crew_card._append_card_event(
+                card_id,
+                "crew_stop_parked",
+                {
+                    "prior_status": "review",
+                    "prior_reviewer": prior_reviewer,
+                    "landed_status": landed,
+                    "park_verb": argv[0],
+                },
+                db=KANBAN_DB,
+            )
+        except Exception:  # noqa: BLE001 - provenance is best-effort; park itself already landed
+            pass
+        return "reopen-review+%s" % argv[0], out
     if status in ("running", "ready"):
         argv = ["block", card_id, "--kind", park_kind(card_id), reason]
     elif status in ("todo", "blocked"):

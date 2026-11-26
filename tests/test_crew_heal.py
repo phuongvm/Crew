@@ -200,6 +200,15 @@ class HealCardRoutingTests(unittest.TestCase):
             got = crew_heal.heal_card(self.card(status="blocked", body="Role: worker\n"), False)
         self.assertEqual("stale_verify", got["class"])
 
+    def test_needs_input_and_capability_blocks_are_skipped_by_heal_card(self):
+        with mock.patch.object(crew_card, "close_proof_command", return_value="true"):
+            for kind in ("needs_input", "capability", "NEEDS_INPUT", "Capability"):
+                with self.subTest(kind=kind):
+                    self.assertIsNone(
+                        crew_heal.heal_card(self.card(status="blocked", body="Role: worker\n", block_kind=kind), False)
+                    )
+        self.assertEqual([], self.seen)
+
     def test_a_body_line_alone_is_not_a_proof_command_for_heal(self):
         with mock.patch.object(crew_card, "close_proof_command", return_value=""):       # no snapshot
             self.assertIsNone(crew_heal.heal_card(self.card(status="blocked", body="proof command: true\n"), False))

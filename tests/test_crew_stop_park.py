@@ -202,6 +202,127 @@ class ParkTests(unittest.TestCase):
         self.assertIn("NOT DOWN", out)
         self.assertEqual("triage", self.status(cid))
 
+    def review_card(self, reviewer="reviewer", incomplete_parent=False):
+        cid = K.add_card(self.conn, "ready")
+        self.assertIsNotNone(self.kb.claim_task(self.conn, cid, claimer="w"))
+        self.assertTrue(self.kb.request_review(self.conn, cid, summary="done", reviewer=reviewer))
+        if incomplete_parent:
+            parent = K.add_card(self.conn, "ready")
+            self.conn.execute("insert into task_links (parent_id, child_id) values (?, ?)", (parent, cid))
+            self.conn.commit()
+        self.assertEqual("review", self.status(cid))
+        return cid
+
+    def test_review_card_parks_into_blocked_and_records_prior_review_provenance(self):
+        import json
+        cid = self.review_card(reviewer="reviewer")
+        rc, out = self.stop(cid, "--json")
+        self.assertEqual(0, rc, out)
+        self.assertEqual("blocked", self.status(cid))
+        self.assertGreater(crew_card.parked_by_owner(self.db, cid), 0)
+        self.assertNotIn("archived", K.events(self.conn, cid))
+
+        data = json.loads(out[out.find("{"):])
+        card_facts = data["cards"][0]
+        self.assertTrue(card_facts["parked"])
+        self.assertTrue(card_facts["still_down"])
+        self.assertEqual("reopen-review+block", card_facts["how"])
+
+        row = self.conn.execute(
+            "select payload from task_events where task_id = ? and kind = 'crew_stop_parked' order by id desc limit 1",
+            (cid,),
+        ).fetchone()
+        self.assertIsNotNone(row, "missing crew_stop_parked provenance event")
+        payload = json.loads(row[0])
+        self.assertEqual("review", payload["prior_status"])
+        self.assertEqual("reviewer", payload["prior_reviewer"])
+
+    def test_parent_gated_review_card_parks_into_scheduled_and_stays_down(self):
+        cid = self.review_card(reviewer="reviewer", incomplete_parent=True)
+        rc, out = self.stop(cid)
+        self.assertEqual(0, rc, out)
+        self.assertEqual("scheduled", self.status(cid))
+        self.kb.recompute_ready(self.conn)
+        self.kb.recompute_ready(self.conn)
+        self.assertEqual("scheduled", self.status(cid))
+        self.assertGreater(crew_card.parked_by_owner(self.db, cid), 0)
+
+    def test_review_card_dry_run_makes_zero_board_mutations(self):
+        cid = self.review_card(reviewer="reviewer")
+        before_events = K.events(self.conn, cid)
+        self.assertEqual(("would reopen-review + park", ""), crew_stop.park_card(cid, True))
+        rc, out = self.stop(cid, "--dry-run")
+        self.assertEqual(0, rc, out)
+        self.assertEqual("review", self.status(cid))
+        self.assertEqual(before_events, K.events(self.conn, cid))
+
+    def test_review_card_park_retries_once_on_transient_followup_failure(self):
+        cid = self.review_card(reviewer="reviewer")
+        real_cli = self.cli
+        block_attempts = []
+
+        def flaky_cli(argv, **kw):
+            args = list(argv)
+            if "kanban" in args:
+                rest = args[args.index("kanban") + 1:]
+                if rest and rest[0] == "block":
+                    block_attempts.append(rest)
+                    if len(block_attempts) == 1:
+                        return mock.Mock(returncode=1, stdout="", stderr="database is locked")
+            return real_cli(argv, **kw)
+
+        with mock.patch.object(crew_stop.subprocess, "run", side_effect=flaky_cli), \
+                mock.patch.object(crew_stop.time, "sleep"):
+            rc, out = self.stop(cid)
+        self.assertEqual(0, rc, out)
+        self.assertEqual(2, len(block_attempts))
+        self.assertEqual("blocked", self.status(cid))
+
+    def test_stop_during_coordinator_resolve_skips_decision_and_preserves_park_or_archive(self):
+        with mock.patch.object(crew_card, "close_proof_command", return_value=""):
+            # Subcase 1: /crew-stop parks card while resolve() is in flight
+            cid1 = K.add_card(self.conn, "ready")
+            self.kb.claim_task(self.conn, cid1, claimer="w")
+            self.kb.block_task(self.conn, cid1, reason="transient glitch", kind="transient")
+            ev1 = [dict(r) for r in self.conn.execute(
+                "select id, task_id, kind, payload, created_at from task_events where task_id = ? and kind = 'blocked'",
+                (cid1,))]
+
+            def stop_while_deciding(_ctx, _path):
+                rc, _ = self.stop(cid1)
+                self.assertEqual(0, rc)
+                return '{"decision": "retry", "fix": "retry after stop"}', 0
+
+            ctx1 = cc.Ctx(self.db, None, dry=False, decider=stop_while_deciding, say=lambda *_: None)
+            got1 = cc.handle_card(ctx1, cid1, ev1)
+            self.assertEqual("skip", got1["action"], got1)
+            self.assertIn("stopped by the owner", got1["detail"])
+            self.assertEqual("scheduled", self.status(cid1))
+            self.assertGreater(crew_card.parked_by_owner(self.db, cid1), 0)
+            self.assertNotIn("unblocked", K.events(self.conn, cid1))
+            self.assertNotIn("crew_decision", K.events(self.conn, cid1))
+
+            # Subcase 2: /crew-stop --archive archives card while resolve() is in flight
+            cid2 = K.add_card(self.conn, "ready")
+            self.kb.claim_task(self.conn, cid2, claimer="w")
+            self.kb.block_task(self.conn, cid2, reason="transient glitch", kind="transient")
+            ev2 = [dict(r) for r in self.conn.execute(
+                "select id, task_id, kind, payload, created_at from task_events where task_id = ? and kind = 'blocked'",
+                (cid2,))]
+
+            def archive_while_deciding(_ctx, _path):
+                rc, _ = self.stop(cid2, "--archive")
+                self.assertEqual(0, rc)
+                return '{"decision": "retry", "fix": "retry after archive"}', 0
+
+            ctx2 = cc.Ctx(self.db, None, dry=False, decider=archive_while_deciding, say=lambda *_: None)
+            got2 = cc.handle_card(ctx2, cid2, ev2)
+            self.assertEqual("skip", got2["action"], got2)
+            self.assertIn("archived", got2["detail"])
+            self.assertEqual("archived", self.status(cid2))
+            self.assertNotIn("unblocked", K.events(self.conn, cid2))
+            self.assertNotIn("crew_decision", K.events(self.conn, cid2))
+
     # -------------------------------------------------------------------------------- archive / bare
     def test_archive_flag_archives_and_kills(self):
         cid, proc = self.running_card_with_worker()

@@ -56,17 +56,20 @@ class VerifierBlockTests(unittest.TestCase):
         self.asked = getattr(self, "asked", []) + [args]
         return 0, "ok"
 
-    def blocked_card(self, by_verifier=True, body=BODY):
-        """The real sequence: writer run -> review_requested -> verifier run -> blocked (needs_input)."""
+    def blocked_card(self, by_verifier=True, body=BODY, kind="needs_input", assignee="crew-content"):
+        """The real sequence: writer run -> review_requested -> verifier run -> blocked."""
         kb, conn = self.kb, self.conn
-        cid = K.add_card(conn, "ready", body=body, assignee="crew-content")
+        cid = K.add_card(conn, "ready", body=body, assignee=assignee)
         if by_verifier:
-            self.assertIsNotNone(kb.claim_task(conn, cid, claimer="w"))
-            self.assertTrue(kb.request_review(conn, cid, summary="done", reviewer="crew-verifier"))
-            self.assertIsNotNone(kb.claim_review_task(conn, cid, claimer="v"))
+            if crew_card.verify_mode(body) == "agent":
+                self.assertIsNotNone(kb.claim_task(conn, cid, claimer="v"))
+            else:
+                self.assertIsNotNone(kb.claim_task(conn, cid, claimer="w"))
+                self.assertTrue(kb.request_review(conn, cid, summary="done", reviewer="crew-verifier"))
+                self.assertIsNotNone(kb.claim_review_task(conn, cid, claimer="v"))
         else:
             self.assertIsNotNone(kb.claim_task(conn, cid, claimer="w"))
-        self.assertTrue(kb.block_task(conn, cid, reason=REASON, kind="needs_input"))
+        self.assertTrue(kb.block_task(conn, cid, reason=REASON, kind=kind))
         return cid
 
     def test_the_verifiers_block_is_recognised_with_its_reason(self):
@@ -87,16 +90,73 @@ class VerifierBlockTests(unittest.TestCase):
         self.assertNotIn("self_heal", K.events(self.conn, cid))
 
     def test_a_stale_block_that_is_not_the_verifiers_still_heals(self):
-        cid = self.blocked_card(by_verifier=False)
+        cid = self.blocked_card(by_verifier=False, kind="transient")
         got = crew_heal.heal_card({"id": cid, "status": "blocked", "body": BODY}, False)
         self.assertEqual(("stale_verify", True), (got["class"], got["fixed"]))
         self.assertEqual("ready", self.kb.get_task(self.conn, cid).status)
 
     def test_a_proof_card_blocked_by_its_verifier_run_still_heals(self):
         body = BODY.replace("Verify: independent", "Verify: proof")
-        cid = self.blocked_card(body=body)
+        cid = self.blocked_card(body=body, kind="transient")
         got = crew_heal.heal_card({"id": cid, "status": "blocked", "body": body}, False)
         self.assertTrue(got["fixed"])
+
+    def test_dual_verify_card_recognises_verifier_block_refuses_heal_and_hands_to_writer(self):
+        dual_body = BODY.replace("Verify: independent", "Verify: dual")
+        cid = self.blocked_card(by_verifier=True, body=dual_body, kind="transient")
+        got = crew_card.verifier_block(cid)
+        self.assertIsNotNone(got)
+        self.assertEqual(REASON, got["reason"])
+        self.assertIsNone(crew_heal.heal_card({"id": cid, "status": "blocked", "body": dual_body}, False))
+        crew_heal.crew_safety.run_proof.assert_not_called()
+        self.assertEqual("blocked", self.kb.get_task(self.conn, cid).status)
+
+        # When unblocked back into review, hand_to_writer reopens review and restores the writer.
+        self.assertTrue(self.kb.unblock_task(self.conn, cid))
+        self.assertEqual("review", self.kb.get_task(self.conn, cid).status)
+        handed = crew_card.hand_to_writer(cid)
+        self.assertTrue(handed["reopened"])
+        task = self.kb.get_task(self.conn, cid)
+        self.assertEqual(("ready", "crew-content"), (task.status, task.assignee))
+
+    def test_standalone_agent_verify_card_recognises_verifier_block_without_hijacking_to_writer(self):
+        agent_body = (
+            "Role: verifier\nCoordinator: owner/s\nBudget: 200000 tokens\nVerify: agent\n\n"
+            "GOAL: g\nDone when: d\n\nproof command: true\n"
+        )
+        cid = self.blocked_card(by_verifier=True, body=agent_body, kind="transient", assignee="crew-verifier")
+        got = crew_card.verifier_block(cid)
+        self.assertIsNotNone(got)
+        self.assertEqual(REASON, got["reason"])
+        self.assertIsNone(crew_heal.heal_card({"id": cid, "status": "blocked", "body": agent_body}, False))
+        crew_heal.crew_safety.run_proof.assert_not_called()
+
+        # Unblocking a standalone verifier card puts it in ready assigned to crew-verifier;
+        # hand_to_writer MUST remain a no-op and never reassign it to crew-worker/coder.
+        self.assertTrue(self.kb.unblock_task(self.conn, cid))
+        self.assertEqual(("ready", "crew-verifier"),
+                         (self.kb.get_task(self.conn, cid).status, self.kb.get_task(self.conn, cid).assignee))
+        handed = crew_card.hand_to_writer(cid)
+        self.assertEqual({"reopened": False, "assigned": ""}, handed)
+        self.assertEqual("crew-verifier", self.kb.get_task(self.conn, cid).assignee)
+
+    def test_needs_input_and_capability_blocks_never_auto_heal_even_when_card_omits_block_kind(self):
+        proof_body = BODY.replace("Verify: independent", "Verify: proof")
+        for kind in ("needs_input", "capability"):
+            with self.subTest(kind=kind):
+                cid = self.blocked_card(by_verifier=False, body=proof_body, kind=kind)
+                # Omit block_kind from dict to force authoritative KANBAN_DB fallback.
+                partial_card = {"id": cid, "status": "blocked", "body": proof_body}
+                self.assertIsNone(crew_heal.heal_card(partial_card, False))
+                self.assertIsNone(crew_heal.heal_stale_verify(partial_card, False))
+                # Also verify explicit block_kind on the dict.
+                explicit_card = {"id": cid, "status": "blocked", "body": proof_body, "block_kind": kind}
+                self.assertIsNone(crew_heal.heal_card(explicit_card, False))
+                self.assertIsNone(crew_heal.heal_stale_verify(explicit_card, False))
+                crew_heal.crew_safety.run_proof.assert_not_called()
+                self.assertEqual("blocked", self.kb.get_task(self.conn, cid).status)
+                self.assertNotIn("unblocked", K.events(self.conn, cid))
+                self.assertNotIn("self_heal", K.events(self.conn, cid))
 
     def pass_for(self, decider):
         cid = self.blocked_card()

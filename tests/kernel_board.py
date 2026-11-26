@@ -91,6 +91,8 @@ def kernel_cli(path):
                 ok = kb.schedule_task(conn, cid, reason=" ".join(rest[2:]))
             elif verb == "archive":
                 ok = kb.archive_task(conn, cid)
+            elif verb == "reopen-review":
+                ok = kb.reopen_review_task(conn, cid)
             else:
                 raise AssertionError("kernel_cli has no stand-in for %r" % verb)
         return SimpleNamespace(returncode=0 if ok else 1, stdout="ok" if ok else "", stderr="" if ok else "refused")
